@@ -1,169 +1,231 @@
-# 🏓 PickleMatch2K - Hệ Thống Đặt Sân & AI Ghép Trận Pickleball Thông Minh
+# PickleMatch2K - Hệ thống đặt sân Pickleball, gợi ý sân và ghép người chơi
 
-> **Đồ Án Khóa Luận Tốt Nghiệp**  
-> **Đề tài**: Xây dựng hệ thống đặt sân Pickleball tích hợp gợi ý sân và AI ghép người chơi thông minh.
+> **Khóa luận tốt nghiệp** - Đề tài: Xây dựng hệ thống đặt sân Pickleball tích hợp gợi ý sân và AI ghép người chơi thông minh.
 
----
+## 1. Tổng quan
 
-## 🌟 1. Giới Thiệu Tổng Quan
+PickleMatch2K gồm một API và hai ứng dụng web phục vụ bốn vai trò:
 
-**PickleMatch2K** là nền tảng thể thao trực tuyến chuyên biệt dành cho cộng đồng Pickleball tại TP. Hồ Chí Minh. Hệ thống giải quyết trọn vẹn bài toán vận hành sân bãi thể thao thực tế:
-- **Người chơi (Player)**: Tìm kiếm cụm sân gần nhất theo tọa độ GPS, xem ảnh sân thực tế với hiệu ứng hover trượt ảnh đa góc, xem lịch trống và đặt sân theo thời gian thực, đặt cọc an toàn 50% qua SePay VietQR, tạo kèo & ghép bạn chơi cùng trình độ DUPR sử dụng mô hình học máy **Random Forest**.
-- **Chủ cụm sân (Owner)**: Quản lý chi tiết từng sân thi đấu, upload và quản lý bộ sưu tập hình ảnh sân, cấu hình khung giờ mở cửa và bảng giá linh hoạt (Giá cơ bản, Giờ cao điểm, Cuối tuần), phân công nhân viên ca trực, quản lý đơn đặt và đối soát doanh thu tự động.
-- **Nhân viên ca trực (Staff)**: Cổng trực sân riêng biệt hỗ trợ quét QR check-in khách đến sân, thu 50% tiền còn lại và theo dõi doanh thu ca trực.
-- **Quản trị viên (Admin)**: Cổng riêng trên Port 3001 giám sát toàn bộ hệ thống, quản lý người dùng, phê duyệt cụm sân, theo dõi doanh thu và cấu hình mô hình AI.
-
----
-
-## 🛠️ 2. Kiến Trúc Công Nghệ (Tech Stack)
-
-| Thành phần | Công nghệ / Thư viện | Vai trò |
+| Vai trò | Cổng | Việc chính |
 | :--- | :--- | :--- |
-| **Backend** | **Python 3.11+ / FastAPI** | RESTful API tốc độ cao, xử lý đa luồng bất đồng bộ (Asynchronous) |
-| **ORM / Database** | **SQLAlchemy 2.0 / SQLite** | Quản lý mô hình dữ liệu quan hệ, giao dịch ACID an toàn |
-| **Realtime Engine** | **FastAPI WebSocket** | Đồng bộ trạng thái khóa slot tức thì giữa nhiều người dùng |
-| **AI / Machine Learning** | **Scikit-Learn (Random Forest Classifier)** | Dự đoán mức độ phù hợp và gợi ý ghép cặp người chơi theo DUPR |
-| **Bảo mật & Auth** | **JWT (JSON Web Tokens) & SHA256/Bcrypt** | Xác thực người dùng và phân quyền 4 cấp (Player, Owner, Staff, Admin) |
-| **Thanh toán trực tuyến** | **SePay VietQR API / Webhook** | Tạo mã QR động thanh toán cọc 50% và đối soát tự động |
-| **Frontend Web App** | **Next.js 16 (App Router) + React 19 + TypeScript** | Giao diện người dùng SSR/CSR hiện đại, responsive đa nền tảng |
-| **Admin Portal** | **Next.js 16 (Port 3001) + TailwindCSS** | Cổng quản trị điều hành độc lập tối ưu bảo mật |
+| **Người chơi** | `http://localhost:3000` | Tìm sân theo vị trí, xem lịch trống theo thời gian thực, đặt sân và cọc 50% qua VietQR, nhận vé QR, hủy/hoàn tiền theo chính sách, mở phòng đấu trên đơn đã cọc, nhận gợi ý sân và bạn chơi |
+| **Chủ sân** | `http://localhost:3000/owner` | Thông tin cụm sân, sân con, bảng giá theo khung giờ, giờ mở cửa, nhân viên, quầy đặt sân, doanh thu |
+| **Nhân viên** | `http://localhost:3000/staff` | Quầy đặt sân của cụm sân được phân công: tạo đơn tại quầy, tra mã/quét QR, check-in, thu tiền, dời lịch, xác nhận hoàn tiền |
+| **Quản trị viên** | `http://localhost:3001` | Duyệt cụm sân, khóa/mở tài khoản, giám sát đơn đặt, giao dịch, phòng đấu và mô hình ghép cặp |
 
----
+Hai thành phần "thông minh" của đề tài:
 
-## 📁 3. Cấu Trúc Thư Mục Dự Án (Project Structure)
+- **Gợi ý cụm sân**: lọc → chấm điểm đa tiêu chí (khoảng cách, giá, giờ trống, đánh giá, tiện ích) → xếp hạng.
+- **Ghép người chơi**: mô hình Random Forest trên 5 đặc trưng của một cặp người chơi.
 
-```
-c:/KLTN/
-├── README.md                 # Sổ tay hướng dẫn & Tài khoản nghiệm thu KLTN
-├── .env                      # Cấu hình biến môi trường hệ thống (Database, Cloudinary, SePay)
-├── .gitignore                # Quản lý loại trừ file rác, build cache & credentials
-├── docker-compose.yml        # Cấu hình triển khai đa Container (Postgres, Redis, API, 2 Web)
-├── start_all.bat             # Khởi động nhanh 3 cổng dịch vụ (Local Dev)
-├── start_docker.bat          # Khởi động trọn gói bằng Docker
-├── pyproject.toml            # Cấu hình môi trường Python & Pytest
-│
-├── docs/                     # 📑 Hồ sơ học thuật, giải thuật & dữ liệu KLTN
-│   ├── README.md             # Mục lục tra cứu tài liệu
-│   ├── HUONG_DAN_KLTN.md     # Đặc tả đề tài, công thức toán học MCDA & Random Forest
-│   ├── DATABASE_DESIGN.md    # Thiết kế CSDL, ERD, Schema & chiến lược Indexing
-│   ├── Nhom_6_Khanh_va_Khang.docx # Báo cáo Khóa luận tốt nghiệp đầy đủ
-│   └── Mau_Nhap_Du_Lieu_Pickleball.xlsx # File Excel mẫu nhập dữ liệu cụm sân
-│
-├── backend/                  # ⚙️ Dịch vụ Backend API (FastAPI)
-│   ├── README.md             # Hướng dẫn chi tiết kỹ thuật Backend
-│   ├── app/                  # Mã nguồn chính (api, core, db, ml, models, schemas, services, utils)
-│   ├── scripts/              # 🛠️ Toàn bộ công cụ dòng lệnh quản trị CSDL
-│   │   ├── README.md         # Sổ tay hướng dẫn từng script
-│   │   ├── show_db.py        # In báo cáo trực quan thống kê toàn diện CSDL
-│   │   ├── sync_db.py        # Đồng bộ 2 chiều dữ liệu PostgreSQL <-> SQLite
-│   │   ├── seed.py           # Nạp dữ liệu mẫu ban đầu
-│   │   ├── reset_db.py       # Tái tạo cấu trúc bảng trắng
-│   │   ├── import_3_venues.py# Nạp 3 cụm sân thật đồ án KLTN
-│   │   └── import_excel.py   # Nạp dữ liệu từ file Excel
-│   ├── tests/                # Bộ kiểm thử tự động toàn diện (23 tests PASS)
-│   │   ├── integration/      # Pytest đa luồng (chống race-condition, realtime slot lock)
-│   │   ├── verification/     # Unittest chuyên sâu (RBAC, SePay, Staff check-in, API)
-│   │   ├── run_all_tests.py  # Script chạy tổng hợp 23 bài test tự động
-│   │   └── README.md
-│   ├── uploads/              # Thư mục lưu trữ hình ảnh sân tải lên vật lý
-│   ├── manage.py             # 🎯 Bộ điều khiển CLI trung tâm (show, sync, seed, reset, test...)
-│   ├── seed.py               # Entrypoint nạp dữ liệu ban đầu cho Docker Compose
-│   ├── requirements.txt      # Danh mục thư viện Python
-│   └── pickleball.db         # Cơ sở dữ liệu SQLite đầy đủ dữ liệu mẫu (đã đồng bộ 100%)
-│
-├── admin-portal/             # 👑 Cổng Quản Trị Hệ Thống Độc Lập (Port 3001)
-│   ├── README.md             # Hướng dẫn kỹ thuật Cổng Quản Trị
-│   ├── src/app/              # Next.js App Router dành riêng cho Super Admin
-│   │   ├── page.tsx          # Bảng điều khiển trung tâm (KPIs, CRM, Sân, Đơn, SePay, AI)
-│   │   └── login/            # Trang đăng nhập bảo mật riêng cho Admin
-│   ├── src/lib/              # Client API & Auth Context
-│   └── package.json          # Cấu hình khởi chạy trên cổng 3001
-│
-├── frontend/                 # 🏓 Cổng Người Chơi, Chủ Sân & Nhân Viên (Port 3000)
-│   ├── README.md             # Hướng dẫn kỹ thuật Cổng Khách Hàng / Sân
-│   ├── public/images/        # Tài nguyên ảnh và logo tĩnh
-│   ├── src/
-│   │   ├── app/              # Next.js App Router
-│   │   │   ├── (auth)/       # Gom nhóm xác thực gọn gàng (login, register)
-│   │   │   ├── venues/       # Chi tiết sân theo ID
-│   │   │   ├── matches/      # Ghép kèo thi đấu DUPR & AI Matchmaker
-│   │   │   ├── bookings/     # Lịch sử đơn đặt sân & vé QR
-│   │   │   ├── owner/        # Cổng quản lý Chủ Sân (venues, bookings, staff)
-│   │   │   ├── staff/        # Cổng nghiệp vụ Nhân Viên (check-in QR, ca trực)
-│   │   │   └── profile/      # Hồ sơ cá nhân & chỉnh sửa DUPR
-│   │   ├── components/       # UI Components tái sử dụng (VenueImageHoverSlider, SepayModal, PlayerBottomNav...)
-│   │   └── lib/              # Client API, Auth Context, WebSocket Hook, Geolocation
-│   └── package.json          # Cấu hình khởi chạy trên cổng 3000
+Công thức, tham số và kết quả đánh giá: xem [docs/HUONG_DAN_KLTN.md](docs/HUONG_DAN_KLTN.md).
+
+## 2. Công nghệ
+
+| Thành phần | Công nghệ |
+| :--- | :--- |
+| Backend | Python 3.13, FastAPI, SQLAlchemy 2, Pydantic 2 |
+| Cơ sở dữ liệu | PostgreSQL 17, migration bằng Alembic |
+| Giữ chỗ tạm, giới hạn đăng nhập | Redis (tùy chọn; không có thì lưu trong bộ nhớ của tiến trình) |
+| Thời gian thực | WebSocket của FastAPI |
+| Học máy | scikit-learn (Random Forest), pandas, numpy |
+| Xác thực | JWT, mật khẩu băm bằng bcrypt |
+| Thanh toán | SePay VietQR (webhook) và bộ giả lập dùng khi demo |
+| Web | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4 |
+
+## 3. Cấu trúc thư mục
+
+```text
+KLTN/
+├── .env.example            Mẫu cấu hình (sao chép thành .env, không commit .env)
+├── docker-compose.yml      Chạy toàn bộ hệ thống bằng Docker
+├── start_all.bat           Chạy 3 dịch vụ trên máy phát triển
+├── start_docker.bat        Chạy bằng Docker
+├── pyproject.toml          Cấu hình pytest và ruff
+├── .github/workflows/      Kiểm tra tự động (CI)
+├── backend/                API FastAPI
+│   ├── app/                api, core, db, ml, models, schemas, services, utils
+│   ├── alembic/            Các phiên bản schema (0001 → 0004)
+│   ├── scripts/            Script quản trị CSDL (xem backend/scripts/README.md)
+│   ├── tests/              Bộ kiểm thử pytest (xem backend/tests/README.md)
+│   └── manage.py           Bộ lệnh quản trị
+├── frontend/               Cổng người chơi, chủ sân, nhân viên (cổng 3000)
+├── admin-portal/           Cổng quản trị (cổng 3001)
+├── scripts/e2e_smoke.js    Kiểm thử đầu-cuối qua trình duyệt
+├── docs/                   Tài liệu thiết kế, tài khoản demo, mẫu Excel
+└── backups/                Bản sao lưu CSDL (không commit)
 ```
 
----
+## 4. Cài đặt lần đầu
 
-## 🚀 4. Hướng Dẫn Khởi Chạy Hệ Thống
+Cần có: **Python 3.13**, **Node.js 22**, **PostgreSQL 17** (Redis không bắt buộc).
 
-### Cách 1: Triển Khai Trọn Gói Bằng Docker (PostgreSQL 15 + Redis Thật 100%) - Khuyên Dùng
-Chạy tệp tin:
-```cmd
-start_docker.bat
+```powershell
+# 1) Thư viện Python
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r backend\requirements-dev.txt
+
+# 2) Cấu hình: sao chép rồi sửa DATABASE_URL và SECRET_KEY trong .env
+Copy-Item .env.example .env
+
+# 3) Tạo CSDL trống (hoặc tạo bằng pgAdmin), dựng bảng và nạp dữ liệu demo
+psql -U postgres -c "CREATE DATABASE pickleball_db"
+cd backend
+python manage.py migrate
+python manage.py seed
+cd ..
+
+# 4) Thư viện của hai ứng dụng web
+cd frontend;     npm ci; cd ..
+cd admin-portal; npm ci; cd ..
 ```
-Hoặc lệnh Terminal:
-```bash
-docker compose up --build -d
+
+Đã có CSDL từ phiên bản trước của dự án? Xem [mục 9](#9-nâng-cấp-csdl-của-phiên-bản-cũ) - không cần tạo lại.
+
+## 5. Chạy hệ thống
+
+### Cách 1 - `start_all.bat` (máy phát triển)
+
+Tệp này kiểm tra phiên bản CSDL trước. Nếu CSDL cần nâng cấp, nó hỏi xác nhận rồi mới chạy
+`python manage.py migrate` (lệnh này tự sao lưu trước khi thay đổi). Sau đó mở ba cửa sổ: API (8000),
+cổng người dùng (3000), cổng quản trị (3001).
+
+### Cách 2 - chạy tay từng dịch vụ
+
+```powershell
+# Cửa sổ 1 - API
+.\venv\Scripts\Activate.ps1
+cd backend
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Cửa sổ 2 - cổng người dùng          # Cửa sổ 3 - cổng quản trị
+cd frontend; npm run dev              cd admin-portal; npm run dev
 ```
-Hệ thống sẽ tự động khởi tạo và chạy các container:
-- 🐘 **PostgreSQL Server**: `localhost:5432` (Database: `pickleball_db`)
-- ⚡ **Redis Cache**: `localhost:6379`
-- ⚙️ **Backend API**: [http://localhost:8000/docs](http://localhost:8000/docs) (Tự động nạp toàn bộ CSDL bảng và dữ liệu mẫu)
-- 🏓 **Cổng Người Chơi & Chủ Sân**: [http://localhost:3000](http://localhost:3000)
-- 👑 **Cổng Quản Trị Hệ Thống Admin**: [http://localhost:3001](http://localhost:3001)
 
-### Cách 2: Khởi Chạy Nhanh Local Bằng File Batch
-Chạy tệp tin:
-```cmd
-start_all.bat
+API từ chối khởi động nếu schema CSDL chưa ở phiên bản mới nhất và in ra lệnh cần chạy.
+
+### Cách 3 - Docker
+
+```powershell
+# .env cần tối thiểu SECRET_KEY và POSTGRES_PASSWORD
+docker compose up --build -d          # hoặc chạy start_docker.bat
+docker compose logs -f backend
+docker compose down
 ```
 
-### Cách 3: Khởi chạy thủ công từng dịch vụ
-1. **Backend (Port 8000)**:
-   ```bash
-   cd c:/KLTN
-   .\venv\Scripts\Activate.ps1
-   python backend/seed.py
-   python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
-   ```
-2. **Frontend Client & Owner (Port 3000)**:
-   ```bash
-   cd c:/KLTN/frontend
-   npm run dev
-   ```
-3. **Admin Portal (Port 3001)**:
-   ```bash
-   cd c:/KLTN/admin-portal
-   npm run dev
-   ```
+- Docker dùng một **CSDL riêng** trong container (PostgreSQL 17, volume `pgdata17`), không phải PostgreSQL cài trên máy.
+  Cổng 5432 và 6379 không mở ra ngoài.
+- Lần chạy đầu, backend tự dựng bảng và nạp dữ liệu demo (tắt bằng `SEED_DEMO_DATA=false`).
+- Ảnh sân tải lên được giữ trong volume `uploads`.
+- Sao lưu CSDL của container (hai bước, chạy được trên mọi loại terminal):
 
----
+  ```powershell
+  docker compose exec -T postgres pg_dump -U postgres -Fc -f /tmp/pm2k.dump pickleball_db
+  docker compose cp postgres:/tmp/pm2k.dump backups/docker.dump
+  ```
 
-## 🧪 5. Chạy Toàn Bộ Bộ Kiểm Thử Tự Động (Full Test Suite)
+- Volume của cấu hình Docker cũ (`postgres_data`, dữ liệu PostgreSQL 15) không còn được dùng và không bị xóa.
 
-Để kiểm tra độ toàn vẹn và tin cậy của hệ thống:
-```bash
-python backend/tests/run_all_tests.py
+> Cấu hình Docker đã được viết lại và rà soát, nhưng **chưa được chạy thử** trên máy phát triển (máy không cài Docker).
+> Hãy chạy thử một lần trước khi dùng cho buổi demo.
+
+Địa chỉ sau khi chạy: API và tài liệu Swagger `http://localhost:8000/docs`, người dùng `http://localhost:3000`,
+quản trị `http://localhost:3001`.
+
+## 6. Tài khoản demo
+
+Sau `python manage.py seed`, mọi tài khoản dùng mật khẩu **`123456`** (chỉ dành cho phát triển và bảo vệ đồ án).
+
+| Vai trò | Email | Ghi chú |
+| :--- | :--- | :--- |
+| Quản trị viên | `admin@example.com` | Đăng nhập ở cổng 3001 |
+| Chủ sân | `owner_rudal@pickleball.vn` | RUDAL Pickleball & Academy (6 sân) |
+| Chủ sân | `owner_djoy_thuthiem@pickleball.vn` | D-Joy Pickleball Thủ Thiêm (11 sân) |
+| Chủ sân | `owner_152nguyenoanh@pickleball.vn` | Pickleball 152 Nguyễn Oanh (4 sân) |
+| Nhân viên | `staff_rudal_1@pickleball.vn` | Mỗi cụm sân có 3 nhân viên |
+| Người chơi | `player@example.com`, `player01@gmail.com` … `player18@gmail.com` | 20 người chơi với trình độ, phong cách, khung rảnh khác nhau |
+
+Danh sách đầy đủ 33 tài khoản: [docs/DANH_SACH_TAI_KHOAN_TEST.md](docs/DANH_SACH_TAI_KHOAN_TEST.md).
+
+## 7. Thanh toán khi demo
+
+- Đặt `SEPAY_SIMULATOR_ENABLED=true` trong `.env` rồi khởi động lại API: hộp thoại thanh toán hiện nút
+  **giả lập chuyển khoản**, đơn được xác nhận qua đúng luồng xử lý của webhook thật.
+- Dùng SePay thật: khai báo `SEPAY_BANK_*`, `SEPAY_WEBHOOK_API_KEY` và trỏ webhook của SePay tới
+  `POST /api/v1/payments/sepay-webhook` (header `Authorization: Apikey <khóa>`). Đã đặt khóa thì yêu cầu sai khóa
+  bị từ chối; khi `ENVIRONMENT=production` mà chưa đặt khóa, webhook ngừng nhận yêu cầu.
+- `SEPAY_UNIFIED_TEST_MODE=true`: mọi cụm sân nhận tiền vào một tài khoản chung khai báo trong `.env`;
+  `false`: mỗi cụm sân dùng tài khoản của chủ sân.
+
+## 8. Lệnh quản trị và kiểm thử
+
+Chạy trong `backend/` với môi trường ảo đã kích hoạt:
+
+| Lệnh | Việc làm |
+| :--- | :--- |
+| `python manage.py migrate` | Sao lưu rồi nâng schema lên bản mới nhất (`--check` chỉ xem trạng thái, `--no-backup` bỏ sao lưu) |
+| `python manage.py show` | Báo cáo tổng quan dữ liệu (chỉ đọc) |
+| `python manage.py seed` | Nạp dữ liệu demo vào CSDL trống (`--reset` xóa rồi nạp lại, có hỏi xác nhận) |
+| `python manage.py reset` | Xóa sạch, chỉ giữ danh mục tiện ích và một tài khoản quản trị (có hỏi xác nhận) |
+| `python manage.py import-excel --file x.xlsx` | Nhập cụm sân từ Excel theo mẫu trong `docs/` (`--dry-run` để kiểm tra trước) |
+| `python manage.py backup` | Sao lưu CSDL vào `backups/` |
+| `python manage.py train-model` | Huấn luyện lại mô hình ghép cặp (`--report` chỉ in bảng đánh giá) |
+| `python manage.py test` | Chạy bộ kiểm thử |
+
+**Kiểm thử backend** - hơn 300 ca kiểm thử chạy trên CSDL riêng `pickleball_test` (tự tạo, không đụng CSDL đang dùng):
+
+```powershell
+python -m pytest                                  # từ thư mục gốc, khoảng 2-3 phút
+python -m pytest backend/tests/test_payments.py -q
 ```
-Bộ kiểm thử bao gồm:
-- **8 bài Pytest**: Khóa slot đồng thời (Double Booking Race Condition), Real-time WebSocket Slot Holding, Chuẩn hóa điểm số gợi ý (Distance, Price, Time, Rating, Preference).
-- **15 bài Unittest Nghiệp Vụ**: Phân quyền RBAC Chủ sân, Quản lý Nhân viên ca trực, Upload & Xóa ảnh sân, Tích hợp SePay VietQR & Webhook, REST APIs & Tìm kiếm Haversine GPS.
 
----
+**Kiểm thử đầu-cuối qua trình duyệt** - 18 bước cho cả bốn vai trò. Script tạo và hủy đơn nên chỉ chạy trên
+CSDL demo, với `SEPAY_SIMULATOR_ENABLED=true` và hai ứng dụng web đã build (`npm run build && npm start`):
 
-## 🔑 6. Danh Sách Tài Khoản Thử Nghiệm
+```powershell
+npm install -g puppeteer        # một lần
+node scripts/e2e_smoke.js       # thêm --show để xem trình duyệt
+```
 
-| Vai trò | Email đăng nhập | Mật khẩu | Phạm vi quyền hạn |
-| :--- | :--- | :--- | :--- |
-| **Quản trị viên (Admin)** | `admin@example.com` | `password` | Toàn quyền quản trị hệ thống tại Cổng [http://localhost:3001](http://localhost:3001) |
-| **Chủ Sân RUDAL** | `owner_rudal@pickleball.vn` | `password` | Quản lý độc quyền **RUDAL Pickleball & Academy** (6 sân, nhân viên, doanh thu) |
-| **Chủ Sân D-Joy Thủ Thiêm** | `owner_djoy_thuthiem@pickleball.vn` | `password` | Quản lý độc quyền **D-Joy Pickleball Thủ Thiêm** (11 sân) |
-| **Chủ Sân 152 Nguyễn Oanh** | `owner_152nguyenoanh@pickleball.vn` | `password` | Quản lý độc quyền **Pickleball 152 Nguyễn Oanh Gò Vấp** (4 sân) |
-| **Nhân Viên Ca Trực (RUDAL)** | `staff_owner_rudal@pickleball.vn` | `password` | Check-in khách vào sân, thu 50% tiền cọc còn lại tại `/staff/dashboard` |
-| **Nhân Viên Ca Trực (152 Nguyễn Oanh)** | `staff_owner_152nguyenoanh@pickleball.vn` | `password` | Check-in khách vào sân, tạo đơn vãng lai tại quầy |
-| **Khách hàng / VĐV (Demo)** | `player@example.com` | `password` | VĐV DUPR 3.5, tìm sân, đặt giữ chỗ realtime, ghép kèo thi đấu AI |
-| **Khách hàng / VĐV (Khánh)** | `khanhhoan121209@gmail.com` | `password` | VĐV DUPR 3.5, có sẵn lịch sử 8 đơn đặt và kèo đấu thực tế |
+**Kiểm tra tự động (CI)** - `.github/workflows/ci.yml` chạy ruff, pytest và build hai ứng dụng web mỗi lần đẩy mã.
+
+## 9. Nâng cấp CSDL của phiên bản cũ
+
+CSDL tạo bởi các phiên bản trước (chưa dùng Alembic) được nâng cấp tại chỗ, **giữ nguyên dữ liệu**:
+
+```powershell
+cd backend
+python manage.py migrate --check     # chỉ xem: CSDL đang ở đâu, cần lên phiên bản nào
+python manage.py migrate             # sao lưu vào backups/ rồi nâng cấp
+```
+
+Lệnh in sẵn câu lệnh khôi phục. Muốn quay lại dữ liệu cũ: khôi phục bản sao lưu vào một CSDL **mới** rồi đổi
+`DATABASE_URL` sang CSDL đó (lệnh khôi phục không bao giờ ghi đè CSDL đang dùng):
+
+```powershell
+python scripts/backup_db.py --restore-into pickleball_khoi_phuc --file ..\backups\<ten_file>.dump
+```
+
+Sau khi nâng cấp, các tài khoản demo cũ chưa có mục đích chơi, khung rảnh, ngân sách; bổ sung giá trị mẫu bằng
+`python manage.py seed --preferences` (không đổi dữ liệu khác).
+
+## 10. Giới hạn đã biết
+
+- API chạy **một tiến trình**: kênh WebSocket và tác vụ nền (hết hạn đơn chờ cọc, hoàn tất đơn) nằm trong tiến trình đó.
+  Không có Redis thì giữ chỗ tạm và giới hạn đăng nhập cũng chỉ nằm trong bộ nhớ tiến trình.
+- Số tiền lưu bằng kiểu số thực (`FLOAT`); mọi giá trị trong hệ thống là số nguyên VNĐ.
+- Quét QR bằng camera cần trình duyệt hỗ trợ `BarcodeDetector` và trang chạy trên HTTPS hoặc `localhost`;
+  các trường hợp khác nhân viên nhập mã đơn bằng tay.
+- Mô hình ghép cặp đang được huấn luyện trên **dữ liệu tổng hợp**. Khi khảo sát trong ứng dụng (`/survey`) thu đủ
+  300 nhãn, lệnh `python manage.py train-model` tự chuyển sang huấn luyện bằng nhãn thật.
+  Xem phần đánh giá trong `docs/HUONG_DAN_KLTN.md`.
+- Tài liệu Swagger (`/docs`) đang mở công khai; nên tắt hoặc chặn khi triển khai thật.
+
+## 11. Tài liệu khác
+
+- [backend/README.md](backend/README.md) - cấu trúc backend, biến cấu hình, nhóm API, quy tắc nghiệp vụ
+- [backend/scripts/README.md](backend/scripts/README.md) - script quản trị, sao lưu, nhập Excel
+- [backend/tests/README.md](backend/tests/README.md) - cách tổ chức bộ kiểm thử
+- [docs/DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md) - thiết kế CSDL và các ràng buộc
+- [docs/HUONG_DAN_KLTN.md](docs/HUONG_DAN_KLTN.md) - thuật toán gợi ý sân và mô hình ghép cặp

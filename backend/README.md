@@ -1,89 +1,140 @@
-# ⚙️ PickleMatch2K - Backend API Service
+# PickleMatch2K - Backend API
 
-Dịch vụ Backend API hiệu năng cao được xây dựng trên nền tảng **FastAPI**, kết nối CSDL quan hệ **PostgreSQL 15** (hoặc **SQLite** cục bộ), hỗ trợ giao tiếp Realtime qua **WebSocket** và tích hợp mô hình học máy **Random Forest** (Scikit-Learn) gợi ý bạn chơi Pickleball theo trình độ DUPR.
+API FastAPI trên PostgreSQL. Hướng dẫn cài đặt và chạy nằm ở [README gốc](../README.md); tài liệu này mô tả
+cấu trúc, cấu hình và các quy tắc nghiệp vụ của backend.
 
----
+## Cấu trúc
 
-## 📁 Cấu Trúc Thư Mục (Directory Structure)
-
-```
+```text
 backend/
-├── app/                  # Mã nguồn chính của dịch vụ FastAPI
-│   ├── api/              # API Route Handlers (Auth, Venues, Bookings, Matches, AI, Admin, WS)
-│   ├── core/             # Cấu hình bảo mật, Settings, JWT tokens
-│   ├── db/               # Database session và Base model
-│   ├── ml/               # Module AI Random Forest (Dataset, Train, Benchmark, Model .pkl)
-│   ├── models/           # SQLAlchemy Models (User, Venue, Court, Booking, Match, Payment...)
-│   ├── schemas/          # Pydantic validation schemas
-│   ├── services/         # Business logic (Slot Locking, SePay, DUPR, AI Matching)
-│   ├── utils/            # Tiện ích tính khoảng cách GPS Haversine
-│   └── main.py           # Điểm khởi chạy FastAPI & Static file mounting
-│
-├── scripts/              # Các công cụ dòng lệnh (CLI tools) quản trị CSDL
-│   ├── show_db.py        # Báo cáo thống kê toàn diện CSDL
-│   ├── sync_db.py        # Đồng bộ 2 chiều PostgreSQL <-> SQLite
-│   ├── seed.py           # Nạp dữ liệu mẫu ban đầu
-│   ├── reset_db.py       # Tái tạo cấu trúc bảng trắng
-│   ├── import_3_venues.py# Nạp 3 cụm sân thật đồ án KLTN
-│   ├── import_excel.py   # Nhập dữ liệu từ file Excel
-│   └── README.md         # Sổ tay hướng dẫn chi tiết từng script
-│
-├── tests/                # Bộ kiểm thử tự động toàn diện (23 tests PASS)
-│   ├── integration/      # Pytest đa luồng & thuật toán (test_concurrency, realtime, recommendation)
-│   ├── verification/     # Unittest nghiệp vụ (verify_api, owner, sepay, services, staff, images)
-│   ├── conftest.py       # Cấu hình Pytest Fixtures
-│   ├── run_all_tests.py  # Script chạy tổng hợp 23 bài test tự động
-│   └── README.md         # Hướng dẫn chi tiết kiểm thử
-│
-├── alembic/              # Cấu hình Database Migrations
-├── uploads/              # Thư mục lưu trữ hình ảnh sân tải lên vật lý
-├── Dockerfile            # Container image build manifest
-├── requirements.txt      # Danh sách thư viện Python
-├── pickleball.db         # Cơ sở dữ liệu SQLite cục bộ (đã đồng bộ 100%)
-├── manage.py             # Bộ điều khiển dòng lệnh quản trị tập trung
-└── seed.py               # Entrypoint nạp dữ liệu ban đầu cho Docker Compose
+├── app/
+│   ├── main.py             Khởi tạo ứng dụng, CORS, tác vụ nền, phục vụ ảnh /uploads
+│   ├── api/v1/endpoints/   auth, users, venues, search, bookings, payments, matches, recommendations, ml, ws
+│   ├── core/               config (biến môi trường), security (JWT, bcrypt), booking_policy, recommendation_config,
+│   │                       rate_limit, redis_client, websocket_manager
+│   ├── db/                 database (engine, phiên làm việc), base (đăng ký model), migrations (trạng thái schema)
+│   ├── models/             user, venue, booking, payment, match, ml (nhãn khảo sát)
+│   ├── schemas/            Kiểu dữ liệu vào/ra của API (Pydantic)
+│   ├── services/           Nghiệp vụ: booking, ledger (sổ giao dịch), payment, availability, slot_lock, venue,
+│   │                       user, search, match, venue_recommendation, ml, maintenance (tác vụ nền), storage
+│   ├── ml/                 features (đặc trưng dùng chung), train_model, mô hình .pkl và model_meta.json
+│   └── utils/              timeutils (giờ Việt Nam, đồng hồ nghiệp vụ), geo (Haversine)
+├── alembic/versions/       0001 schema gốc → 0002 chỉnh lệch CSDL cũ → 0003 lõi đặt sân → 0004 nhãn khảo sát
+├── scripts/                Script quản trị (seed, reset, import_excel, backup_db, show_db)
+├── tests/                  Bộ kiểm thử pytest
+├── manage.py               Bộ lệnh quản trị
+├── requirements.txt        Thư viện chạy (đã ghim phiên bản)
+└── requirements-dev.txt    Thêm pytest và ruff
 ```
 
----
+## Cấu hình
 
-## 🚀 Khởi Chạy Dịch Vụ Cục Bộ (Local Development)
+Backend đọc biến môi trường, rồi tới file `.env` ở thư mục gốc và `backend/.env`. Mẫu đầy đủ: [`.env.example`](../.env.example).
 
-```bash
-# 1. Kích hoạt môi trường ảo Python
-..\venv\Scripts\activate
+| Biến | Bắt buộc | Ý nghĩa |
+| :--- | :---: | :--- |
+| `DATABASE_URL` | Có | `postgresql://user:pass@host:5432/ten_csdl` |
+| `SECRET_KEY` | Có | Khóa ký JWT, tối thiểu 16 ký tự; giá trị mẫu bị từ chối khi `ENVIRONMENT=production` |
+| `ENVIRONMENT` | | `development` (mặc định) hoặc `production` |
+| `REDIS_URL` | | Để trống: giữ chỗ tạm và giới hạn đăng nhập lưu trong bộ nhớ tiến trình |
+| `CORS_ORIGINS` | | Danh sách origin của hai ứng dụng web. Ở `development`, origin trong mạng LAN cũng được chấp nhận |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | | Thời hạn phiên đăng nhập (mặc định 1440 phút) |
+| `STORAGE_BACKEND` | | `local` (thư mục `uploads/`) hoặc `cloudinary` (cần `CLOUDINARY_*`) |
+| `SEPAY_WEBHOOK_API_KEY` | | Khóa xác thực webhook SePay |
+| `SEPAY_BANK_*`, `SEPAY_ACCOUNT_HOLDER` | | Tài khoản nhận tiền dùng chung khi `SEPAY_UNIFIED_TEST_MODE=true` |
+| `SEPAY_SIMULATOR_ENABLED` | | `true`: bật API giả lập thanh toán cho demo và kiểm thử |
 
-# 2. Khởi chạy Uvicorn Server (Port 8000, Hot-Reload)
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+## Schema và migration
+
+Schema chỉ được thay đổi qua Alembic. Khi sửa model:
+
+```powershell
+cd backend
+alembic revision --autogenerate -m "mo ta thay doi"   # sinh file trong alembic/versions, đọc lại trước khi dùng
+python manage.py migrate                               # sao lưu rồi áp dụng
+python -m pytest tests/test_infrastructure.py          # kiểm tra schema khớp model
 ```
 
-- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+- `python manage.py migrate --check` chỉ báo trạng thái (mã thoát 3 nếu còn migration chưa chạy).
+- CSDL tạo trước khi dự án dùng Alembic (có bảng nhưng không có `alembic_version`) được đánh dấu ở revision `0001`
+  rồi nâng cấp, không mất dữ liệu.
+- API kiểm tra phiên bản schema lúc khởi động và dừng với thông báo hướng dẫn nếu schema chưa được nâng cấp.
 
----
+## Nhóm API
 
-## 🛠️ Công Cụ Quản Trị Trung Tâm (`manage.py`)
+85 thao tác dưới tiền tố `/api/v1`; mô tả chi tiết từng tham số ở `http://localhost:8000/docs`.
 
-Hệ thống tích hợp sẵn bộ CLI điều khiển trực quan:
+| Nhóm | Số thao tác | Nội dung |
+| :--- | :---: | :--- |
+| `auth` | 2 | Đăng ký, đăng nhập (giới hạn số lần sai) |
+| `users` | 14 | Hồ sơ cá nhân, đổi mật khẩu, chủ sân quản lý nhân viên, quản trị viên quản lý tài khoản |
+| `venues` | 24 | Cụm sân, sân con, bảng giá, giờ mở cửa, ảnh, đánh giá, duyệt cụm sân |
+| `search` | 2 | Tìm cụm sân, lịch trống theo ngày |
+| `bookings` | 20 | Giữ chỗ tạm, tạo đơn, hủy, đơn tại quầy, check-in, thu tiền, dời lịch, hoàn tiền, thống kê |
+| `payments` | 5 | Thông tin chuyển khoản, webhook SePay, giả lập, sổ giao dịch |
+| `matches` | 11 | Phòng đấu: tạo trên đơn đã cọc, tham gia, rời, quản trị |
+| `recommendations` | 1 | Gợi ý cụm sân |
+| `ml` | 5 | Thông tin mô hình, dự đoán độ phù hợp, gợi ý bạn chơi, khảo sát thu nhãn |
 
-```bash
-# In báo cáo thống kê dữ liệu
-python manage.py show
+WebSocket: `/api/v1/ws/live` (sự kiện công khai toàn hệ thống), `/api/v1/ws/venues/{venue_id}` (lịch của một cụm sân),
+`/api/v1/ws/user/{user_id}` (kênh riêng, cần token của chính người đó). Sự kiện công khai không chứa thông tin cá nhân
+hay số tiền.
 
-# Đồng bộ PostgreSQL sang SQLite
-python manage.py sync
+## Quy tắc đặt sân
 
-# Nạp dữ liệu mẫu ban đầu
-python manage.py seed
+Tham số nằm ở `app/core/booking_policy.py`; giao diện hiển thị đúng các giá trị này.
 
-# Khởi tạo lại CSDL trắng
-python manage.py reset
+| Quy tắc | Giá trị |
+| :--- | :--- |
+| Độ dài một khung giờ | 60 phút |
+| Tiền cọc | 50% tổng tiền |
+| Hạn thanh toán cọc của đơn mới | 15 phút, quá hạn đơn chuyển `EXPIRED` và trả lại khung giờ |
+| Giữ chỗ tạm khi đang chọn | 5 phút, tối đa 12 khung giờ mỗi người |
+| Giới hạn | Tối đa 12 khung giờ mỗi đơn, 3 đơn chờ cọc mỗi người, đặt trước tối đa 60 ngày |
+| Hủy trước giờ chơi từ 12 giờ trở lên | Hoàn 100% số tiền đã trả |
+| Hủy trước giờ chơi từ 6 đến dưới 12 giờ | Không hoàn cọc, được hỗ trợ dời lịch |
+| Hủy dưới 6 giờ hoặc không đến | Không hoàn cọc |
 
-# Nạp 3 cụm sân đồ án KLTN
-python manage.py import-venues
+Giá một khung giờ (`availability_service.calculate_slot_price`): giá cơ sở là giá riêng của sân nếu có, ngược lại giá
+`BASE` của cụm sân; khung bắt đầu trong giờ cao điểm dùng giá `PEAK`; thứ Bảy và Chủ nhật dùng giá `WEEKEND`
+(trong giờ cao điểm lấy mức cao hơn giữa `PEAK` và `WEEKEND`). Đơn nhiều giờ là tổng giá từng khung.
 
-# Nhập dữ liệu từ file Excel
-python manage.py import-excel --file ../docs/Mau_Nhap_Du_Lieu_Pickleball.xlsx
+Trạng thái đơn: `PENDING` (chờ cọc) → `CONFIRMED` → `CHECKED_IN` → `COMPLETED`; nhánh kết thúc khác: `NO_SHOW`,
+`CANCELLED`, `EXPIRED`.
 
-# Chạy toàn bộ 23 bài kiểm thử tự động
-python manage.py test
+Mỗi khoản thu hoặc hoàn được ghi thành một dòng trong sổ giao dịch `payment_transactions` (loại `DEPOSIT`, `BALANCE`,
+`REFUND`; hình thức `BANK_TRANSFER`, `CASH`) và cộng vào `paid_amount` của đơn trong cùng một giao dịch CSDL. Trạng thái
+thanh toán (`UNPAID`, `PARTIALLY_PAID`, `DEPOSIT_PAID`, `FULLY_PAID`) được suy ra từ `paid_amount` so với tiền cọc và
+tổng tiền. Doanh thu trên các bảng tổng quan được cộng từ sổ giao dịch.
+
+Chống đặt trùng được bảo đảm ở ba lớp: giữ chỗ tạm (Redis hoặc bộ nhớ), kiểm tra trong giao dịch, và ràng buộc của
+PostgreSQL (chỉ mục duy nhất theo khung giờ còn hiệu lực cùng ràng buộc loại trừ khoảng thời gian giao nhau) -
+xem [docs/DATABASE_DESIGN.md](../docs/DATABASE_DESIGN.md).
+
+Webhook SePay ghi nhận mỗi mã tham chiếu đúng một lần, kể cả khi SePay gửi lặp hoặc gửi đồng thời.
+
+## Tác vụ nền
+
+Mỗi 60 giây (`app/services/maintenance.py`): hết hạn đơn chờ cọc, hoàn tất đơn và đánh dấu vắng mặt cho đơn đã qua
+giờ, đóng phòng đấu đã qua giờ. Một tác vụ lỗi không chặn các tác vụ còn lại. Vì vậy API chạy bằng **một tiến trình**.
+
+## Mô hình ghép cặp
+
+```powershell
+python manage.py train-model            # huấn luyện và ghi app/ml/match_rf_model.pkl + model_meta.json
+python manage.py train-model --report   # chỉ in bảng đánh giá, không ghi file
 ```
+
+File `.pkl` phụ thuộc đúng phiên bản scikit-learn ghim trong `requirements.txt`; đổi phiên bản thì huấn luyện lại.
+Khi thiếu hoặc không nạp được mô hình, API ghép cặp trả kết quả rỗng kèm lý do, không tự đặt ra điểm số.
+Chi tiết đặc trưng và đánh giá:
+[docs/HUONG_DAN_KLTN.md](../docs/HUONG_DAN_KLTN.md).
+
+## Kiểm thử và kiểm tra mã
+
+```powershell
+python -m pytest                 # từ thư mục gốc dự án
+python -m ruff check backend
+```
+
+Xem [tests/README.md](tests/README.md) và [scripts/README.md](scripts/README.md).

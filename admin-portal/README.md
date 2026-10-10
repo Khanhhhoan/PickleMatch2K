@@ -1,36 +1,39 @@
-# 👑 PickleMatch2K - Cổng Quản Trị Hệ Thống (Port 3001)
+# PickleMatch2K - Cổng quản trị (cổng 3001)
 
-Cổng điều hành và quản trị độc lập dành riêng cho **Super Admin**, xây dựng trên nền tảng **Next.js 16 (App Router)** với thiết kế Executive Dark sang trọng, tối ưu tính bảo mật và cách ly hoàn toàn với cổng người dùng thông thường.
+Ứng dụng Next.js 16 riêng cho quản trị viên, tách khỏi cổng người dùng. Chỉ tài khoản có vai trò `ADMIN` đăng nhập được;
+phiên đăng nhập lưu riêng (`admin_token`) nên không lẫn với phiên của cổng 3000.
 
----
+## Chạy
 
-## 🌟 Chức Năng Quản Trị
-
-- **Tổng quan KPI**: Thống kê doanh thu thời gian thực, tổng số booking, tổng số người dùng và cụm sân hoạt động.
-- **Quản lý Cụm Sân**: Phê duyệt hoặc từ chối các cụm sân mới đăng ký từ chủ sân.
-- **Quản lý Tài Khoản (CRM)**: Xem chi tiết thông tin người dùng, trạng thái kích hoạt (`is_active`), khóa/mở tài khoản tức thì.
-- **Đối soát Giao dịch**: Theo dõi dòng tiền thanh toán cọc và tất toán qua cổng SePay VietQR.
-- **Giám sát Mô hình AI**: Xem trạng thái mô hình Random Forest, tỷ lệ ghép trận và độ chính xác phân loại.
-
----
-
-## 📁 Cấu Trúc Thư Mục
-
-```
-admin-portal/
-├── src/
-│   ├── app/              # Trang điều hành trung tâm (page.tsx) & đăng nhập (login/)
-│   └── lib/              # Client API & Auth Context độc lập
-├── Dockerfile            # Container build manifest (Cổng 3001)
-└── package.json          # Dependencies & Scripts
+```powershell
+npm ci
+npm run dev                     # http://localhost:3001, cần API ở cổng 8000
+npm run build; npm start
+npx tsc --noEmit
 ```
 
----
+Địa chỉ API: mặc định là cùng tên máy, cổng 8000. Đặt `NEXT_PUBLIC_API_URL` trong `admin-portal/.env.local` nếu API ở nơi khác.
 
-## 🚀 Khởi Chạy Cục Bộ
+## Các thẻ chức năng
 
-```bash
-npm install
-npm run dev
-# Mở trình duyệt tại: http://localhost:3001
+| Thẻ | Nội dung | API chính |
+| :--- | :--- | :--- |
+| Tổng quan | Số liệu toàn hệ thống, thông tin mô hình ghép cặp (nguồn dữ liệu, chỉ số đánh giá) | `/bookings/owner/stats`, `/ml/model-info` |
+| Cụm sân | Duyệt / từ chối cụm sân chờ duyệt, đổi trạng thái, tạo, sửa, xóa | `/venues/admin/*` |
+| Tài khoản | Tạo, sửa, khóa / mở khóa, xóa (tài khoản đã có lịch sử thì chỉ bị khóa) | `/users/admin/users` |
+| Đơn đặt sân | Tra cứu toàn bộ đơn và tình trạng hoàn tiền, đổi trạng thái, xóa đơn | `/bookings/admin/all` |
+| Sổ giao dịch | Tiền cọc, phần thu tại sân, tiền hoàn; lọc theo chủ sân | `/payments/transactions` |
+| Phòng đấu | Tạo, đổi trạng thái, xóa phòng đấu; xem và gỡ người tham gia | `/matches/admin/*` |
+
+Mọi số liệu lấy trực tiếp từ API; cổng không tự tính hay hiển thị số liệu giả.
+
+## Mã nguồn
+
+```text
+src/
+├── app/page.tsx            Khung trang: tải dữ liệu, điều hướng thẻ, thông báo kết quả thao tác
+├── app/login/              Đăng nhập quản trị
+├── components/ui.tsx       Thành phần giao diện dùng chung
+├── components/tabs/        OverviewTab, VenuesTab, UsersTab, BookingsTab, TransactionsTab, MatchesTab
+└── lib/                    api.ts, auth-context.tsx, types.ts, labels.ts, use-websocket.ts
 ```
