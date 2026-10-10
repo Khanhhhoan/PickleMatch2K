@@ -1,0 +1,2 @@
+# cmd.exe chỉ đọc đúng file .bat khi xuống dòng bằng CRLF
+*.bat text eol=crlf

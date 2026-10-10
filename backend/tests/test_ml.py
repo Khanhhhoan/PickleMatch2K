@@ -1,0 +1,256 @@
+"""Mô hình ghép cặp: đặc trưng dùng chung, huấn luyện/đánh giá, phục vụ theo lô và khảo sát thu nhãn."""
+import json
+
+import joblib
+import pandas as pd
+import pytest
+from sklearn.ensemble import RandomForestClassifier
+
+from app.ml import features as F
+from app.ml import train_model
+from app.ml.features import FEATURE_NAMES, ProfileView, pair_features
+from app.models.ml import PairFeedback
+from app.services import ml_service
+from app.services.ml_service import match_predictor
+from helpers import auth, make_user
+
+ML = "/api/v1/ml"
+RULE_CEILING = "Quy tắc sinh nhãn (không nhiễu, mốc trần)"
+
+
+def view(**kwargs) -> ProfileView:
+    return ProfileView(**{"skill_level": 3.5, **kwargs})
+
+
+# ---------------------------------------------------------------------------
+# Đặc trưng
+# ---------------------------------------------------------------------------
+def test_pair_features_are_symmetric_and_use_the_five_documented_features():
+    a = view(latitude=10.78, longitude=106.70, availability=["mon_evening", "sat_morning"],
+             purpose="practice", play_style="Offensive")
+    b = view(skill_level=4.0, latitude=10.80, longitude=106.72, availability=["mon_evening"],
+             purpose="practice", play_style="All-Round")
+    ab, ba = pair_features(a, b), pair_features(b, a)
+    assert ab == ba and list(ab) == FEATURE_NAMES
+    assert ab == {"level_diff": 0.5, "distance_km": pytest.approx(3.11, abs=0.05),
+                  "availability_overlap": 0.5, "purpose_match": 1, "style_match": 1}
+
+
+def test_missing_data_handling():
+    assert pair_features(ProfileView(), view()) is None                     # chưa khai trình độ thì không ước lượng
+    unknown = pair_features(view(), view())
+    assert unknown["distance_km"] == F.UNKNOWN_DISTANCE_KM
+    assert (unknown["availability_overlap"], unknown["purpose_match"], unknown["style_match"]) == (0.0, 0, 0)
+    far = pair_features(view(latitude=10.78, longitude=106.70), view(latitude=21.03, longitude=105.85))
+    assert far["distance_km"] == F.MAX_DISTANCE_KM
+    assert pair_features(view(), view(), distance_km=7.25)["distance_km"] == 7.25
+    assert view().missing_fields() == ["location", "availability", "purpose", "play_style"]
+
+
+@pytest.mark.parametrize("raw, canonical", [
+    ("Tấn công (Aggressive)", "Offensive"), ("Phòng thủ - Phản công (Dinking)", "Dinking & Control"),
+    ("Toàn diện (All-Around)", "All-Round"), ("Giao bóng & Bắt lưới", "Serve & Volley"),
+    ("Dinking & Control", "Dinking & Control"), ("defensive", "Defensive"), ("gì đó", None), (None, None),
+])
+def test_legacy_play_style_labels_are_canonicalised(raw, canonical):
+    assert F.canonical_style(raw) == canonical
+
+
+def test_profile_view_ignores_unknown_values(db):
+    user = make_user(db, skill_level=3.0, purpose="hacking", availability='["mon_evening", "someday"]',
+                     play_style="Tấn công")
+    profile = ProfileView.from_profile(user.player_profile)
+    assert profile.purpose is None and profile.availability == ["mon_evening"] and profile.play_style == "Offensive"
+
+
+# ---------------------------------------------------------------------------
+# Huấn luyện và đánh giá
+# ---------------------------------------------------------------------------
+def test_synthetic_prior_is_reproducible_and_balanced():
+    first, second = train_model.generate_synthetic_pairs(2000, seed=7), train_model.generate_synthetic_pairs(2000, seed=7)
+    assert first.equals(second) and list(first.columns) == FEATURE_NAMES + ["label"]
+    assert 0.35 < first["label"].mean() < 0.65
+    assert first["distance_km"].between(0, F.MAX_DISTANCE_KM).all() and first["availability_overlap"].between(0, 1).all()
+
+
+def test_evaluation_reports_baselines_next_to_the_forest():
+    data = train_model.generate_synthetic_pairs(6000, seed=1)
+    train, test = data.iloc[:4800], data.iloc[4800:]
+    report = train_model.evaluate_split(
+        train[FEATURE_NAMES], train["label"], test[FEATURE_NAMES], test["label"], include_rule=True)
+
+    forest = report["Random Forest"]["accuracy"]
+    assert forest > report["Đoán theo lớp đa số"]["accuracy"] + 0.2
+    assert forest >= report["Luật: chênh trình độ <= 0.5"]["accuracy"]
+    assert forest <= report[RULE_CEILING]["accuracy"] + 0.02   # mô hình không thể giỏi hơn chính quy tắc sinh ra nhãn
+    assert {"roc_auc", "brier"} <= set(report["Random Forest"])
+
+
+def test_training_prefers_real_survey_labels_and_evaluates_by_rater(db, monkeypatch):
+    raters = [make_user(db, skill_level=3.5).id for _ in range(6)]
+    pairs = train_model.generate_synthetic_pairs(360, seed=3)
+    db.add_all([
+        PairFeedback(rater_id=raters[i % 6], label=int(row.label), level_diff=float(row.level_diff),
+                     distance_km=float(row.distance_km), availability_overlap=float(row.availability_overlap),
+                     purpose_match=int(row.purpose_match), style_match=int(row.style_match))
+        for i, row in enumerate(pairs.itertuples())
+    ])
+    db.commit()
+
+    meta = train_model.train(report_only=True)
+    assert (meta["data_source"], meta["n_samples"], meta["n_raters"]) == ("survey", 360, 6)
+    assert "GroupKFold" in meta["evaluation_protocol"] and RULE_CEILING not in meta["baselines"]
+
+    monkeypatch.setattr(train_model, "SYNTHETIC_SAMPLES", 4000)
+    forced = train_model.train(report_only=True, force_synthetic=True)
+    assert (forced["data_source"], forced["n_samples"], forced["n_raters"]) == ("synthetic_prior", 4000, 0)
+    assert RULE_CEILING in forced["baselines"]
+
+
+def test_too_few_survey_labels_fall_back_to_the_synthetic_prior(db, monkeypatch):
+    rater = make_user(db, skill_level=3.5)
+    db.add(PairFeedback(rater_id=rater.id, label=1, level_diff=0, distance_km=1, availability_overlap=0.5,
+                        purpose_match=1, style_match=1))
+    db.commit()
+    monkeypatch.setattr(train_model, "SYNTHETIC_SAMPLES", 3000)
+    data, source, groups = train_model.choose_dataset(force_synthetic=False)
+    assert source == "synthetic_prior" and groups is None and len(data) == 3000
+
+
+# ---------------------------------------------------------------------------
+# Phục vụ mô hình
+# ---------------------------------------------------------------------------
+def test_shipped_model_matches_the_feature_module_and_its_metadata():
+    assert match_predictor.available, match_predictor.error
+    info = match_predictor.info()
+    assert info["features"] == FEATURE_NAMES and list(match_predictor.model.feature_names_in_) == FEATURE_NAMES
+    assert info["data_source"] in ("synthetic_prior", "survey")
+    assert info["metrics"]["accuracy"] > 0.8 and info["baselines"]
+
+
+def test_batch_prediction_equals_one_by_one_and_follows_common_sense():
+    rows = [
+        {"level_diff": 0.0, "distance_km": 2.0, "availability_overlap": 0.6, "purpose_match": 1, "style_match": 1},
+        {"level_diff": 0.5, "distance_km": 12.0, "availability_overlap": 0.1, "purpose_match": 0, "style_match": 0},
+        {"level_diff": 2.5, "distance_km": 30.0, "availability_overlap": 0.0, "purpose_match": 0, "style_match": 0},
+    ]
+    batch = match_predictor.predict_proba(rows)
+    assert batch == pytest.approx([match_predictor.predict_proba([row])[0] for row in rows])
+    assert batch[0] > batch[1] > batch[2] and batch[0] > 0.9 and batch[2] < 0.1
+    assert match_predictor.predict_proba([]) == []
+
+
+def test_a_model_trained_on_other_features_is_reported_unavailable_without_a_fake_fallback(client, db, tmp_path, monkeypatch):
+    stale = RandomForestClassifier(n_estimators=3, random_state=0).fit(
+        pd.DataFrame({"level_diff": [0, 1, 2, 3], "age_diff": [1, 2, 3, 4]}), [1, 1, 0, 0])
+    path = tmp_path / "match_rf_model.pkl"
+    joblib.dump(stale, path)
+    monkeypatch.setattr(ml_service, "MODEL_PATH", path)
+    monkeypatch.setattr(ml_service, "META_PATH", tmp_path / "model_meta.json")
+    match_predictor.reload()
+    try:
+        assert not match_predictor.available and "đặc trưng" in match_predictor.error
+        me, other = make_user(db, skill_level=3.5), make_user(db, skill_level=3.5)
+        partners = client.get(f"{ML}/recommend-partners", headers=auth(me)).json()
+        assert partners["items"] == [] and partners["model"]["available"] is False
+        predicted = client.post(f"{ML}/predict-match", json={"user_b_id": other.id}, headers=auth(me)).json()
+        assert predicted["model_available"] is False and predicted["success_probability"] is None
+
+        monkeypatch.setattr(ml_service, "MODEL_PATH", tmp_path / "missing.pkl")
+        match_predictor.reload()
+        assert not match_predictor.available and "train-model" in match_predictor.error
+    finally:
+        monkeypatch.undo()
+        match_predictor.reload()
+    assert match_predictor.available
+
+
+# ---------------------------------------------------------------------------
+# API gợi ý người chơi
+# ---------------------------------------------------------------------------
+def test_recommend_partners_ranks_real_candidates_without_contact_details(client, db):
+    common = dict(latitude=10.78, longitude=106.70, purpose="recreational", availability='["mon_evening", "sat_morning"]')
+    me = make_user(db, skill_level=3.5, play_style="Offensive", **common)
+    twin = make_user(db, full_name="Bạn Hợp", phone="0900111222", skill_level=3.5, play_style="Offensive", **common)
+    weaker = make_user(db, full_name="Bạn Lệch", skill_level=2.5, play_style="Defensive", latitude=10.95, longitude=106.90)
+    make_user(db, full_name="Quá xa trình", skill_level=5.5)          # ngoài khoảng trình độ xét duyệt
+    make_user(db, full_name="Chưa khai trình độ")
+    locked = make_user(db, full_name="Bị khóa", skill_level=3.5)
+    locked.is_active = False
+    db.commit()
+    make_user(db, "OWNER")
+
+    body = client.get(f"{ML}/recommend-partners", headers=auth(me)).json()
+    assert body["missing_profile_fields"] == [] and body["model"]["available"] is True
+    assert [item["full_name"] for item in body["items"]] == ["Bạn Hợp", "Bạn Lệch"]
+    best, worst = body["items"]
+    assert best["user_id"] == twin.id and best["probability"] > worst["probability"]
+    assert best["shared_slots"] == 2 and best["distance_km"] == 0 and list(best["features"]) == FEATURE_NAMES
+    assert worst["user_id"] == weaker.id and worst["shared_slots"] == 0
+    dump = json.dumps(body["items"])
+    assert "@" not in dump and "0900111222" not in dump
+
+    nearby = client.get(f"{ML}/recommend-partners", headers=auth(me), params={"radius_km": 5}).json()
+    assert [item["user_id"] for item in nearby["items"]] == [twin.id]
+    assert len(client.get(f"{ML}/recommend-partners", headers=auth(me), params={"limit": 1}).json()["items"]) == 1
+    assert client.get(f"{ML}/recommend-partners").status_code == 401
+
+
+def test_incomplete_profile_is_told_what_is_missing(client, db):
+    blank = make_user(db)
+    body = client.get(f"{ML}/recommend-partners", headers=auth(blank)).json()
+    assert body["items"] == []
+    assert body["missing_profile_fields"] == ["skill_level", "location", "availability", "purpose", "play_style"]
+
+
+def test_predict_match_uses_the_callers_own_profile(client, db):
+    me, other, third = (make_user(db, skill_level=level) for level in (3.5, 3.5, 6.0))
+    request = {"user_a_id": third.id, "user_b_id": other.id}
+    mine = client.post(f"{ML}/predict-match", json=request, headers=auth(me)).json()
+    assert mine["features_used"]["level_diff"] == 0.0 and mine["is_match_recommended"] is True   # user_a_id bị bỏ qua
+    admin = make_user(db, "ADMIN")
+    theirs = client.post(f"{ML}/predict-match", json=request, headers=auth(admin)).json()
+    assert theirs["features_used"]["level_diff"] == 2.5 and theirs["is_match_recommended"] is False
+    assert client.post(f"{ML}/predict-match", json={"user_b_id": 99999}, headers=auth(me)).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Khảo sát thu nhãn
+# ---------------------------------------------------------------------------
+def test_survey_answers_are_stored_only_when_untampered(client, db):
+    me = make_user(db, skill_level=3.5, purpose="practice", play_style="Offensive", availability='["mon_evening"]')
+    survey = client.get(f"{ML}/survey/pairs", headers=auth(me), params={"count": 4}).json()
+    pairs = survey["pairs"]
+    assert len(pairs) == 4 and all(list(p["features"]) == FEATURE_NAMES for p in pairs)
+
+    forged = {**pairs[2]["features"], "level_diff": 0.0, "distance_km": 0.1}
+    answers = [
+        {"features": pairs[0]["features"], "signature": pairs[0]["signature"], "label": True},
+        {"features": pairs[1]["features"], "signature": pairs[1]["signature"], "label": False},
+        {"features": forged, "signature": pairs[2]["signature"], "label": True},
+        {"features": pairs[3]["features"], "signature": "0" * 64, "label": True},
+    ]
+    assert client.post(f"{ML}/survey/answers", json={"answers": answers}, headers=auth(me)).json() == {"saved": 2}
+
+    rows = db.query(PairFeedback).order_by(PairFeedback.id).all()
+    assert [(r.rater_id, r.label, r.source) for r in rows] == [(me.id, 1, "survey"), (me.id, 0, "survey")]
+    assert rows[0].level_diff == pairs[0]["features"]["level_diff"]
+
+    assert client.post(f"{ML}/survey/answers", json={"answers": []}, headers=auth(me)).status_code == 422
+    assert client.get(f"{ML}/survey/pairs").status_code == 401
+
+
+def test_survey_needs_a_skill_level(client, db):
+    body = client.get(f"{ML}/survey/pairs", headers=auth(make_user(db))).json()
+    assert body["pairs"] == [] and "skill_level" in body["missing_profile_fields"]
+
+
+def test_model_info_shows_survey_progress_to_admin_only(client, db):
+    player, admin = make_user(db, skill_level=3.5), make_user(db, "ADMIN")
+    db.add(PairFeedback(rater_id=player.id, label=1, level_diff=0, distance_km=1, availability_overlap=0.5,
+                        purpose_match=1, style_match=1))
+    db.commit()
+    assert client.get(f"{ML}/model-info").status_code == 401
+    assert "survey" not in client.get(f"{ML}/model-info", headers=auth(player)).json()
+    info = client.get(f"{ML}/model-info", headers=auth(admin)).json()
+    assert info["survey"] == {"labels": 1, "positive": 1, "raters": 1} and info["available"] is True

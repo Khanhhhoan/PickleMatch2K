@@ -1,0 +1,181 @@
+@import "tailwindcss";
+
+:root {
+  --background: #fafafa;
+  --foreground: #09090b;
+  --surface: #ffffff;
+  --surface-muted: #f4f4f5;
+  --border: #e4e4e7;
+  --border-subtle: #f4f4f5;
+  --accent-primary: #18181b;
+  --accent-emerald: #059669;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+}
+
+/* Impeccable Minimalist Baseline */
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.015em;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Smooth Minimalist Scrolling & Fixed Stable Viewport */
+html {
+  scroll-behavior: smooth;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
+body {
+  overflow-x: hidden;
+  width: 100%;
+  padding-top: 4.5rem; /* 72px for fixed top header */
+}
+
+/* Minimalist Hairline Borders */
+.hairline-border {
+  border: 1px solid rgba(24, 24, 27, 0.08);
+}
+
+.hairline-border-subtle {
+  border: 1px solid rgba(24, 24, 27, 0.05);
+}
+
+/* Tactile Micro-Interactions */
+.btn-press {
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.btn-press:active {
+  transform: scale(0.985);
+  opacity: 0.92;
+}
+
+/* Minimalist Focus Ring */
+.focus-minimal {
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.focus-minimal:focus {
+  border-color: #18181b;
+  box-shadow: 0 0 0 1px #18181b;
+}
+
+/* Mobile Safe Bottom Space */
+.pb-mobile-nav {
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Minimalist Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(161, 161, 170, 0.4);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(161, 161, 170, 0.7);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Hide Next.js Development Indicator Badge */
+[data-nextjs-toast],
+[data-nextjs-dialog-overlay],
+[data-nextjs-portal],
+nextjs-portal,
+[data-next-badge] {
+  display: none !important;
+}
+
+/* AI Radar Scanner Keyframes */
+@keyframes radarSweep {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes radarPing {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+.animate-radar-sweep {
+  animation: radarSweep 2s linear infinite;
+  transform-origin: center center;
+}
+
+.animate-radar-ping {
+  animation: radarPing 2.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* SanHub Design Utilities */
+.sanhub-card {
+  background: #ffffff;
+  border: 1px solid #e8edf3;
+  border-radius: 16px;
+  box-shadow: 0 12px 35px rgba(29, 51, 87, 0.035);
+}
+
+.sanhub-switch {
+  appearance: none;
+  width: 38px;
+  height: 22px;
+  background: #cbd4e0;
+  border-radius: 50px;
+  position: relative;
+  cursor: pointer;
+  transition: 0.2s;
+  vertical-align: middle;
+}
+.sanhub-switch:before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  top: 3px;
+  left: 3px;
+  transition: 0.2s;
+}
+.sanhub-switch:checked {
+  background: #476cf3;
+}
+.sanhub-switch:checked:before {
+  left: 19px;
+}
+
+

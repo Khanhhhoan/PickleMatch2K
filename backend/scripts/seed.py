@@ -1,0 +1,587 @@
+"""
+Nạp bộ dữ liệu demo của đồ án PickleMatch2K.
+
+    python scripts/seed.py               # nạp khi CSDL còn trống (dừng nếu đã có dữ liệu)
+    python scripts/seed.py --if-empty    # đã có dữ liệu thì bỏ qua, không báo lỗi (dùng cho Docker)
+    python scripts/seed.py --reset       # XÓA toàn bộ dữ liệu rồi nạp lại (phải xác nhận, hoặc thêm --yes)
+    python scripts/seed.py --preferences # chỉ bổ sung sở thích mẫu cho các tài khoản demo đang để trống
+
+Nội dung: 8 tiện ích, 3 cụm sân, 33 tài khoản đúng như docs/DANH_SACH_TAI_KHOAN_TEST.md
+(1 admin, 3 chủ sân, 9 nhân viên, 20 người chơi) cùng đơn đặt sân, giao dịch, phòng đấu và đánh giá mẫu.
+
+Đơn đặt, thanh toán, check-in, hủy và phòng đấu được tạo bằng chính các hàm nghiệp vụ của ứng dụng
+(đồng hồ nghiệp vụ được "tua" về quá khứ để có dữ liệu lịch sử), nên dữ liệu mẫu luôn hợp lệ theo
+các ràng buộc hiện hành. Mọi ngày tháng tính tương đối so với ngày chạy script.
+
+MẬT KHẨU DEMO dùng chung là 123456: chỉ dành cho môi trường phát triển/bảo vệ đồ án.
+"""
+import json
+import sys
+from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+from scripts._common import ensure_schema, rebuild_empty_schema  # noqa: E402
+
+from sqlalchemy.orm import Session  # noqa: E402
+
+from app.core.config import settings  # noqa: E402
+from app.db.database import SessionLocal  # noqa: E402
+from app.models.booking import Booking, BookingSource  # noqa: E402
+from app.models.payment import PaymentKind, PaymentMethod, PaymentTransaction  # noqa: E402
+from app.models.user import User, UserRole  # noqa: E402
+from app.models.venue import Amenity, Court, OperatingHour, PriceRule, Review, Venue  # noqa: E402
+from app.schemas.match import MatchCreate  # noqa: E402
+from app.services import booking_service, ledger, match_service  # noqa: E402
+from app.services.availability_service import iter_day_slots  # noqa: E402
+from app.services.booking_service import SlotRequest  # noqa: E402
+from app.services.user_service import create_user  # noqa: E402
+from app.utils import timeutils  # noqa: E402
+from app.utils.timeutils import today_vn, vn_datetime  # noqa: E402
+
+DEMO_PASSWORD = "123456"
+
+AMENITIES = [
+    ("led", "Đèn LED chống lóa 500 Lux", "Lightbulb"),
+    ("indoor", "Sân có mái che / Trong nhà", "Umbrella"),
+    ("rental", "Cho thuê vợt & bóng Franklin X-40", "Package"),
+    ("canteen", "Căng tin & Nước giải khát thể thao", "Coffee"),
+    ("parking", "Bãi đỗ xe ô tô & xe máy miễn phí", "Car"),
+    ("shower", "Phòng thay đồ & Tắm nóng lạnh", "Shower"),
+    ("lounge", "Phòng nghỉ điều hòa máy lạnh", "Wind"),
+    ("coach", "HLV đào tạo & Trọng tài DUPR", "Award"),
+]
+
+_CLOUD = "https://res.cloudinary.com/dwmtdx9ly/image/upload"
+
+
+@dataclass(frozen=True)
+class VenueSeed:
+    key: str
+    name: str
+    address: str
+    lat: float
+    lng: float
+    maps: str
+    images: Tuple[str, ...]
+    desc: str
+    courts: int
+    open: time
+    close: time
+    base: int
+    peak: int
+    weekend: int
+    amenities: Tuple[str, ...]  # tiện ích mẫu suy ra từ phần mô tả; chủ sân chỉnh lại trong cổng quản lý
+    owner: Tuple[str, str, str, str]  # email, họ tên, điện thoại, tên đơn vị
+    staff: Tuple[Tuple[str, str, str], ...]  # email, họ tên, điện thoại
+
+
+VENUES = [
+    VenueSeed(
+        key="rudal",
+        name="RUDAL Pickleball & Academy",
+        address="28 Đường số 12, Khu phố 3, phường An Khánh, TP. Hồ Chí Minh",
+        lat=10.7901357, lng=106.7321982,
+        maps="https://maps.app.goo.gl/qNTCu1dJhADjvU836",
+        images=(
+            f"{_CLOUD}/v1791118272/picklematch2k/venues/v1_e24bf86c.webp",
+            f"{_CLOUD}/v1791118304/picklematch2k/venues/v1_848e2155.jpg",
+            f"{_CLOUD}/v1791118328/picklematch2k/venues/v1_959b8776.jpg",
+        ),
+        desc="Cụm 6 sân tại khu vực An Khánh chuẩn thi đấu quốc tế. Không gian rộng rãi, thoáng mát "
+             "cùng hệ thống chiếu sáng LED hiện đại.",
+        courts=6, open=time(5, 0), close=time(23, 0),
+        base=160000, peak=230000, weekend=160000,
+        amenities=("led", "rental", "canteen", "parking", "shower", "coach"),
+        owner=("owner_rudal@pickleball.vn", "Nguyễn Rudal (Chủ Sân)", "0938375999", "RUDAL Pickleball & Academy Vietnam"),
+        staff=(
+            ("staff_rudal_1@pickleball.vn", "Lê Quốc Hưng (NV Rudal)", "0938375001"),
+            ("staff_rudal_2@pickleball.vn", "Phạm Hoài Nam (NV Rudal)", "0938375002"),
+            ("staff_rudal_3@pickleball.vn", "Đỗ Minh Tuấn (NV Rudal)", "0938375003"),
+        ),
+    ),
+    VenueSeed(
+        key="djoy",
+        name="D-Joy Pickleball Thủ Thiêm",
+        address="Công viên bờ sông Sài Gòn (khu vực cầu Ba Son), phường An Khánh, TP. Hồ Chí Minh",
+        lat=10.7771396, lng=106.7116654,
+        maps="https://maps.app.goo.gl/mg8MigCTNSiXdXLf6",
+        images=(
+            f"{_CLOUD}/v1791118336/picklematch2k/venues/v2_4fd87a3b.webp",
+            f"{_CLOUD}/v1791118346/picklematch2k/venues/v2_c5d10092.jpg",
+        ),
+        desc="Cụm 11 sân ngoài trời đẳng cấp tại Công viên bờ sông Sài Gòn, view Landmark 81 cực đẹp, "
+             "tổ chức nhiều giải đấu quy mô.",
+        courts=11, open=time(6, 0), close=time(23, 0),
+        base=180000, peak=250000, weekend=180000,
+        amenities=("led", "rental", "canteen", "parking"),
+        owner=("owner_djoy_thuthiem@pickleball.vn", "Đặng D-Joy (Chủ Sân)", "0706256789", "D-Joy Sports Entertainment"),
+        staff=(
+            ("staff_djoy_1@pickleball.vn", "Trần Bảo Long (NV D-Joy)", "0706256001"),
+            ("staff_djoy_2@pickleball.vn", "Vũ Đình Trọng (NV D-Joy)", "0706256002"),
+            ("staff_djoy_3@pickleball.vn", "Ngô Thế Vinh (NV D-Joy)", "0706256003"),
+        ),
+    ),
+    VenueSeed(
+        key="no152",
+        name="Pickleball 152 Nguyễn Oanh",
+        address="152 Nguyễn Oanh, Phường 17, Quận Gò Vấp, TP. Hồ Chí Minh",
+        lat=10.8334109, lng=106.676412,
+        maps="https://maps.app.goo.gl/6cJLC4jncpX8GRwV7",
+        images=(
+            f"{_CLOUD}/v1791118363/picklematch2k/venues/v3_2a1e7083.webp",
+        ),
+        desc="Cụm 4 sân trong nhà cao cấp tại Quận Gò Vấp, sàn US Open đàn hồi tốt, hệ thống quạt mát "
+             "và máy lạnh phòng nghỉ đầy đủ.",
+        courts=4, open=time(5, 30), close=time(23, 0),
+        base=120000, peak=200000, weekend=120000,
+        amenities=("led", "indoor", "rental", "canteen", "shower", "lounge"),
+        owner=("owner_152nguyenoanh@pickleball.vn", "Chị Vân Anh (Chủ Sân)", "0765883535", "CLB Thể Thao 152 Nguyễn Oanh"),
+        staff=(
+            ("staff_152no_1@pickleball.vn", "Nguyễn Thanh Bình (NV 152 NO)", "0765883001"),
+            ("staff_152no_2@pickleball.vn", "Hoàng Hải Đăng (NV 152 NO)", "0765883002"),
+            ("staff_152no_3@pickleball.vn", "Bùi Quang Khải (NV 152 NO)", "0765883003"),
+        ),
+    ),
+]
+VENUE_BY_KEY = {v.key: v for v in VENUES}
+
+WEEKDAYS = ["mon", "tue", "wed", "thu", "fri"]
+WEEKEND = ["sat", "sun"]
+
+
+def _avail(days: List[str], *periods: str) -> List[str]:
+    return [f"{d}_{p}" for d in days for p in periods]
+
+
+EVENINGS = _avail(WEEKDAYS, "evening")
+WEEKEND_ALL = _avail(WEEKEND, "morning", "afternoon", "evening")
+EARLY_BIRD = _avail(WEEKDAYS + WEEKEND, "morning")
+
+
+@dataclass(frozen=True)
+class PlayerSeed:
+    email: str
+    full_name: str
+    phone: str
+    skill_level: float            # DUPR tự khai
+    play_style: str
+    date_of_birth: Optional[date]
+    lat: float
+    lng: float
+    matches_played: int
+    matches_won: int
+    purpose: str
+    availability: List[str]       # khung rảnh trong tuần
+    amenities: List[str]          # tiện ích ưa thích (khóa trong AMENITIES)
+    budget: int                   # ngân sách tối đa mỗi giờ (VNĐ)
+
+
+PLAYERS = [
+    PlayerSeed("khanhhoan121209@gmail.com", "Nguyễn Hoàng Khánh", "0908888999", 3.5, "Dinking & Control", date(1998, 5, 15), 10.8322, 106.6863, 10, 6,
+     "recreational", EVENINGS + _avail(WEEKEND, "morning"), ["indoor", "parking"], 220000),
+    PlayerSeed("player@example.com", "Trần Minh Nam", "0912345678", 3.5, "All-Round", date(1996, 8, 20), 10.7769, 106.7009, 10, 6,
+     "recreational", EVENINGS, ["led", "canteen"], 250000),
+    PlayerSeed("player01@gmail.com", "Lê Hoàng Long", "0901112233", 3.0, "Dinking & Control", date(1999, 3, 10), 10.7735, 106.6685, 10, 6,
+     "practice", _avail(["tue", "thu"], "evening") + WEEKEND_ALL, ["indoor", "shower"], 180000),
+    PlayerSeed("player02@gmail.com", "Phạm Minh Tuấn", "0902223344", 4.0, "Offensive", date(1995, 11, 22), 10.7901, 106.7322, 10, 7,
+     "competitive", EVENINGS + _avail(WEEKEND, "afternoon"), ["coach", "led"], 260000),
+    PlayerSeed("player03@gmail.com", "Vũ Đức Cường", "0903334455", 4.5, "Serve & Volley", date(2001, 7, 4), 10.8225, 106.7198, 10, 8,
+     "competitive", _avail(["mon", "wed", "fri"], "evening") + _avail(WEEKEND, "morning"), ["coach"], 300000),
+    PlayerSeed("player04@gmail.com", "Hoàng Gia Huy", "0904445566", 2.5, "Defensive", date(1990, 2, 18), 10.7958, 106.6908, 10, 5,
+     "recreational", EARLY_BIRD, ["rental", "parking"], 170000),
+    PlayerSeed("player05@gmail.com", "Đỗ Bảo Nam", "0905556677", 3.5, "Offensive", date(1997, 12, 5), 10.8334, 106.6764, 10, 6,
+     "recreational", EVENINGS + _avail(WEEKEND, "morning", "afternoon"), ["indoor", "lounge"], 210000),
+    PlayerSeed("player06@gmail.com", "Bùi Phương Thảo", "0906667788", 3.0, "All-Round", date(1988, 9, 14), 10.7485, 106.7262, 10, 4,
+     "recreational", WEEKEND_ALL, ["rental", "canteen", "parking"], 200000),
+    PlayerSeed("player07@gmail.com", "Ngô Quang Hải", "0907778899", 4.0, "Serve & Volley", date(2000, 1, 30), 10.7812, 106.6854, 10, 7,
+     "competitive", EVENINGS, ["led", "shower"], 260000),
+    PlayerSeed("player08@gmail.com", "Trịnh Thu Hà", "0908889900", 2.0, "Defensive", date(1994, 6, 25), 10.7995, 106.6562, 10, 3,
+     "practice", _avail(WEEKDAYS, "morning"), ["rental", "coach"], 160000),
+    PlayerSeed("player09@gmail.com", "Dương Tiến Đạt", "0909990011", 3.5, "Dinking & Control", date(1998, 10, 12), 10.7771, 106.7117, 12, 8,
+     "practice", EARLY_BIRD + _avail(["tue", "thu"], "evening"), ["parking", "canteen"], 230000),
+    PlayerSeed("player10@gmail.com", "Mai Tuấn Kiên", "0911122233", 5.0, "Offensive", date(2002, 4, 19), 10.7745, 106.6912, 10, 6,
+     "competitive", EVENINGS + WEEKEND_ALL, ["coach", "led"], 320000),
+    PlayerSeed("player11@gmail.com", "Đặng Thùy Linh", "0912233344", 3.0, "All-Round", None, 10.8123, 106.7045, 12, 8,
+     "recreational", _avail(["sat", "sun"], "morning") + _avail(["wed"], "evening"), ["indoor", "canteen"], 190000),
+    PlayerSeed("player12@gmail.com", "Phan Đình Trọng", "0913344455", 3.5, "Offensive", None, 10.8412, 106.6698, 12, 8,
+     "recreational", EVENINGS, ["indoor", "parking"], 210000),
+    PlayerSeed("player13@gmail.com", "Lâm Thảo My", "0914455566", 2.5, "Defensive", None, 10.7689, 106.6712, 12, 8,
+     "practice", _avail(["mon", "wed", "fri"], "afternoon") + _avail(WEEKEND, "morning"), ["rental"], 170000),
+    PlayerSeed("player14@gmail.com", "Huỳnh Tấn Tài", "0915566677", 4.0, "Serve & Volley", None, 10.7934, 106.7410, 12, 8,
+     "competitive", EVENINGS + _avail(WEEKEND, "afternoon"), ["coach", "shower"], 270000),
+    PlayerSeed("player15@gmail.com", "Cao Minh Trí", "0916677788", 3.5, "Dinking & Control", None, 10.7350, 106.7180, 12, 8,
+     "practice", EARLY_BIRD, ["parking"], 220000),
+    PlayerSeed("player16@gmail.com", "Đoàn Ngọc Ánh", "0917788899", 3.0, "All-Round", None, 10.8050, 106.6500, 12, 8,
+     "recreational", _avail(["tue", "thu", "sat"], "evening"), ["indoor", "lounge"], 180000),
+    PlayerSeed("player17@gmail.com", "Lương Gia Bảo", "0918899900", 4.5, "Offensive", None, 10.7980, 106.6850, 12, 8,
+     "competitive", EVENINGS, ["led"], 300000),
+    PlayerSeed("player18@gmail.com", "Hà Quốc Việt", "0919900011", 3.5, "All-Round", None, 10.7710, 106.6980, 12, 8,
+     "recreational", EVENINGS + _avail(WEEKEND, "evening"), ["canteen", "led"], 240000),
+]
+
+
+# ---------------------------------------------------------------------------
+# Dữ liệu nền: tiện ích, tài khoản, cụm sân
+# ---------------------------------------------------------------------------
+def seed_amenities(db: Session) -> Dict[str, Amenity]:
+    amenities = {}
+    for key, name, icon in AMENITIES:
+        amenity = db.query(Amenity).filter(Amenity.name == name).first()
+        if amenity is None:
+            amenity = Amenity(name=name, icon=icon)
+            db.add(amenity)
+        amenities[key] = amenity
+    db.flush()
+    return amenities
+
+
+def _owner_bank_account() -> Optional[str]:
+    """Tài khoản nhận tiền mẫu lấy từ cấu hình SEPAY_* (không ghi số tài khoản nào vào mã nguồn)."""
+    if settings.SEPAY_BANK_ACCOUNT and (settings.SEPAY_BANK_NAME or settings.SEPAY_BANK_CODE):
+        return f"{settings.SEPAY_BANK_ACCOUNT} - {settings.SEPAY_BANK_NAME or settings.SEPAY_BANK_CODE}"
+    return None
+
+
+def seed_accounts_and_venues(db: Session, amenities: Dict[str, Amenity]) -> dict:
+    ctx = {"venues": {}, "courts": {}, "staff": {}, "owners": {}, "players": {}}
+
+    create_user(db, email="admin@example.com", password=DEMO_PASSWORD, role=UserRole.ADMIN.value, commit=False)
+
+    for item in VENUES:
+        email, full_name, phone, company = item.owner
+        owner = create_user(db, email=email, password=DEMO_PASSWORD, role=UserRole.OWNER.value,
+                            full_name=full_name, phone=phone, commit=False)
+        db.refresh(owner)
+        owner.owner_profile.company_name = settings.SEPAY_ACCOUNT_HOLDER or company
+        owner.owner_profile.bank_account = _owner_bank_account()
+
+        venue = Venue(
+            owner_id=owner.id, name=item.name, description=item.desc, address=item.address,
+            latitude=item.lat, longitude=item.lng, google_maps_url=item.maps,
+            image_url=item.images[0], images=json.dumps(list(item.images)), status="ACTIVE",
+        )
+        venue.amenities = [amenities[key] for key in item.amenities]
+        db.add(venue)
+        db.flush()
+
+        courts = [Court(venue_id=venue.id, name=f"Sân {i}", status="ACTIVE") for i in range(1, item.courts + 1)]
+        db.add_all(courts)
+        for day in range(7):
+            db.add(OperatingHour(venue_id=venue.id, day_of_week=day, open_time=item.open, close_time=item.close))
+        db.add(PriceRule(venue_id=venue.id, rule_type="BASE", start_time=time(6, 0), end_time=time(17, 0), price=item.base))
+        db.add(PriceRule(venue_id=venue.id, rule_type="PEAK", start_time=time(17, 0), end_time=time(23, 0), price=item.peak))
+        db.add(PriceRule(venue_id=venue.id, rule_type="WEEKEND", price=item.weekend))
+        db.flush()
+
+        staff_users = [
+            create_user(db, email=s_email, password=DEMO_PASSWORD, role=UserRole.STAFF.value,
+                        full_name=s_name, phone=s_phone, venue_id=venue.id, commit=False)
+            for s_email, s_name, s_phone in item.staff
+        ]
+        ctx["venues"][item.key] = venue
+        ctx["courts"][item.key] = courts
+        ctx["staff"][item.key] = staff_users
+        ctx["owners"][item.key] = owner
+
+    for player in PLAYERS:
+        user = create_user(db, email=player.email, password=DEMO_PASSWORD, role=UserRole.PLAYER.value,
+                           full_name=player.full_name, phone=player.phone, commit=False)
+        db.refresh(user)
+        profile = user.player_profile
+        profile.skill_level, profile.play_style = player.skill_level, player.play_style
+        profile.date_of_birth = player.date_of_birth
+        profile.latitude, profile.longitude = player.lat, player.lng
+        profile.matches_played, profile.matches_won = player.matches_played, player.matches_won
+        ctx["players"][player.email] = user
+
+    db.commit()
+    apply_demo_preferences(db)
+    return ctx
+
+
+def apply_demo_preferences(db: Session) -> int:
+    """
+    Điền mục đích chơi, khung rảnh, tiện ích ưa thích và ngân sách mẫu cho các tài khoản demo.
+    Chỉ điền vào trường đang trống, nên chạy lại nhiều lần hoặc chạy trên CSDL đang dùng đều an toàn.
+    """
+    amenity_ids = {key: row.id for key, name, _ in AMENITIES
+                   for row in db.query(Amenity).filter(Amenity.name == name)}
+    updated = 0
+    for player in PLAYERS:
+        user = db.query(User).filter(User.email == player.email).first()
+        profile = user.player_profile if user else None
+        if profile is None:
+            continue
+        changed = False
+        if not profile.purpose:
+            profile.purpose, changed = player.purpose, True
+        if not profile.availability:
+            profile.availability, changed = json.dumps(sorted(set(player.availability))), True
+        if not profile.preferred_amenities:
+            ids = [amenity_ids[key] for key in player.amenities if key in amenity_ids]
+            profile.preferred_amenities, changed = json.dumps(ids), True
+        if not profile.budget_max:
+            profile.budget_max, changed = float(player.budget), True
+        updated += int(changed)
+    db.commit()
+    return updated
+
+
+# ---------------------------------------------------------------------------
+# Hoạt động mẫu: đơn đặt, thanh toán, check-in, hủy, phòng đấu, đánh giá
+# ---------------------------------------------------------------------------
+class DemoActivity:
+    def __init__(self, db: Session, ctx: dict):
+        self.db, self.ctx = db, ctx
+        self.today = today_vn()
+        self._moment: Optional[datetime] = None
+        self._reference = 0
+
+    # -- đồng hồ nghiệp vụ ---------------------------------------------------
+    def at(self, day: date, hour: int, minute: int = 0) -> datetime:
+        """Tua đồng hồ nghiệp vụ tới một thời điểm (giờ Việt Nam)."""
+        self._moment = vn_datetime(day, time(hour, minute))
+        timeutils.set_clock(lambda: self._moment)
+        return self._moment
+
+    def now(self) -> None:
+        self._moment = None
+        timeutils.set_clock(None)
+
+    def _stamp(self, booking: Booking) -> None:
+        """Ghi lại thời điểm mô phỏng vào created_at (mặc định CSDL luôn ghi giờ thật lúc chạy script)."""
+        if self._moment is None:
+            return
+        if booking.created_at is None or booking.created_at > self._moment:
+            booking.created_at = self._moment
+        for txn in self.db.query(PaymentTransaction).filter(PaymentTransaction.booking_id == booking.id):
+            if txn.created_at is None or txn.created_at > self._moment:
+                txn.created_at = txn.transaction_date = self._moment
+        self.db.commit()
+
+    # -- tiện ích --------------------------------------------------------------
+    def player(self, email: str) -> User:
+        return self.ctx["players"][email]
+
+    def slots(self, venue_key: str, court_no: int, day: date, from_hour: int, count: int = 1) -> List[SlotRequest]:
+        """`count` khung giờ liên tiếp trên lưới của cụm sân, bắt đầu từ khung đầu tiên không sớm hơn from_hour."""
+        item = VENUE_BY_KEY[venue_key]
+        grid = iter_day_slots(item.open, item.close)
+        start = next(i for i, (begin, _) in enumerate(grid) if begin >= time(from_hour, 0))
+        court = self.ctx["courts"][venue_key][court_no - 1]
+        return [SlotRequest(court.id, day, begin, end) for begin, end in grid[start:start + count]]
+
+    def book(self, email: str, venue_key: str, court_no: int, day: date, from_hour: int, count: int = 1) -> Booking:
+        booking = booking_service.create_booking(
+            self.db, user=self.player(email), slots=self.slots(venue_key, court_no, day, from_hour, count)
+        )
+        self._stamp(booking)
+        return booking
+
+    def pay_deposit(self, booking: Booking) -> Booking:
+        """Mô phỏng SePay báo đã nhận đủ tiền cọc qua chuyển khoản."""
+        self._reference += 1
+        amount = float(booking.deposit_amount)
+        ledger.record_transaction(
+            self.db, booking, amount=amount, kind=PaymentKind.DEPOSIT.value,
+            method=PaymentMethod.BANK_TRANSFER.value, gateway="SePay_VietQR",
+            reference_number=f"DEMO{self._reference:06d}", content=f"{booking.booking_code} chuyen khoan coc",
+        )
+        booking_service.apply_payment(self.db, booking, amount)
+        self.db.commit()
+        self.db.refresh(booking)
+        self._stamp(booking)
+        return booking
+
+    def play(self, booking: Booking, venue_key: str) -> Booking:
+        """Khách đến nhận sân (thu phần còn lại bằng tiền mặt) rồi chơi hết giờ."""
+        staff = self.ctx["staff"][venue_key][0]
+        start = booking_service.first_slot_start(booking)
+        end = booking_service.last_slot_end(booking)
+        self.at(start.date(), start.hour, start.minute)
+        booking_service.check_in(self.db, booking, staff)
+        self._stamp(booking)
+        finished = end + timedelta(minutes=5)
+        self.at(finished.date(), finished.hour, finished.minute)
+        booking_service.finalize_past_bookings(self.db)
+        self.db.refresh(booking)
+        return booking
+
+    def review(self, email: str, venue_key: str, rating: float, comment: str, day: date) -> None:
+        self.db.add(Review(
+            user_id=self.player(email).id, venue_id=self.ctx["venues"][venue_key].id,
+            rating=rating, comment=comment, created_at=vn_datetime(day, time(21, 30)),
+        ))
+        self.db.commit()
+
+    # -- kịch bản --------------------------------------------------------------
+    def past(self) -> None:
+        t = self.today
+        completed = [
+            # người chơi, cụm sân, sân, cách đây (ngày), giờ, số khung, điểm, nhận xét
+            ("khanhhoan121209@gmail.com", "no152", 1, 6, 18, 2, 5.0, "Sân trong nhà mát, mặt sân bám tốt, nhân viên hỗ trợ nhanh."),
+            ("player@example.com", "djoy", 2, 5, 19, 1, 5.0, "View bờ sông rất đẹp, đèn sáng đều, đánh buổi tối rất thích."),
+            ("player02@gmail.com", "rudal", 1, 4, 17, 2, 4.0, "Sân chuẩn, có HLV hướng dẫn. Giờ cao điểm hơi đông."),
+            ("player05@gmail.com", "no152", 2, 3, 6, 1, 4.0, "Buổi sáng vắng, dễ đặt. Phòng thay đồ sạch sẽ."),
+            ("player09@gmail.com", "djoy", 1, 3, 18, 2, 5.0, "Nhiều sân nên dễ tìm khung giờ, bãi xe rộng."),
+            ("player07@gmail.com", "rudal", 3, 2, 20, 1, 3.0, "Sân ổn nhưng khung 20h phải chờ nhóm trước ra sân trễ vài phút."),
+        ]
+        for email, venue_key, court_no, days_ago, hour, count, rating, comment in completed:
+            day = t - timedelta(days=days_ago)
+            self.at(day - timedelta(days=1), 9)
+            booking = self.book(email, venue_key, court_no, day, hour, count)
+            self.at(day - timedelta(days=1), 9, 5)
+            self.pay_deposit(booking)
+            self.play(booking, venue_key)
+            self.review(email, venue_key, rating, comment, day)
+
+        # Đã cọc nhưng không đến sân -> NO_SHOW
+        day = t - timedelta(days=2)
+        self.at(day - timedelta(days=1), 10)
+        no_show = self.book("player12@gmail.com", "no152", 1, day, 19, 1)
+        self.pay_deposit(no_show)
+        self.at(day, 22)
+        booking_service.finalize_past_bookings(self.db)
+
+        # Người chơi hủy sớm (trước giờ chơi hơn 12 tiếng) -> hoàn 100%, chủ sân đã chuyển hoàn
+        day = t - timedelta(days=1)
+        self.at(day - timedelta(days=2), 14)
+        cancelled = self.book("player03@gmail.com", "rudal", 2, day, 18, 1)
+        self.pay_deposit(cancelled)
+        self.at(day - timedelta(days=1), 8)
+        booking_service.cancel_by_player(self.db, cancelled.id, self.player("player03@gmail.com"), _RefundInfo(
+            bank_account="1900000001", bank_name="Vietcombank", account_holder="VU DUC CUONG", reason="Bận việc đột xuất",
+        ))
+        self.at(day - timedelta(days=1), 15)
+        cancelled = booking_service.get_booking_or_404(self.db, cancelled.id)
+        booking_service.confirm_refund(self.db, cancelled, self.ctx["owners"]["rudal"], "Đã chuyển hoàn cọc")
+        self._stamp(cancelled)
+
+        # Khách vãng lai trả tiền mặt tại quầy hôm qua
+        self.at(day, 9, 50)
+        staff = self.ctx["staff"]["djoy"][0]
+        walk_in = booking_service.create_booking(
+            self.db, user=staff, slots=self.slots("djoy", 5, day, 10, 1), source=BookingSource.DESK.value,
+            guest_name="Anh Minh (khách vãng lai)", guest_phone="0987000111", desk_paid="FULL", check_in_now=True,
+        )
+        self._stamp(walk_in)
+        self.at(day, 11, 5)
+        booking_service.finalize_past_bookings(self.db)
+        self.now()
+
+    def upcoming(self) -> None:
+        t = self.today
+        self.now()
+
+        def confirmed(email, venue_key, court_no, days_ahead, hour, count):
+            booking = self.book(email, venue_key, court_no, t + timedelta(days=days_ahead), hour, count)
+            return self.pay_deposit(booking)
+
+        def open_match(booking, email, *, skill, players, purpose, notes, joiners=()):
+            match = match_service.create_match(self.db, self.player(email), MatchCreate(
+                booking_id=booking.id, required_skill=skill, num_players=players, purpose=purpose, notes=notes,
+            ))
+            for joiner in joiners:
+                match_service.join_match(self.db, match.id, self.player(joiner).id)
+
+        open_match(
+            confirmed("khanhhoan121209@gmail.com", "no152", 1, 1, 18, 2), "khanhhoan121209@gmail.com",
+            skill=3.5, players=4, purpose="recreational", notes="Giao lưu vui vẻ trình 3.5, chia đều tiền sân.",
+            joiners=("player05@gmail.com", "player12@gmail.com"),
+        )
+        open_match(
+            confirmed("player02@gmail.com", "rudal", 1, 2, 19, 2), "player02@gmail.com",
+            skill=4.0, players=4, purpose="competitive", notes="Đánh đôi tính điểm, cần thêm 1 người trình 4.0.",
+            joiners=("player07@gmail.com", "player14@gmail.com"),
+        )
+        open_match(
+            confirmed("player09@gmail.com", "djoy", 3, 1, 6, 2), "player09@gmail.com",
+            skill=3.5, players=2, purpose="practice", notes="Tập dink và drop buổi sáng.",
+            joiners=("player15@gmail.com",),
+        )
+        confirmed("player06@gmail.com", "djoy", 4, 3, 17, 1)
+
+        # Người chơi vừa hủy (còn hơn 12 tiếng) -> chờ chủ sân hoàn cọc
+        to_refund = confirmed("player01@gmail.com", "no152", 3, 2, 20, 1)
+        booking_service.cancel_by_player(self.db, to_refund.id, self.player("player01@gmail.com"), _RefundInfo(
+            bank_account="1900000002", bank_name="MBBank", account_holder="LE HOANG LONG", reason="Đổi kế hoạch",
+        ))
+
+        # Khách gọi điện giữ sân, sẽ trả tiền khi đến
+        booking_service.create_booking(
+            self.db, user=self.ctx["staff"]["rudal"][0], slots=self.slots("rudal", 4, t + timedelta(days=1), 9, 1),
+            source=BookingSource.DESK.value, guest_name="Chị Hoa (đặt qua điện thoại)", guest_phone="0977000222",
+            desk_paid="NONE",
+        )
+
+
+class _RefundInfo:
+    def __init__(self, bank_account: str, bank_name: str, account_holder: str, reason: str):
+        self.bank_account, self.bank_name = bank_account, bank_name
+        self.account_holder, self.reason = account_holder, reason
+
+
+# ---------------------------------------------------------------------------
+# Điểm vào
+# ---------------------------------------------------------------------------
+def seed_database(if_empty: bool = False, reset: bool = False, assume_yes: bool = False) -> bool:
+    """Nạp dữ liệu demo. Trả về True nếu đã nạp, False nếu bỏ qua vì CSDL đã có dữ liệu."""
+    if reset:
+        rebuild_empty_schema("Nạp lại dữ liệu demo", assume_yes)
+    else:
+        ensure_schema()
+
+    db = SessionLocal()
+    try:
+        existing = db.query(User).count()
+        if existing:
+            if if_empty:
+                print(f"CSDL đã có {existing} tài khoản: bỏ qua bước nạp dữ liệu demo.")
+                return False
+            raise SystemExit(
+                f"CSDL đã có {existing} tài khoản. Dùng --reset để xóa và nạp lại, "
+                "hoặc --preferences để chỉ bổ sung sở thích mẫu cho tài khoản demo."
+            )
+
+        print("Đang nạp tiện ích, tài khoản và cụm sân...")
+        ctx = seed_accounts_and_venues(db, seed_amenities(db))
+        print("Đang tạo đơn đặt sân, giao dịch, phòng đấu và đánh giá mẫu...")
+        activity = DemoActivity(db, ctx)
+        try:
+            activity.past()
+            activity.upcoming()
+        finally:
+            timeutils.set_clock(None)
+
+        from app.models.match import Match
+
+        print("=" * 72)
+        print(f"Đã nạp: {db.query(User).count()} tài khoản | {db.query(Venue).count()} cụm sân | "
+              f"{db.query(Court).count()} sân | {db.query(Booking).count()} đơn đặt | "
+              f"{db.query(PaymentTransaction).count()} giao dịch | {db.query(Match).count()} phòng đấu | "
+              f"{db.query(Review).count()} đánh giá")
+        print(f"Mật khẩu demo dùng chung: {DEMO_PASSWORD}  (xem docs/DANH_SACH_TAI_KHOAN_TEST.md)")
+        print("=" * 72)
+        return True
+    finally:
+        db.close()
+
+
+def main() -> None:
+    args = set(sys.argv[1:])
+    if "--preferences" in args:
+        ensure_schema()
+        with SessionLocal() as db:
+            print(f"Đã bổ sung sở thích mẫu cho {apply_demo_preferences(db)} tài khoản demo.")
+        return
+    seed_database(if_empty="--if-empty" in args, reset="--reset" in args, assume_yes="--yes" in args)
+
+
+if __name__ == "__main__":
+    main()

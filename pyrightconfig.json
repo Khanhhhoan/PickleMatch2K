@@ -1,0 +1,22 @@
+{
+  "venvPath": ".",
+  "venv": "venv",
+  "include": [
+    "backend"
+  ],
+  "extraPaths": [
+    "backend",
+    "venv/Lib/site-packages"
+  ],
+  "typeCheckingMode": "basic",
+  "reportGeneralTypeIssues": "none",
+  "reportOptionalMemberAccess": "none",
+  "reportAttributeAccessIssue": "none",
+  "reportArgumentType": "none",
+  "reportReturnType": "none",
+  "reportAssignmentType": "none",
+  "reportOptionalSubscript": "none",
+  "reportPrivateImportUsage": "none",
+  "reportCallIssue": "none",
+  "reportRedeclaration": "none"
+}

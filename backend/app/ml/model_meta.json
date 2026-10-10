@@ -1,0 +1,60 @@
+{
+  "model": "RandomForestClassifier",
+  "features": [
+    "level_diff",
+    "distance_km",
+    "availability_overlap",
+    "purpose_match",
+    "style_match"
+  ],
+  "data_source": "synthetic_prior",
+  "n_samples": 60000,
+  "n_raters": 0,
+  "positive_rate": 0.5062,
+  "evaluation_protocol": "Tách ngẫu nhiên 80/20 có phân tầng",
+  "metrics": {
+    "accuracy": 0.9319,
+    "precision": 0.9354,
+    "recall": 0.9297,
+    "f1": 0.9326,
+    "roc_auc": 0.9843,
+    "brier": 0.0494
+  },
+  "baselines": {
+    "Đoán theo lớp đa số": {
+      "accuracy": 0.5062,
+      "precision": 0.5062,
+      "recall": 1.0,
+      "f1": 0.6722
+    },
+    "Luật: chênh trình độ <= 0.5": {
+      "accuracy": 0.8818,
+      "precision": 0.8914,
+      "recall": 0.8728,
+      "f1": 0.882
+    },
+    "Hồi quy logistic": {
+      "accuracy": 0.9259,
+      "precision": 0.9226,
+      "recall": 0.9319,
+      "f1": 0.9272,
+      "roc_auc": 0.9789,
+      "brier": 0.0552
+    },
+    "Quy tắc sinh nhãn (không nhiễu, mốc trần)": {
+      "accuracy": 0.933,
+      "precision": 0.9351,
+      "recall": 0.9323,
+      "f1": 0.9337
+    }
+  },
+  "feature_importances": {
+    "level_diff": 0.8206,
+    "distance_km": 0.0888,
+    "availability_overlap": 0.0376,
+    "purpose_match": 0.0381,
+    "style_match": 0.015
+  },
+  "sklearn_version": "1.9.0",
+  "trained_at": "2026-10-10T15:37:39+00:00"
+}

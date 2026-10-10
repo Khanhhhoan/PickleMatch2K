@@ -1,0 +1,73 @@
+# ==============================================================================
+# Git Ignore - Khóa Luận Tốt Nghiệp: PickleMatch2K
+# ==============================================================================
+
+# Python & Virtual Environments
+venv/
+env/
+ENV/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+*/.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Node.js & Next.js Frontend & Admin Portal
+node_modules/
+frontend/node_modules/
+admin-portal/node_modules/
+.next/
+frontend/.next/
+admin-portal/.next/
+out/
+frontend/out/
+admin-portal/out/
+build/
+dist/
+*.tsbuildinfo
+frontend/*.tsbuildinfo
+admin-portal/*.tsbuildinfo
+next-env.d.ts
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+*.env
+frontend/.env
+admin-portal/.env
+backend/.env
+
+# SQLite & Logs (database files hold account data - never commit them)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Test Results & Artifacts
+test-results/
+
+# Database backups & uploaded media
+backups/
+backend/uploads/**
+!backend/uploads/venues/
+!backend/uploads/venues/.gitkeep
+
+# IDE & OS Specific
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+

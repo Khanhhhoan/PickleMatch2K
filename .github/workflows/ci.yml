@@ -1,0 +1,88 @@
+# Kiểm tra tự động mỗi lần đẩy mã: backend (ruff + pytest trên PostgreSQL thật) và hai ứng dụng Next.js (build + kiểu).
+name: CI
+
+on:
+  push:
+    branches: [main, "roadmap/**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (ruff + pytest)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pickleball_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Giá trị chỉ tồn tại trong máy CI. Bộ test tự tạo CSDL pickleball_test và chỉ đụng tới CSDL đó.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pickleball_db
+      SECRET_KEY: ci-only-key-not-used-anywhere-else-0123456789
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Cài thư viện
+        run: pip install -r backend/requirements-dev.txt
+
+      - name: Ruff
+        run: ruff check backend
+
+      - name: Pytest
+        run: python -m pytest backend/tests -q
+
+  web:
+    name: ${{ matrix.app }} (build + kiểu)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [frontend, admin-portal]
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+
+      - name: Cài thư viện
+        run: npm ci
+
+      # next build sinh các file kiểu trong .next/ mà tsconfig tham chiếu, nên chạy trước tsc
+      - name: Build
+        run: npm run build
+
+      - name: Kiểm tra kiểu TypeScript
+        run: npx tsc --noEmit

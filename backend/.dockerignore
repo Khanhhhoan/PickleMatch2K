@@ -1,0 +1,28 @@
+# Cấu hình và dữ liệu cục bộ: không bao giờ đưa vào image
+.env
+.env.*
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+uploads
+
+# Không cần lúc chạy
+tests
+requirements-dev.txt
+Dockerfile
+.dockerignore
+README.md
+
+# Rác của Python và công cụ
+__pycache__
+**/__pycache__
+*.py[cod]
+**/*.py[cod]
+.pytest_cache
+.ruff_cache
+venv
+.venv
+.vscode
+.idea
+*.log

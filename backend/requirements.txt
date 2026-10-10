@@ -1,0 +1,21 @@
+# Phiên bản được ghim theo môi trường đã kiểm thử (Python 3.13).
+# File mô hình app/ml/*.pkl phụ thuộc đúng phiên bản scikit-learn bên dưới.
+fastapi==0.141.1
+uvicorn[standard]==0.52.3
+sqlalchemy==2.0.52
+alembic==1.19.1
+psycopg[binary]==3.3.4
+pydantic==2.13.4
+pydantic-settings==2.15.0
+email-validator==2.3.0
+python-jose[cryptography]==3.5.0
+bcrypt==5.0.0
+python-multipart==0.0.32
+redis==8.1.0
+httpx==0.28.1
+pillow==12.3.0
+pandas==3.0.5
+numpy==2.5.2
+scikit-learn==1.9.0
+joblib==1.5.3
+openpyxl==3.1.5
