@@ -92,6 +92,29 @@ def test_join_until_full_then_leave_reopens(client, db, world, clock):
     assert join(client, outsider, match).json()["status"] == "FULL"
 
 
+def test_a_player_cannot_be_in_two_rooms_at_the_same_time(client, world, clock):
+    day, second_court = clock.day(1), world.venue_a.courts[1]
+    evening = open_match(client, world.p1, confirmed_booking(client, world.p1, world.court, day, hours=(18, 19)))      # 18-20
+    overlapping = open_match(client, world.p2, confirmed_booking(client, world.p2, second_court, day, hours=(19, 20)))  # 19-21
+    later = open_match(client, world.p2, confirmed_booking(client, world.p2, second_court, day, hours=(21,)))          # 21-22
+
+    assert join(client, world.p3, evening).status_code == 200
+    clash = join(client, world.p3, overlapping)
+    assert clash.status_code == 400 and "trùng giờ" in clash.json()["detail"]
+    assert join(client, world.p1, overlapping).status_code == 400            # chủ phòng cũng không vào phòng khác trùng giờ
+    assert join(client, world.p3, later).status_code == 200                  # phòng liền sau, không trùng giờ
+
+    # Rời phòng (hoặc phòng bị hủy) thì khung giờ đó hết vướng
+    assert leave(client, world.p3, evening).status_code == 200
+    assert join(client, world.p3, overlapping).status_code == 200
+
+    # Cũng không mở được phòng của riêng mình trùng giờ với phòng đang tham gia
+    own = confirmed_booking(client, world.p3, world.court, day, hours=(20,))  # 20-21, trùng phòng 19-21
+    assert "trùng giờ" in open_match(client, world.p3, own, expect=400)["detail"]
+    assert leave(client, world.p3, overlapping).status_code == 200
+    assert open_match(client, world.p3, own)["status"] == "OPEN"
+
+
 def test_cannot_join_a_match_that_is_over_or_closed(client, db, world, clock):
     day = clock.day(1)
     booking = confirmed_booking(client, world.p1, world.court, day, hours=(18,))

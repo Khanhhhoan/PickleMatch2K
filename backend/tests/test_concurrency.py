@@ -200,6 +200,26 @@ def test_only_one_player_gets_the_last_seat_in_a_match(client, db, world, clock)
     assert db.get(Match, match_id).status == "FULL"
 
 
+def test_one_player_joining_two_overlapping_rooms_at_once_ends_up_in_only_one(client, db, world, clock):
+    day = clock.day(1)
+    first = confirmed_booking(client, world.p1, world.court, day, hours=(18,))
+    second = confirmed_booking(client, world.p2, world.venue_a.courts[1], day, hours=(18,))
+    rooms = [
+        match_service.create_match(db, world.p1, MatchCreate(booking_id=first["id"])).id,
+        match_service.create_match(db, world.p2, MatchCreate(booking_id=second["id"])).id,
+    ]
+    joiner = world.p3.id
+
+    def join(index: int) -> int:
+        with SessionLocal() as session:
+            return match_service.join_match(session, rooms[index], joiner).id
+
+    results = run_together(2, join)
+
+    assert len(conflicts(results)) == 1
+    assert db.query(MatchParticipant).filter_by(user_id=joiner).count() == 1
+
+
 def test_cancel_and_payment_racing_on_one_booking_leave_consistent_money(client, db, world, clock):
     booking = create_booking(client, world.p1, world.court, clock.day(1), hours=(18,))
     player_id = world.p1.id

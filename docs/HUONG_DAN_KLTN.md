@@ -87,7 +87,8 @@ Ba lớp, từ ngoài vào trong:
 ### 3.4. Phòng đấu
 
 Người chơi mở phòng đấu trên một đơn **đã cọc** của chính mình, nên phòng đấu luôn có sân và giờ thật. Người khác tham
-gia tới khi đủ số người; phòng tự đóng khi qua giờ hoặc khi đơn đặt bị hủy.
+gia tới khi đủ số người; phòng tự đóng khi qua giờ hoặc khi đơn đặt bị hủy. Một người không thể ở trong hai phòng còn
+hoạt động trùng giờ nhau (kể cả phòng do chính mình mở): muốn vào phòng khác thì phải rời phòng đang trùng giờ trước.
 
 ## 4. Gợi ý cụm sân
 

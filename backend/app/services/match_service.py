@@ -65,6 +65,33 @@ def auto_update_expired_matches(db: Session) -> List[Dict[str, Any]]:
     return [{"id": m.id, "status": m.status} for m in updated]
 
 
+def _reject_time_clash(db: Session, user_id: int, day, start_time, end_time, *, exclude_id: Optional[int] = None) -> None:
+    """
+    Một người không thể chơi ở hai nơi cùng lúc: từ chối nếu người này đang ở trong một phòng còn hoạt động
+    khác trùng khoảng giờ. Khóa dòng người chơi trước để hai yêu cầu đồng thời của cùng một người không cùng lọt qua.
+    """
+    db.query(User.id).filter(User.id == user_id).with_for_update().first()
+    query = (
+        db.query(Match)
+        .join(MatchParticipant, MatchParticipant.match_id == Match.id)
+        .filter(
+            MatchParticipant.user_id == user_id,
+            Match.status.in_(ACTIVE_MATCH_STATUSES),
+            Match.date == day,
+            Match.start_time < end_time,
+            Match.end_time > start_time,
+        )
+    )
+    if exclude_id is not None:
+        query = query.filter(Match.id != exclude_id)
+    clash = query.first()
+    if clash:
+        raise _error(
+            400,
+            f"Bạn đang ở trong một phòng đấu khác trùng giờ ({clash.start_time:%H:%M} - {clash.end_time:%H:%M} tại {clash.venue_name}).",
+        )
+
+
 def _match_window_from_booking(booking: Booking):
     """Sân và khoảng giờ liên tục đầu tiên của đơn (đơn 2 giờ liền nhau cho phòng đấu 2 giờ)."""
     details = sorted(booking.details, key=lambda d: (d.date, d.court_id, d.start_time))
@@ -92,6 +119,7 @@ def create_match(db: Session, user: User, match_in: MatchCreate) -> Match:
     already = db.query(Match.id).filter(Match.booking_id == booking.id, Match.status != MatchStatus.CANCELLED.value).first()
     if already:
         raise _error(400, f"Đơn {booking.booking_code} đã có phòng đấu rồi.")
+    _reject_time_clash(db, user.id, first.date, first.start_time, end_time)
 
     match = Match(
         creator_id=user.id,
@@ -157,6 +185,7 @@ def join_match(db: Session, match_id: int, user_id: int) -> Match:
         raise _error(400, "Phòng đấu đã qua giờ thi đấu.")
     if any(p.user_id == user_id for p in match.participants):
         raise _error(400, "Bạn đã ở trong phòng đấu này.")
+    _reject_time_clash(db, user_id, match.date, match.start_time, match.end_time, exclude_id=match.id)
 
     accepted = sum(1 for p in match.participants if p.status == ParticipantStatus.ACCEPTED.value)
     if accepted >= match.num_players:
