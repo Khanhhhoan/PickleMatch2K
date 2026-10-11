@@ -1,11 +1,11 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from fastapi import HTTPException, status
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.matching_policy import RECOMMEND_MIN_COMPATIBILITY
+from app.core.matching_policy import RECOMMEND_MIN_COMPATIBILITY, fits_free_time
 from app.core.websocket_manager import dispatch, manager
 from app.models.booking import Booking, BookingSource, BookingStatus
 from app.models.match import Match, MatchParticipant, MatchStatus, ParticipantStatus
@@ -33,8 +33,14 @@ def _notify(match: Match, event: str, message: str) -> None:
     }))
 
 
-def serialize_match(match: Match, viewer_id: Optional[int] = None, compatibility: Optional[float] = None) -> MatchResponse:
-    """Chuyển Match sang response; số điện thoại chỉ hiện cho thành viên của chính phòng đó."""
+def serialize_match(
+    match: Match, viewer_id: Optional[int] = None, compatibility: Optional[float] = None, free_slots: Sequence[str] = ()
+) -> MatchResponse:
+    """
+    Chuyển Match sang response; số điện thoại chỉ hiện cho thành viên của chính phòng đó.
+    free_slots: các khung rảnh người xem đã khai trong hồ sơ. Phòng được đề xuất khi độ phù hợp đạt ngưỡng và giờ chơi
+    nằm trọn trong các khung đó; với người chưa khai khung rảnh nào thì chỉ xét độ phù hợp.
+    """
     response = MatchResponse.model_validate(match)
     is_member = viewer_id is not None and (
         match.creator_id == viewer_id or any(p.user_id == viewer_id for p in match.participants)
@@ -43,7 +49,12 @@ def serialize_match(match: Match, viewer_id: Optional[int] = None, compatibility
         for participant in response.participants:
             participant.phone = None
     response.compatibility = compatibility
-    response.is_recommended = compatibility is not None and compatibility >= RECOMMEND_MIN_COMPATIBILITY
+    response.fits_free_time = fits_free_time(free_slots, match.date, match.start_time, match.end_time)
+    response.is_recommended = (
+        compatibility is not None
+        and compatibility >= RECOMMEND_MIN_COMPATIBILITY
+        and response.fits_free_time is not False
+    )
     return response
 
 

@@ -181,10 +181,33 @@ async function pickDate(page, offset) {
   }, target.getDate());
 }
 
+/** Ô của lưới giờ rảnh trong hồ sơ (ví dụ "T4 Sáng") ứng với khung giờ "HH:MM - HH:MM" của ngày cách hôm nay `offset` ngày. */
+function freeTimeCell(offset, slotLabel) {
+  const day = new Date();
+  day.setDate(day.getDate() + offset);
+  const hour = Number(slotLabel.slice(0, 2));
+  return `${["CN", "T2", "T3", "T4", "T5", "T6", "T7"][day.getDay()]} ${hour < 12 ? "Sáng" : hour < 17 ? "Chiều" : "Tối"}`;
+}
+
+/** Trên trang hồ sơ: đưa một ô của lưới giờ rảnh về trạng thái mong muốn rồi lưu; trả về trạng thái trước đó. */
+async function setFreeTime(page, cell, wanted) {
+  const selector = `button[aria-label="${cell}"]`;
+  await page.goto(`${WEB}/profile`, { waitUntil: "networkidle2" });
+  await waitForText(page, "Khung giờ thường rảnh trong tuần");
+  // tài khoản demo luôn có sẵn vài buổi rảnh: chờ biểu mẫu nạp xong hồ sơ rồi mới đọc trạng thái ô
+  await page.waitForFunction(() => document.querySelectorAll('button[aria-pressed="true"]').length > 0, { timeout: TIMEOUT });
+  const before = await page.$eval(selector, (el) => el.getAttribute("aria-pressed") === "true");
+  if (before !== wanted) await page.click(selector);
+  await clickText(page, 'button[type="submit"]', "Lưu Thông Tin");
+  await waitForText(page, "Đã lưu hồ sơ");
+  return before;
+}
+
 async function main() {
   fs.mkdirSync(SHOTS, { recursive: true });
   browser = await puppeteer.launch({ headless: !process.argv.includes("--show"), args: ["--no-sandbox"] });
   let bookingCode = null;
+  let roomTime = null; // khung giờ "HH:MM - HH:MM" của đơn (và phòng đấu) người chơi 1 tạo
 
   // ------------------------------------------------------------------ Khách chưa đăng nhập
   console.log("\nKhách chưa đăng nhập: chọn giờ rồi mới đăng nhập");
@@ -248,11 +271,7 @@ async function main() {
     await pickDate(page, 2);
     await sleep(800);
     // khung thứ 6 còn trống của sân đầu tiên (tránh các khung dữ liệu mẫu đã dùng)
-    await page.evaluate(() => {
-      const chips = [...document.querySelectorAll("button")].filter((b) => !b.disabled && /^\d{2}:\d{2} - \d{2}:\d{2}/.test(b.innerText.trim()));
-      if (chips.length < 6) throw new Error("Không đủ khung giờ trống để thử");
-      chips[5].click();
-    });
+    roomTime = await clickFreeSlot(page, 5);
     await waitForText(page, "Đã chọn:");
     await clickText(page, "button", "Đặt Sân & Thanh Toán Cọc 50%");
     await waitForText(page, "Số tiền cần chuyển");
@@ -285,8 +304,11 @@ async function main() {
     // ---------------------------------------------------------------- Mô hình đề xuất phòng
     console.log("\nNgười chơi khác: mô hình đề xuất phòng đã tạo, rồi tham gia");
     const peer = await newSession("player06");
-    await step(peer, "người cùng trình độ thấy phòng trong mục Phòng Đề Xuất của mô hình", async (page) => {
+    const roomCell = freeTimeCell(2, roomTime); // buổi trong tuần mà phòng vừa mở diễn ra
+    let cellWasFree = false;
+    await step(peer, "người cùng trình độ, rảnh đúng buổi đó, thấy phòng trong mục Phòng Đề Xuất của mô hình", async (page) => {
       await login(peer, WEB, "player06@gmail.com");
+      cellWasFree = await setFreeTime(page, roomCell, true);
       await page.goto(`${WEB}/matches`, { waitUntil: "networkidle2" });
       await waitForText(page, "Phòng Đề Xuất");
       await waitForText(page, "Lê Hoàng Long");
@@ -298,6 +320,25 @@ async function main() {
       if (await hasText(page, "Đã có sân (")) throw new Error("Thẻ phòng chưa thu gọn: vẫn hiện phần chi tiết");
       await clickText(page, "button", "Chi tiết", { within: "Lê Hoàng Long", exact: true });
       await waitForText(page, `Đã có sân (${bookingCode})`);
+    });
+    await step(peer, "bỏ buổi đó khỏi giờ rảnh: phòng không còn được đề xuất, thẻ phòng ghi rõ ngoài giờ rảnh", async (page) => {
+      await setFreeTime(page, roomCell, false);
+      await page.goto(`${WEB}/matches`, { waitUntil: "networkidle2" });
+      await waitForText(page, "Tất Cả Phòng Mở (");
+      await sleep(1000);
+      if (await hasText(page, "Lê Hoàng Long")) throw new Error("Phòng ngoài giờ rảnh vẫn nằm trong mục đề xuất");
+      await page.goto(`${WEB}/matches?tab=open`, { waitUntil: "networkidle2" });
+      await waitForText(page, "Lê Hoàng Long");
+      if ((await roomIsRecommended(page, "Lê Hoàng Long")) !== false) throw new Error("Phòng ngoài giờ rảnh vẫn mang nhãn đề xuất");
+      await clickText(page, "button", "Chi tiết", { within: "Lê Hoàng Long", exact: true });
+      await waitForText(page, `Đã có sân (${bookingCode})`);
+      const noted = await page.evaluate((code) => {
+        const cards = [...document.querySelectorAll("div")].filter((el) => el.querySelector("h3") && (el.innerText || "").includes(code));
+        const card = cards[cards.length - 1]; // khối nhỏ nhất có tiêu đề cụm sân và mã đơn của phòng = thẻ phòng
+        return !!card && card.innerText.includes("ngoài giờ rảnh của bạn");
+      }, bookingCode);
+      if (!noted) throw new Error("Thẻ phòng không ghi chú giờ chơi nằm ngoài giờ rảnh");
+      await setFreeTime(page, roomCell, cellWasFree); // trả hồ sơ về như trước khi thử
     });
     await peer.context.close();
 

@@ -103,7 +103,9 @@ class MatchResponse(BaseModel):
     participants: List[MatchParticipantResponse] = []
     # Độ phù hợp do mô hình ghép cặp ước lượng (0-100); None khi chưa có mô hình hoặc chưa đăng nhập
     compatibility: Optional[float] = None
-    # True khi độ phù hợp đạt ngưỡng đề xuất (app/core/matching_policy.py)
+    # Giờ chơi có nằm trọn trong khung rảnh người xem đã khai hay không; None khi chưa đăng nhập hoặc chưa khai khung rảnh
+    fits_free_time: Optional[bool] = None
+    # True khi độ phù hợp đạt ngưỡng đề xuất và giờ chơi không nằm ngoài khung rảnh của người xem (app/core/matching_policy.py)
     is_recommended: bool = False
 
     model_config = ConfigDict(from_attributes=True)

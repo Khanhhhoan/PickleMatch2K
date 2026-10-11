@@ -42,7 +42,8 @@ interface Match {
   creator_play_style?: string | null;
   participants: Participant[];
   compatibility?: number | null; // 0-100, do mô hình ở máy chủ ước lượng
-  is_recommended?: boolean; // độ phù hợp đạt ngưỡng đề xuất của máy chủ
+  fits_free_time?: boolean | null; // giờ chơi có nằm trong khung rảnh mình đã khai không; null khi chưa khai khung rảnh
+  is_recommended?: boolean; // độ phù hợp đạt ngưỡng đề xuất của máy chủ và giờ chơi không nằm ngoài khung rảnh
 }
 
 interface ModelInfo {
@@ -222,6 +223,7 @@ function MatchesContent() {
             <p className="text-xs sm:text-sm text-zinc-600 mt-0.5">
               {m.court_name ? `${m.court_name} • ` : ""}
               {formatDisplayDate(m.date)} • {m.start_time.slice(0, 5)} - {m.end_time.slice(0, 5)}
+              {!member && m.fits_free_time === false && <span className="text-amber-700"> • ngoài giờ rảnh của bạn</span>}
             </p>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -370,7 +372,9 @@ function MatchesContent() {
 
         {!loading && activeTab === "suggested" && suggested.length > 0 && (
           <p className="text-xs text-zinc-500 mb-3">
-            Những phòng hợp với bạn nhất, dựa trên trình độ, khu vực, lịch rảnh và phong cách chơi.
+            {suggested.some((m) => m.fits_free_time)
+              ? "Những phòng diễn ra trong giờ bạn rảnh và hợp với bạn nhất về trình độ, khu vực, lịch chơi và phong cách."
+              : "Những phòng hợp với bạn nhất, dựa trên trình độ, khu vực, lịch rảnh và phong cách chơi."}
           </p>
         )}
 

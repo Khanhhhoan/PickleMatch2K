@@ -217,6 +217,11 @@ def missing_profile_fields(user: User) -> List[str]:
     return ProfileView.from_profile(user.player_profile).missing_fields()
 
 
+def declared_free_slots(user: User) -> List[str]:
+    """Các khung rảnh trong tuần (thứ_buổi) mà người chơi đã khai trong hồ sơ."""
+    return ProfileView.from_profile(user.player_profile).availability
+
+
 def predict_pair(user_a: User, user_b: User) -> dict:
     features = pair_features(ProfileView.from_profile(user_a.player_profile), ProfileView.from_profile(user_b.player_profile))
     if features is None or not match_predictor.available:

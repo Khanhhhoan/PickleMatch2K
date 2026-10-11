@@ -425,6 +425,10 @@ function ProfileContent() {
                         </tbody>
                       </table>
                     </div>
+                    <p className="text-[11px] text-zinc-500 mt-1.5 leading-relaxed">
+                      {AVAILABILITY_PERIODS.map((period) => `${period.label}: ${period.hours}`).join(" • ")}. Phòng đấu chỉ được đề xuất cho
+                      bạn khi diễn ra trong những buổi bạn chọn.
+                    </p>
                   </div>
 
                   <div>

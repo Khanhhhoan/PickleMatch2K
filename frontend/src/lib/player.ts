@@ -27,10 +27,11 @@ export const AVAILABILITY_DAYS: { value: string; label: string }[] = [
   { value: "sun", label: "CN" },
 ];
 
-export const AVAILABILITY_PERIODS: { value: string; label: string }[] = [
-  { value: "morning", label: "Sáng" },
-  { value: "afternoon", label: "Chiều" },
-  { value: "evening", label: "Tối" },
+// Mốc giờ của từng buổi phải khớp với backend (app/core/matching_policy.py: PERIOD_HOURS)
+export const AVAILABILITY_PERIODS: { value: string; label: string; hours: string }[] = [
+  { value: "morning", label: "Sáng", hours: "trước 12 giờ" },
+  { value: "afternoon", label: "Chiều", hours: "12 - 17 giờ" },
+  { value: "evening", label: "Tối", hours: "từ 17 giờ" },
 ];
 
 export const SKILL_LEVELS: { value: string; label: string }[] = [

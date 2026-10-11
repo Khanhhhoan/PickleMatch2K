@@ -245,13 +245,24 @@ Người xem A ──▶ các phòng đang tuyển người
                 khoảng cách tính từ vị trí của A tới sân của phòng
             ──▶ model.predict_proba cho từng cặp
             ──▶ độ phù hợp của phòng = trung bình các xác suất (0-100%)
-            ──▶ phòng đạt từ 70% trở lên được gắn nhãn "mô hình đề xuất" và xếp trước
+            ──▶ giờ chơi của phòng có nằm trọn trong các buổi A đã khai là rảnh không
+            ──▶ phòng đạt từ 70% trở lên và không nằm ngoài giờ rảnh của A được gắn nhãn "mô hình đề xuất", xếp trước
 ```
 
-Ngưỡng 70% nằm ở `backend/app/core/matching_policy.py`: bộ phân loại tách hai lớp ở 50%, ngưỡng cao hơn chỉ giữ lại
-những phòng mô hình đánh giá rõ ràng là phù hợp. `GET /api/v1/matches` trả `compatibility` và `is_recommended` cho từng
-phòng; trang Ghép trận có ba mục: Phòng đề xuất, Tất cả phòng mở, Phòng của tôi. `GET /api/v1/ml/model-info` cho biết
-ngưỡng đang dùng và các mục hồ sơ người xem còn thiếu để giao diện nhắc bổ sung.
+Hai điều kiện đề xuất nằm ở `backend/app/core/matching_policy.py`:
+
+- **Ngưỡng 70%**: bộ phân loại tách hai lớp ở 50%, ngưỡng cao hơn chỉ giữ lại những phòng mô hình đánh giá rõ ràng là
+  phù hợp.
+- **Giờ rảnh của người xem**: đặc trưng `availability_overlap` chỉ so lịch rảnh của hai người với nhau, không biết phòng
+  đấu diễn ra lúc nào. Vì vậy hệ thống đối chiếu thêm giờ chơi của phòng với lưới khung rảnh trong hồ sơ (sáng trước
+  12:00, chiều 12:00 - 17:00, tối từ 17:00): phòng chỉ được đề xuất khi mọi buổi mà giờ chơi chạm tới đều là buổi người
+  xem đã khai rảnh. Người chưa khai khung rảnh nào thì chỉ xét độ phù hợp. Đây là quy tắc nghiệp vụ đặt sau mô hình;
+  điểm phù hợp hiển thị vẫn là con số của mô hình, không bị cộng trừ.
+
+`GET /api/v1/matches` trả `compatibility`, `fits_free_time` và `is_recommended` cho từng phòng; trang Ghép trận có ba
+mục: Phòng đề xuất, Tất cả phòng mở, Phòng của tôi. Phòng nằm ngoài giờ rảnh vẫn hiện ở mục Tất cả phòng mở kèm ghi chú
+"ngoài giờ rảnh của bạn". `GET /api/v1/ml/model-info` cho biết ngưỡng đang dùng và các mục hồ sơ người xem còn thiếu để
+giao diện nhắc bổ sung.
 
 API xếp hạng từng người chơi (`GET /api/v1/ml/recommend-partners`: lọc ứng viên có trình độ trong khoảng ±1.5, sắp theo
 xác suất giảm dần) vẫn có ở backend nhưng giao diện không hiển thị danh sách này. Khi chưa có file mô hình, các API trả
@@ -264,7 +275,7 @@ kết quả rỗng kèm lý do, không tự đặt ra điểm số.
 | **Kiểm thử tự động backend** | pytest trên một CSDL PostgreSQL riêng, schema dựng bằng chính các migration. Bao phủ bảo mật và phân quyền (mọi API không công khai đều đòi đăng nhập), vòng đời đơn, hủy và hoàn tiền, đơn tại quầy, webhook thanh toán, phòng đấu, gợi ý sân, mô hình ghép cặp |
 | **Kiểm thử đồng thời** | Nhiều luồng thật cùng tranh một khung giờ, cùng gửi một giao dịch, cùng vào chỗ cuối của một phòng đấu; kiểm tra chỉ một luồng thành công và dữ liệu không sai lệch |
 | **Kiểm thử phụ thuộc thời gian** | Đồng hồ nghiệp vụ được điều khiển trong test để kiểm tra hạn cọc 15 phút và các mốc hủy 12 giờ, 6 giờ |
-| **Kiểm thử đầu-cuối qua trình duyệt** | `scripts/e2e_smoke.js`: 22 bước cho cả bốn vai trò, từ đặt sân, giả lập cọc, vé QR, phòng đấu do mô hình đề xuất, hủy và hoàn tiền tới quầy của nhân viên và cổng quản trị |
+| **Kiểm thử đầu-cuối qua trình duyệt** | `scripts/e2e_smoke.js`: 23 bước cho cả bốn vai trò, từ đặt sân, giả lập cọc, vé QR, phòng đấu do mô hình đề xuất (kể cả việc phòng ngoài giờ rảnh không được đề xuất), hủy và hoàn tiền tới quầy của nhân viên và cổng quản trị |
 | **Đánh giá mô hình** | So sánh Random Forest với các mốc so sánh ở mục 5.4 |
 
 Lệnh chạy và cách tổ chức: [README gốc](../README.md) và [backend/tests/README.md](../backend/tests/README.md).

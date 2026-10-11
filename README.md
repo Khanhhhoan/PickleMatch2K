@@ -18,7 +18,7 @@ Hai trọng tâm của hệ thống:
 - **Quy trình đặt sân**: giữ chỗ → đặt → cọc 50% qua VietQR → vé QR → check-in → thu phần còn lại, kèm hủy và hoàn tiền
   theo chính sách.
 - **Ghép trận bằng Random Forest**: mô hình ước lượng độ phù hợp giữa người chơi và từng phòng đấu đã mở, rồi đề xuất
-  những phòng có độ phù hợp cao (từ 70%).
+  những phòng có độ phù hợp cao (từ 70%) và diễn ra trong giờ rảnh người chơi đã khai.
 
 Thuật toán gợi ý cụm sân theo điểm đa tiêu chí vẫn có ở backend (`GET /api/v1/recommendations/venues`) nhưng giao diện
 không dùng; trang chủ liệt kê cụm sân từ gần đến xa. Đặc trưng, dữ liệu và kết quả đánh giá của mô hình: xem
@@ -191,7 +191,7 @@ python -m pytest                                  # từ thư mục gốc, kho�
 python -m pytest backend/tests/test_payments.py -q
 ```
 
-**Kiểm thử đầu-cuối qua trình duyệt** - 22 bước cho cả bốn vai trò. Script tạo và hủy đơn nên chỉ chạy trên
+**Kiểm thử đầu-cuối qua trình duyệt** - 23 bước cho cả bốn vai trò. Script tạo và hủy đơn nên chỉ chạy trên
 CSDL demo, với `SEPAY_SIMULATOR_ENABLED=true` và hai ứng dụng web đã build (`npm run build && npm start`):
 
 ```powershell

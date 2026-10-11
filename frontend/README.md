@@ -27,7 +27,7 @@ NEXT_PUBLIC_ADMIN_URL=https://admin.ten-mien.vn
 | `/` | Người chơi | Tìm cụm sân theo tên và khu vực; chọn vị trí để danh sách xếp từ gần đến xa |
 | `/venues/[id]` | Người chơi | Thông tin sân, lịch trống theo thời gian thực, giữ chỗ, đặt sân, đánh giá |
 | `/bookings` | Người chơi | Đơn của tôi, đếm ngược hạn cọc, vé QR, hủy đơn với mức hoàn tiền xem trước |
-| `/matches`, `/matches/create` | Người chơi | Phòng do mô hình đề xuất (độ phù hợp từ 70%), mọi phòng đang mở, phòng của tôi; mở phòng trên đơn đã cọc |
+| `/matches`, `/matches/create` | Người chơi | Phòng do mô hình đề xuất (độ phù hợp từ 70%, trong giờ rảnh đã khai), mọi phòng đang mở, phòng của tôi; mở phòng trên đơn đã cọc |
 | `/survey` | Người chơi | Khảo sát thu nhãn cho mô hình ghép cặp |
 | `/profile` | Người chơi | Hồ sơ và 5 thông tin mô hình ghép cặp dùng: trình độ, phong cách, mục đích, khung rảnh, khu vực thường chơi |
 | `/owner/dashboard` | Chủ sân | Doanh thu và hoạt động của cụm sân |
