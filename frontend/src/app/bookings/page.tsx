@@ -59,13 +59,16 @@ function PendingCountdownBadge({ expiresAt, onExpired }: { expiresAt?: string | 
 
   useEffect(() => {
     setTimeLeft(secondsUntil(expiresAt));
+    let overdueTicks = 0;
     const timer = setInterval(() => {
       const remaining = secondsUntil(expiresAt);
       setTimeLeft(remaining);
-      if (remaining <= 0) {
-        clearInterval(timer);
-        onExpired();
-      }
+      if (remaining > 0) return;
+      // Hết giờ theo đồng hồ của máy này: hỏi lại máy chủ vài giây một lần cho tới khi đơn đổi trạng thái
+      // (đồng hồ hai bên có thể lệch nhau đôi chút), tối đa khoảng 2 phút.
+      if (overdueTicks % 3 === 0) onExpired();
+      overdueTicks += 1;
+      if (overdueTicks > 120) clearInterval(timer);
     }, 1000);
     return () => clearInterval(timer);
   }, [expiresAt, onExpired]);
@@ -471,8 +474,8 @@ function PlayerBookingsContent() {
       </main>
 
       {cancelTarget && cancelPreview && (
-        <div className="fixed inset-0 z-50 bg-zinc-950/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-zinc-200">
+        <div className="fixed inset-0 z-[60] bg-zinc-950/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full my-auto p-6 shadow-xl border border-zinc-200">
             <h3 className="font-bold text-base text-zinc-950">Hủy Đơn {bookingCode(cancelTarget)}</h3>
 
             <div

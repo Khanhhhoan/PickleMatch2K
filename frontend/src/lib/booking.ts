@@ -129,6 +129,9 @@ export function bookingGroup(booking: Pick<Booking, "status">): BookingGroup {
   }
 }
 
+/** Chỉ đặt trước tối đa từng này ngày (khớp MAX_ADVANCE_DAYS trong backend/app/core/booking_policy.py). */
+export const MAX_ADVANCE_DAYS = 60;
+
 /** Mã đơn hiển thị cho khách và dùng làm nội dung chuyển khoản. */
 export function bookingCode(booking: Pick<Booking, "id" | "booking_code">): string {
   return booking.booking_code || `#${booking.id}`;

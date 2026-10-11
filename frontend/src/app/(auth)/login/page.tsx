@@ -21,7 +21,11 @@ export default function LoginPage() {
       if (user.role === "STAFF") router.push("/staff/dashboard");
       else if (user.role === "OWNER") router.push("/owner/dashboard");
       else if (user.role === "ADMIN") router.push("/admin");
-      else router.push("/");
+      else {
+        // Quay lại trang đang xem dở trước khi đăng nhập (chỉ nhận đường dẫn trong chính trang web này)
+        const next = new URLSearchParams(window.location.search).get("next");
+        router.push(next && /^\/(?![/\\])/.test(next) ? next : "/");
+      }
     }
   }, [user, router]);
 

@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, use, useMemo } from "react";
+import React, { useState, useEffect, use, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { fetchApi, formatVND, getMediaUrl, formatLocalDate } from "@/lib/api";
+import { MAX_ADVANCE_DAYS } from "@/lib/booking";
 import { useAuth } from "@/lib/auth-context";
 import { useWebSocket } from "@/lib/use-websocket";
 import { useToast } from "@/components/Toast";
@@ -40,6 +41,8 @@ interface CourtAvailability {
   slots: TimeSlot[];
 }
 
+const slotKey = (courtId: number, startTime: string) => `${courtId}-${startTime}`;
+
 export default function VenueDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { user } = useAuth();
@@ -62,11 +65,23 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   // Real-time WebSocket connection for this venue
   const { isConnected, lastMessage } = useWebSocket(`/api/v1/ws/venues/${id}`);
 
+  const requestedDate = useRef(selectedDate);       // ngày được yêu cầu gần nhất
+  const loadedDate = useRef<string | null>(null);   // ngày của bảng giờ đang hiển thị
+  const restoredDate = useRef<string | null>(null); // ngày đã đưa lại các khung mình đang giữ tạm vào giỏ
+  const busySlots = useRef(new Set<string>());      // khung giờ đang chờ máy chủ trả lời (chống bấm đúp)
+  // Sau khi đăng nhập, quay lại đúng cụm sân đang xem
+  const loginUrl = `/login?next=${encodeURIComponent(`/venues/${id}`)}`;
+
   const loadAvailability = async (targetDate: string) => {
+    requestedDate.current = targetDate;
     try {
       const data = await fetchApi(`/search/venues/${id}/availability?target_date=${targetDate}`);
+      if (requestedDate.current !== targetDate) return; // phản hồi đến muộn của ngày đã rời đi
+      loadedDate.current = targetDate;
       setAvailability(data.courts || []);
     } catch {
+      if (requestedDate.current !== targetDate) return;
+      loadedDate.current = null;
       setAvailability([]);
     }
   };
@@ -83,26 +98,40 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       .catch(() => setReviews([]));
   }, [id]);
 
-  // Khung giờ mình đang giữ tạm (ví dụ sau khi tải lại trang) được đưa lại vào giỏ chọn
+  // Giữ giỏ chọn khớp với bảng giờ mới nhất: bỏ khung không còn đặt được (người khác vừa đặt hoặc đang giữ),
+  // và khi mở một ngày thì đưa lại các khung mình đang giữ tạm (ví dụ sau khi tải lại trang).
   useEffect(() => {
-    const mine = availability.flatMap((court) =>
-      court.slots
-        .filter((slot) => slot.held_by_me && slot.is_available)
-        .map((slot) => ({
+    if (availability.length === 0 || loadedDate.current !== selectedDate) return;
+    const live = new Map<string, { court: CourtAvailability; slot: TimeSlot }>();
+    availability.forEach((court) => court.slots.forEach((slot) => live.set(slotKey(court.court_id, slot.start_time), { court, slot })));
+
+    const lost = selectedSlots.filter((s) => {
+      const entry = live.get(slotKey(s.court_id, s.start_time));
+      return !entry || !entry.slot.is_available || entry.slot.is_held;
+    });
+    let next = lost.length > 0 ? selectedSlots.filter((s) => !lost.includes(s)) : selectedSlots;
+
+    if (restoredDate.current !== selectedDate) {
+      restoredDate.current = selectedDate;
+      const known = new Set(next.map((s) => slotKey(s.court_id, s.start_time)));
+      const mine = [...live.values()]
+        .filter(({ court, slot }) => slot.held_by_me && slot.is_available && !known.has(slotKey(court.court_id, slot.start_time)))
+        .map(({ court, slot }) => ({
           court_id: court.court_id,
           court_name: court.court_name,
           start_time: slot.start_time,
           end_time: slot.end_time,
           price: slot.price,
-        })),
-    );
-    if (mine.length === 0) return;
-    setSelectedSlots((prev) => {
-      const known = new Set(prev.map((s) => `${s.court_id}-${s.start_time}`));
-      const missing = mine.filter((s) => !known.has(`${s.court_id}-${s.start_time}`));
-      return missing.length > 0 ? [...prev, ...missing] : prev;
-    });
-  }, [availability]);
+        }));
+      if (mine.length > 0) next = [...next, ...mine];
+    }
+
+    if (next !== selectedSlots) setSelectedSlots(next);
+    if (lost.length > 0) {
+      const names = lost.map((s) => `${s.start_time.slice(0, 5)} (${s.court_name})`).join(", ");
+      toastInfo(`Khung giờ ${names} không còn trống nên đã được bỏ khỏi lựa chọn của bạn.`);
+    }
+  }, [availability, selectedSlots, selectedDate]);
 
   const submitReview = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,44 +185,54 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   const toggleSlot = async (court_id: number, court_name: string, start_time: string, end_time: string, price: number) => {
     if (!user) {
       toastInfo("Vui lòng đăng nhập tài khoản để đặt và giữ chỗ sân trong thời gian thực!");
-      router.push("/login");
+      router.push(loginUrl);
       return;
     }
 
-    const isCurrentlySelected = selectedSlots.some((s) => s.court_id === court_id && s.start_time === start_time);
+    // Bỏ qua lần bấm khi lần bấm trước trên cùng khung giờ chưa xong (bấm đúp), hoặc bảng giờ của ngày mới chưa tải xong
+    const key = slotKey(court_id, start_time);
+    if (busySlots.current.has(key) || loadedDate.current !== selectedDate) return;
+    busySlots.current.add(key);
 
-    if (isCurrentlySelected) {
-      // Release slot
-      setSelectedSlots((prev) => prev.filter((s) => !(s.court_id === court_id && s.start_time === start_time)));
-      fetchApi("/bookings/release-slot", {
-        method: "POST",
-        body: JSON.stringify({
-          venue_id: parseInt(id),
-          court_id,
-          date: selectedDate,
-          start_time,
-        }),
-      }).catch(console.error);
-    } else {
-      // Hold slot in real-time
-      try {
-        await fetchApi("/bookings/hold-slot", {
+    const isSameSlot = (s: { court_id: number; start_time: string }) => s.court_id === court_id && s.start_time === start_time;
+    const isCurrentlySelected = selectedSlots.some(isSameSlot);
+
+    try {
+      if (isCurrentlySelected) {
+        // Release slot
+        setSelectedSlots((prev) => prev.filter((s) => !isSameSlot(s)));
+        await fetchApi("/bookings/release-slot", {
           method: "POST",
           body: JSON.stringify({
             venue_id: parseInt(id),
             court_id,
-            court_name,
             date: selectedDate,
             start_time,
-            end_time,
           }),
-        });
+        }).catch(console.error);
+      } else {
+        // Hold slot in real-time
+        try {
+          await fetchApi("/bookings/hold-slot", {
+            method: "POST",
+            body: JSON.stringify({
+              venue_id: parseInt(id),
+              court_id,
+              court_name,
+              date: selectedDate,
+              start_time,
+              end_time,
+            }),
+          });
 
-        setSelectedSlots((prev) => [...prev, { court_id, court_name, start_time, end_time, price }]);
-      } catch (err: any) {
-        toastError(err.message || "Khung giờ này đang có người khác giữ chỗ hoặc vừa được đặt!");
-        loadAvailability(selectedDate);
+          setSelectedSlots((prev) => (prev.some(isSameSlot) ? prev : [...prev, { court_id, court_name, start_time, end_time, price }]));
+        } catch (err: any) {
+          toastError(err.message || "Khung giờ này đang có người khác giữ chỗ hoặc vừa được đặt!");
+          loadAvailability(selectedDate);
+        }
       }
+    } finally {
+      busySlots.current.delete(key);
     }
   };
 
@@ -202,7 +241,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   const handleBooking = async () => {
     if (!user) {
       toastInfo("Vui lòng đăng nhập tài khoản Khách hàng để hoàn tất đặt sân!");
-      router.push("/login");
+      router.push(loginUrl);
       return;
     }
     if (selectedSlots.length === 0) return;
@@ -224,6 +263,8 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       await loadAvailability(selectedDate);
     } catch (err: any) {
       toastError("Đặt sân thất bại: " + err.message);
+      // Bảng giờ đã thay đổi: tải lại để khung không còn trống tự rời khỏi giỏ
+      loadAvailability(selectedDate);
     } finally {
       setBooking(false);
     }
@@ -233,6 +274,12 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   // Mini Calendar Month Grid State
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const todayStr = useMemo(() => formatLocalDate(), []);
+  // Ngày xa nhất còn đặt được
+  const lastBookableStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + MAX_ADVANCE_DAYS);
+    return formatLocalDate(d);
+  }, []);
 
   const currentYear = calendarDate.getFullYear();
   const currentMonth = calendarDate.getMonth();
@@ -258,8 +305,12 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
 
+  const canGoNextMonth = formatLocalDate(new Date(currentYear, currentMonth + 1, 1)) <= lastBookableStr;
+
   const handleNextMonth = () => {
-    setCalendarDate(new Date(currentYear, currentMonth + 1, 1));
+    if (canGoNextMonth) {
+      setCalendarDate(new Date(currentYear, currentMonth + 1, 1));
+    }
   };
 
   const handleSelectDate = (dateStr: string) => {
@@ -488,7 +539,8 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                   <button
                     type="button"
                     onClick={handleNextMonth}
-                    className="w-10 h-10 rounded-xl flex items-center justify-center border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-800 cursor-pointer transition text-sm font-bold shadow-2xs"
+                    disabled={!canGoNextMonth}
+                    className="w-10 h-10 rounded-xl flex items-center justify-center border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition text-sm font-bold shadow-2xs"
                     title="Tháng sau"
                   >
                     ▶
@@ -520,18 +572,20 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
                     const isSelected = selectedDate === dateStr;
                     const isPast = dateStr < todayStr;
+                    const isTooFar = dateStr > lastBookableStr;
                     const isToday = dateStr === todayStr;
 
                     return (
                       <button
                         key={dateStr}
                         type="button"
-                        disabled={isPast}
+                        disabled={isPast || isTooFar}
                         onClick={() => handleSelectDate(dateStr)}
+                        title={isTooFar ? `Chỉ đặt trước tối đa ${MAX_ADVANCE_DAYS} ngày` : undefined}
                         className={`h-11 sm:h-13 rounded-xl text-xs sm:text-sm flex flex-col items-center justify-center transition-all cursor-pointer relative ${
                           isSelected
                             ? "bg-zinc-950 text-white font-black shadow-md ring-2 ring-zinc-950 ring-offset-2 scale-105 z-10"
-                            : isPast
+                            : isPast || isTooFar
                             ? "text-zinc-300 bg-transparent cursor-not-allowed"
                             : "bg-white hover:bg-zinc-100 text-zinc-900 font-bold border border-zinc-200/90 hover:border-zinc-400 shadow-2xs"
                         }`}
@@ -855,7 +909,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     <button
                       onClick={() => {
                         toastInfo("Vui lòng đăng nhập để tiến hành đặt sân và thanh toán cọc 50%!");
-                        router.push("/login");
+                        router.push(loginUrl);
                       }}
                       className="w-full py-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-medium text-xs transition-all btn-press cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
                     >

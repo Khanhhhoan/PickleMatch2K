@@ -157,6 +157,18 @@ async function step(session, name, fn) {
   }
 }
 
+/** Bấm khung giờ còn trống thứ `index` trên trang cụm sân (`times` lần liên tiếp); trả về nhãn "HH:MM - HH:MM". */
+const clickFreeSlot = (page, index, times = 1) =>
+  page.evaluate(async (i, count) => {
+    const chips = [...document.querySelectorAll("button")].filter((b) => !b.disabled && /^\d{2}:\d{2} - \d{2}:\d{2}/.test(b.innerText.trim()));
+    if (!chips[i]) throw new Error("Không đủ khung giờ trống để thử");
+    for (let n = 0; n < count; n += 1) {
+      chips[i].click();
+      if (n < count - 1) await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    return chips[i].innerText.trim().slice(0, 13);
+  }, index, times);
+
 /** Chọn một ngày cách hôm nay `offset` ngày trên lịch của trang cụm sân. */
 async function pickDate(page, offset) {
   const target = new Date();
@@ -174,6 +186,24 @@ async function main() {
   browser = await puppeteer.launch({ headless: !process.argv.includes("--show"), args: ["--no-sandbox"] });
   let bookingCode = null;
 
+  // ------------------------------------------------------------------ Khách chưa đăng nhập
+  console.log("\nKhách chưa đăng nhập: chọn giờ rồi mới đăng nhập");
+  const guest = await newSession("guest");
+  await step(guest, "bấm chọn giờ khi chưa đăng nhập: đăng nhập xong quay lại đúng cụm sân đang xem", async (page) => {
+    await page.goto(`${WEB}/venues/1`, { waitUntil: "networkidle2" });
+    await waitForText(page, "2. Chọn Khung Giờ");
+    await pickDate(page, 2);
+    await sleep(800);
+    await clickFreeSlot(page, 0);
+    await page.waitForFunction(() => location.pathname === "/login", { timeout: TIMEOUT });
+    await page.type('input[type="email"]', "player05@gmail.com");
+    await page.type('input[type="password"]', PASSWORD);
+    await page.click('button[type="submit"]');
+    await page.waitForFunction(() => location.pathname === "/venues/1", { timeout: TIMEOUT });
+    await waitForText(page, "2. Chọn Khung Giờ");
+  });
+  await guest.context.close();
+
   // ------------------------------------------------------------------ Người chơi 1
   console.log("\nNgười chơi 1: đặt sân, thanh toán cọc, mở phòng đấu");
   const p1 = await newSession("player01");
@@ -182,6 +212,34 @@ async function main() {
     await waitForText(page, "Danh Sách Cụm Sân");
     await waitForText(page, "RUDAL Pickleball & Academy");
     if (await hasText(page, "Gợi Ý Cho Bạn")) throw new Error("Trang chủ vẫn còn khối gợi ý cụm sân");
+  });
+
+  await step(p1, "bấm đúp một khung giờ không bị tính hai lần; lịch khóa các ngày ngoài 60 ngày", async (page) => {
+    await page.goto(`${WEB}/venues/1`, { waitUntil: "networkidle2" });
+    await waitForText(page, "2. Chọn Khung Giờ");
+    await pickDate(page, 2);
+    await sleep(800);
+    // khung trống thứ 8: không trùng khung dùng để đặt ở bước sau
+    const label = await clickFreeSlot(page, 7, 2);
+    await sleep(2000);
+    const rowsInCart = () => page.evaluate((text) => [...document.querySelectorAll("div.sticky p")].filter((p) => p.innerText.includes(text)).length, label);
+    const rows = await rowsInCart();
+    if (rows > 1) throw new Error(`Bấm đúp làm khung ${label} xuất hiện ${rows} lần trong giỏ`);
+    if (rows === 1) {
+      // bỏ chọn để bước đặt sân bắt đầu với giỏ trống
+      await clickText(page, "div.sticky button", "✕");
+      await waitForText(page, "Chưa chọn khung giờ nào");
+    }
+    // 60 ngày luôn nằm trong ba tháng kế tiếp: sang tháng tối đa ba lần thì nút "Tháng sau" phải bị khóa
+    const locked = await page.evaluate(async () => {
+      const next = document.querySelector('button[title="Tháng sau"]');
+      for (let i = 0; i < 3 && !next.disabled; i += 1) {
+        next.click();
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      return next.disabled && [...document.querySelectorAll("div.grid.grid-cols-7 button")].some((b) => b.disabled);
+    });
+    if (!locked) throw new Error("Lịch vẫn cho chọn ngày nằm ngoài 60 ngày");
   });
 
   const booked = await step(p1, "chọn khung giờ trống, tạo đơn và thanh toán cọc (giả lập)", async (page) => {

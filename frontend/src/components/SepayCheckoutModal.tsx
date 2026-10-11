@@ -130,8 +130,8 @@ export default function SepayCheckoutModal({
   const amountDue = checkout?.amount_due ?? 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 backdrop-blur-xs p-4 overflow-y-auto font-sans">
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-zinc-200/80 overflow-hidden relative animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-zinc-950/40 backdrop-blur-xs p-4 overflow-y-auto font-sans">
+      <div className="bg-white w-full max-w-md my-auto rounded-2xl shadow-xl border border-zinc-200/80 overflow-hidden relative animate-in fade-in duration-150">
         {/* Header */}
         <div className="px-5 py-3.5 border-b border-zinc-100 flex items-center justify-between">
           <div>

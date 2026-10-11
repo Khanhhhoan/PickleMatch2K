@@ -36,7 +36,8 @@ html {
 }
 
 body {
-  overflow-x: hidden;
+  overflow-x: hidden; /* fallback for browsers without overflow: clip */
+  overflow-x: clip; /* clips sideways overflow without turning body into a scroll container, so position: sticky keeps working */
   width: 100%;
   padding-top: 4.5rem; /* 72px for fixed top header */
 }
