@@ -69,6 +69,22 @@ const waitForText = (page, text, timeout = TIMEOUT) =>
 const hasText = (page, text) => page.evaluate((t) => document.body.innerText.toLowerCase().includes(t), text.toLowerCase());
 
 /**
+ * Nhãn của mô hình trên thẻ phòng có tên thành viên cho trước: true = "Mô hình đề xuất", false = chỉ có "Phù hợp x%",
+ * null = thẻ không có độ phù hợp.
+ */
+const roomIsRecommended = (page, memberName) =>
+  page.evaluate((name) => {
+    const cards = [...document.querySelectorAll("div")].filter(
+      (el) => (el.innerText || "").includes(name) && (el.innerText || "").includes("Tham Gia Phòng"),
+    );
+    const card = cards[cards.length - 1]; // phần tử nhỏ nhất chứa cả tên thành viên lẫn nút tham gia = thẻ phòng
+    if (!card) return null;
+    const text = card.innerText.toLowerCase();
+    if (text.includes("mô hình đề xuất")) return true;
+    return text.includes("phù hợp ") ? false : null;
+  }, memberName);
+
+/**
  * Bấm phần tử khớp selector có chứa đoạn chữ (bỏ qua phần tử bị vô hiệu hóa), chờ tới khi nó xuất hiện.
  * within: chỉ tìm trong khối nhỏ nhất chứa đoạn chữ này. exact: chữ trên nút phải trùng hoàn toàn.
  */
@@ -161,11 +177,11 @@ async function main() {
   // ------------------------------------------------------------------ Người chơi 1
   console.log("\nNgười chơi 1: đặt sân, thanh toán cọc, mở phòng đấu");
   const p1 = await newSession("player01");
-  await step(p1, "đăng nhập và xem trang chủ có danh sách + gợi ý cụm sân", async (page) => {
+  await step(p1, "đăng nhập và xem trang chủ chỉ có danh sách cụm sân (không còn khối gợi ý sân)", async (page) => {
     await login(p1, WEB, "player01@gmail.com");
     await waitForText(page, "Danh Sách Cụm Sân");
-    await waitForText(page, "Gợi Ý Cho Bạn Hôm Nay");
     await waitForText(page, "RUDAL Pickleball & Academy");
+    if (await hasText(page, "Gợi Ý Cho Bạn")) throw new Error("Trang chủ vẫn còn khối gợi ý cụm sân");
   });
 
   const booked = await step(p1, "chọn khung giờ trống, tạo đơn và thanh toán cọc (giả lập)", async (page) => {
@@ -208,14 +224,48 @@ async function main() {
       await waitForText(page, "Chủ phòng");
     });
 
+    // ---------------------------------------------------------------- Mô hình đề xuất phòng
+    console.log("\nNgười chơi khác: mô hình đề xuất phòng đã tạo, rồi tham gia");
+    const peer = await newSession("player06");
+    await step(peer, "người cùng trình độ thấy phòng trong mục Phòng Đề Xuất của mô hình", async (page) => {
+      await login(peer, WEB, "player06@gmail.com");
+      await page.goto(`${WEB}/matches`, { waitUntil: "networkidle2" });
+      await waitForText(page, "Phòng Đề Xuất");
+      await waitForText(page, "Lê Hoàng Long");
+      await waitForText(page, "Mô hình đề xuất");
+    });
+    await peer.context.close();
+
+    const far = await newSession("player10");
+    await step(far, "người lệch xa trình độ không được đề xuất phòng đó, chỉ thấy ở Tất Cả Phòng Mở", async (page) => {
+      await login(far, WEB, "player10@gmail.com");
+      await page.goto(`${WEB}/matches`, { waitUntil: "networkidle2" });
+      await waitForText(page, "Phòng Đề Xuất");
+      await waitForText(page, "Tất Cả Phòng Mở (");
+      await sleep(1000);
+      if (await hasText(page, "Lê Hoàng Long")) throw new Error("Phòng lệch trình độ vẫn nằm trong mục đề xuất");
+      await page.goto(`${WEB}/matches?tab=open`, { waitUntil: "networkidle2" });
+      await waitForText(page, "Lê Hoàng Long");
+      if (await roomIsRecommended(page, "Lê Hoàng Long")) throw new Error("Phòng lệch trình độ được gắn nhãn mô hình đề xuất");
+    });
+    await far.context.close();
+
     // ---------------------------------------------------------------- Người chơi 2
-    console.log("\nNgười chơi 2: xem độ phù hợp và tham gia phòng");
+    console.log("\nNgười chơi 2: tham gia phòng");
     const p2 = await newSession("player02");
     await step(p2, "thấy phòng của người chơi 1 kèm độ phù hợp và tham gia", async (page) => {
       await login(p2, WEB, "player02@gmail.com");
       await page.goto(`${WEB}/matches?tab=open`, { waitUntil: "networkidle2" });
       await waitForText(page, "Lê Hoàng Long");
-      if (!(await hasText(page, "Phù hợp"))) throw new Error("Không hiển thị độ phù hợp từ mô hình");
+      const recommended = await roomIsRecommended(page, "Lê Hoàng Long");
+      if (recommended === null) throw new Error("Không hiển thị độ phù hợp từ mô hình");
+      // mục Phòng Đề Xuất phải khớp với nhãn trên thẻ phòng
+      await page.goto(`${WEB}/matches?tab=suggested`, { waitUntil: "networkidle2" });
+      await waitForText(page, "Tất Cả Phòng Mở (");
+      await sleep(1000);
+      if ((await hasText(page, "Lê Hoàng Long")) !== recommended) throw new Error("Mục Phòng Đề Xuất không khớp với nhãn của mô hình");
+      await page.goto(`${WEB}/matches?tab=open`, { waitUntil: "networkidle2" });
+      await waitForText(page, "Lê Hoàng Long");
       await clickText(page, "button", "Tham Gia Phòng", { within: "Lê Hoàng Long" });
       await waitForText(page, "Đã tham gia phòng");
       await waitForText(page, "0901112233"); // thành viên cùng phòng thấy số điện thoại của nhau
@@ -239,10 +289,12 @@ async function main() {
     });
   }
 
-  await step(p1, "hồ sơ có các trường phục vụ gợi ý và lưu được", async (page) => {
+  await step(p1, "hồ sơ chỉ còn các trường phục vụ ghép cặp và lưu được", async (page) => {
     await page.goto(`${WEB}/profile`, { waitUntil: "networkidle2" });
     await waitForText(page, "Khung giờ thường rảnh trong tuần");
-    await waitForText(page, "Tiện ích bạn ưu tiên khi chọn sân");
+    await waitForText(page, "Khu vực thường chơi");
+    if (await hasText(page, "Tiện ích bạn ưu tiên")) throw new Error("Hồ sơ vẫn còn ô tiện ích ưa thích");
+    if (await hasText(page, "Ngân sách tối đa")) throw new Error("Hồ sơ vẫn còn ô ngân sách");
     await clickText(page, 'button[type="submit"]', "Lưu Thông Tin");
     await waitForText(page, "Đã lưu hồ sơ");
   });

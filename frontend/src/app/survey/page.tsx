@@ -95,7 +95,7 @@ export default function MatchingSurveyPage() {
         <h1 className="text-2xl sm:text-3xl font-black text-zinc-950 tracking-tight mt-2">Khảo Sát Ghép Cặp</h1>
         <p className="text-xs sm:text-sm text-zinc-600 mt-1.5 leading-relaxed">
           Với mỗi người chơi giả định dưới đây, hãy cho biết bạn <strong>có muốn ghép chơi cùng</strong> hay không. Câu trả lời của bạn
-          được dùng để huấn luyện mô hình gợi ý, thay cho dữ liệu tổng hợp ban đầu. Không có câu trả lời đúng hay sai.
+          được dùng để huấn luyện mô hình ghép cặp, thay cho dữ liệu tổng hợp ban đầu. Không có câu trả lời đúng hay sai.
         </p>
         {totalSaved > 0 && (
           <p className="mt-3 text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-2">

@@ -10,15 +10,18 @@ và cách hệ thống được kiểm thử. Mọi con số ở mục 5 lấy t
 
 | Tác nhân | Chức năng đã cài đặt |
 | :--- | :--- |
-| **Người chơi** | Đăng ký, đăng nhập, hồ sơ (trình độ DUPR tự khai, phong cách, mục đích, khung rảnh, tiện ích ưa thích, ngân sách); tìm sân theo vị trí; xem lịch trống theo thời gian thực; đặt sân và cọc 50% qua VietQR; vé QR; hủy đơn và yêu cầu hoàn tiền; đánh giá sân đã chơi; mở và tham gia phòng đấu; nhận gợi ý sân và bạn chơi |
+| **Người chơi** | Đăng ký, đăng nhập, hồ sơ (trình độ DUPR tự khai, phong cách, mục đích, khung rảnh, khu vực thường chơi); tìm sân theo vị trí; xem lịch trống theo thời gian thực; đặt sân và cọc 50% qua VietQR; vé QR; hủy đơn và yêu cầu hoàn tiền; đánh giá sân đã chơi; mở phòng đấu trên đơn đã cọc; tham gia phòng đấu do mô hình đề xuất |
 | **Chủ sân** | Đăng ký cụm sân (chờ quản trị viên duyệt); sân con, bảng giá, giờ mở cửa, ảnh; tài khoản nhận tiền; nhân viên; quầy đặt sân; doanh thu |
 | **Nhân viên** | Quầy đặt sân của cụm sân được phân công: tạo đơn tại quầy, check-in bằng mã hoặc QR, thu tiền, dời lịch, hủy, xác nhận hoàn tiền |
 | **Quản trị viên** | Cổng riêng (cổng 3001): duyệt cụm sân, quản lý tài khoản, giám sát đơn đặt, sổ giao dịch, phòng đấu, thông tin mô hình |
 
-Hai trọng tâm học thuật:
+Hai trọng tâm của hệ thống:
 
-1. **Gợi ý cụm sân** - lọc, chấm điểm đa tiêu chí có trọng số, xếp hạng Top-N (mục 4).
-2. **Ghép người chơi** - bộ phân loại Random Forest ước lượng xác suất hai người chơi phù hợp (mục 5).
+1. **Quy trình đặt sân** - từ giữ chỗ, đặt, cọc, check-in tới hủy và hoàn tiền, với chống đặt trùng ở tầng CSDL (mục 3).
+2. **Ghép trận bằng Random Forest** - bộ phân loại ước lượng xác suất hai người chơi phù hợp; hệ thống dùng nó để đề xuất
+   những phòng đấu đã mở có độ phù hợp cao với người xem (mục 5).
+
+Thuật toán gợi ý cụm sân (mục 4) vẫn được cài đặt và kiểm thử ở backend, nhưng giao diện web hiện không dùng tới.
 
 ## 2. Kiến trúc
 
@@ -91,6 +94,10 @@ gia tới khi đủ số người; phòng tự đóng khi qua giờ hoặc khi �
 Cài đặt: `backend/app/services/venue_recommendation_service.py`, tham số ở `backend/app/core/recommendation_config.py`.
 API: `GET /api/v1/recommendations/venues`.
 
+> **Trạng thái:** thuật toán và API này vẫn hoạt động và có kiểm thử, nhưng giao diện web không còn gọi tới: trang chủ
+> liệt kê cụm sân theo khoảng cách, hồ sơ không còn ô tiện ích ưa thích và ngân sách. Nếu báo cáo vẫn trình bày phần
+> này, cần ghi rõ đây là thành phần backend chưa đưa lên giao diện.
+
 ### 4.1. Quy trình
 
 1. **Lọc**: chỉ lấy cụm sân đang hoạt động; nếu người dùng đặt bán kính thì bỏ cụm sân nằm ngoài bán kính.
@@ -148,7 +155,8 @@ sân được xếp trên.
 ## 5. Ghép người chơi bằng Random Forest
 
 Cài đặt: `backend/app/ml/features.py` (đặc trưng), `backend/app/ml/train_model.py` (huấn luyện, đánh giá),
-`backend/app/services/ml_service.py` (phục vụ). API: `GET /api/v1/ml/recommend-partners`, `POST /api/v1/ml/predict-match`.
+`backend/app/services/ml_service.py` (phục vụ). API: `GET /api/v1/matches` (độ phù hợp của từng phòng),
+`GET /api/v1/ml/model-info`, `POST /api/v1/ml/predict-match`, `GET /api/v1/ml/recommend-partners`.
 
 ### 5.1. Đặc trưng
 
@@ -207,18 +215,27 @@ Mức đóng góp của đặc trưng: `level_diff` 0.821, `distance_km` 0.089, 
 - Các con số cho thấy quy trình huấn luyện, đánh giá hoạt động đúng. Chúng **chưa** nói lên mức độ mô hình dự đoán
   đúng mong muốn của người chơi thật; kết luận đó cần nhãn khảo sát thật (mục 5.2).
 
-### 5.5. Phục vụ trên API
+### 5.5. Đề xuất phòng đấu
+
+Giao diện dùng mô hình để **đề xuất những phòng đấu đã được tạo**:
 
 ```text
-Người chơi A ──▶ lọc ứng viên: người chơi đang hoạt động, trình độ trong khoảng ±1.5, trong bán kính (nếu đặt)
-             ──▶ tạo 5 đặc trưng cho từng cặp (A, ứng viên)
-             ──▶ model.predict_proba ──▶ xác suất phù hợp
-             ──▶ sắp xếp: xác suất giảm dần, rồi chênh trình độ, rồi khoảng cách
+Người xem A ──▶ các phòng đang tuyển người
+            ──▶ với mỗi phòng: tạo 5 đặc trưng cho từng cặp (A, thành viên của phòng);
+                khoảng cách tính từ vị trí của A tới sân của phòng
+            ──▶ model.predict_proba cho từng cặp
+            ──▶ độ phù hợp của phòng = trung bình các xác suất (0-100%)
+            ──▶ phòng đạt từ 70% trở lên được gắn nhãn "mô hình đề xuất" và xếp trước
 ```
 
-Kết quả trả về gồm xác suất, các đặc trưng đã dùng và danh sách mục hồ sơ còn thiếu của người hỏi, để giao diện nhắc
-bổ sung. Danh sách phòng đấu cũng hiển thị độ phù hợp trung bình giữa người xem và những người đã ở trong phòng.
-Khi chưa có file mô hình, API trả danh sách rỗng kèm lý do, không tự đặt ra điểm số.
+Ngưỡng 70% nằm ở `backend/app/core/matching_policy.py`: bộ phân loại tách hai lớp ở 50%, ngưỡng cao hơn chỉ giữ lại
+những phòng mô hình đánh giá rõ ràng là phù hợp. `GET /api/v1/matches` trả `compatibility` và `is_recommended` cho từng
+phòng; trang Ghép trận có ba mục: Phòng đề xuất, Tất cả phòng mở, Phòng của tôi. `GET /api/v1/ml/model-info` cho biết
+ngưỡng đang dùng và các mục hồ sơ người xem còn thiếu để giao diện nhắc bổ sung.
+
+API xếp hạng từng người chơi (`GET /api/v1/ml/recommend-partners`: lọc ứng viên có trình độ trong khoảng ±1.5, sắp theo
+xác suất giảm dần) vẫn có ở backend nhưng giao diện không hiển thị danh sách này. Khi chưa có file mô hình, các API trả
+kết quả rỗng kèm lý do, không tự đặt ra điểm số.
 
 ## 6. Kiểm thử
 
@@ -227,7 +244,7 @@ Khi chưa có file mô hình, API trả danh sách rỗng kèm lý do, không t�
 | **Kiểm thử tự động backend** | pytest trên một CSDL PostgreSQL riêng, schema dựng bằng chính các migration. Bao phủ bảo mật và phân quyền (mọi API không công khai đều đòi đăng nhập), vòng đời đơn, hủy và hoàn tiền, đơn tại quầy, webhook thanh toán, phòng đấu, gợi ý sân, mô hình ghép cặp |
 | **Kiểm thử đồng thời** | Nhiều luồng thật cùng tranh một khung giờ, cùng gửi một giao dịch, cùng vào chỗ cuối của một phòng đấu; kiểm tra chỉ một luồng thành công và dữ liệu không sai lệch |
 | **Kiểm thử phụ thuộc thời gian** | Đồng hồ nghiệp vụ được điều khiển trong test để kiểm tra hạn cọc 15 phút và các mốc hủy 12 giờ, 6 giờ |
-| **Kiểm thử đầu-cuối qua trình duyệt** | `scripts/e2e_smoke.js`: 18 bước cho cả bốn vai trò, từ đặt sân, giả lập cọc, vé QR, phòng đấu, hủy và hoàn tiền tới quầy của nhân viên và cổng quản trị |
+| **Kiểm thử đầu-cuối qua trình duyệt** | `scripts/e2e_smoke.js`: 20 bước cho cả bốn vai trò, từ đặt sân, giả lập cọc, vé QR, phòng đấu do mô hình đề xuất, hủy và hoàn tiền tới quầy của nhân viên và cổng quản trị |
 | **Đánh giá mô hình** | So sánh Random Forest với các mốc so sánh ở mục 5.4 |
 
 Lệnh chạy và cách tổ chức: [README gốc](../README.md) và [backend/tests/README.md](../backend/tests/README.md).
@@ -235,7 +252,7 @@ Lệnh chạy và cách tổ chức: [README gốc](../README.md) và [backend/t
 ## 7. Giới hạn và hướng phát triển
 
 - Thu nhãn khảo sát thật và đánh giá lại mô hình ghép cặp; khi đó mới so sánh được với luật đơn giản một cách có ý nghĩa.
-- Trọng số gợi ý sân đang cố định; có thể hiệu chỉnh theo hành vi đặt sân thực tế.
+- Ngưỡng đề xuất phòng (70%) đang cố định; có thể hiệu chỉnh khi có nhãn thật.
 - Trình độ DUPR do người chơi tự khai, chưa được xác thực.
 - Triển khai nhiều tiến trình cần chuyển kênh WebSocket và tác vụ nền sang hạ tầng dùng chung (ví dụ Redis pub/sub).
 - Hoàn tiền được nhân viên chuyển khoản thủ công rồi xác nhận trên hệ thống; chưa tự động qua cổng thanh toán.

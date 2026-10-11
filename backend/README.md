@@ -10,7 +10,7 @@ backend/
 ├── app/
 │   ├── main.py             Khởi tạo ứng dụng, CORS, tác vụ nền, phục vụ ảnh /uploads
 │   ├── api/v1/endpoints/   auth, users, venues, search, bookings, payments, matches, recommendations, ml, ws
-│   ├── core/               config (biến môi trường), security (JWT, bcrypt), booking_policy, recommendation_config,
+│   ├── core/               config (biến môi trường), security (JWT, bcrypt), booking_policy, matching_policy, recommendation_config,
 │   │                       rate_limit, redis_client, websocket_manager
 │   ├── db/                 database (engine, phiên làm việc), base (đăng ký model), migrations (trạng thái schema)
 │   ├── models/             user, venue, booking, payment, match, ml (nhãn khảo sát)
@@ -72,9 +72,9 @@ python -m pytest tests/test_infrastructure.py          # kiểm tra schema khớ
 | `search` | 2 | Tìm cụm sân, lịch trống theo ngày |
 | `bookings` | 20 | Giữ chỗ tạm, tạo đơn, hủy, đơn tại quầy, check-in, thu tiền, dời lịch, hoàn tiền, thống kê |
 | `payments` | 5 | Thông tin chuyển khoản, webhook SePay, giả lập, sổ giao dịch |
-| `matches` | 11 | Phòng đấu: tạo trên đơn đã cọc, tham gia, rời, quản trị |
-| `recommendations` | 1 | Gợi ý cụm sân |
-| `ml` | 5 | Thông tin mô hình, dự đoán độ phù hợp, gợi ý bạn chơi, khảo sát thu nhãn |
+| `matches` | 11 | Phòng đấu: tạo trên đơn đã cọc, tham gia, rời, quản trị; mỗi phòng kèm độ phù hợp và cờ "mô hình đề xuất" cho người xem |
+| `recommendations` | 1 | Gợi ý cụm sân theo điểm đa tiêu chí (giao diện web hiện không dùng) |
+| `ml` | 5 | Thông tin mô hình và ngưỡng đề xuất, dự đoán độ phù hợp, xếp hạng người chơi, khảo sát thu nhãn |
 
 WebSocket: `/api/v1/ws/live` (sự kiện công khai toàn hệ thống), `/api/v1/ws/venues/{venue_id}` (lịch của một cụm sân),
 `/api/v1/ws/user/{user_id}` (kênh riêng, cần token của chính người đó). Sự kiện công khai không chứa thông tin cá nhân

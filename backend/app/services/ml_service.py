@@ -18,6 +18,7 @@ import pandas as pd
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
+from app.core.matching_policy import RECOMMEND_MIN_COMPATIBILITY
 from app.ml.features import (
     AVAILABILITY_SLOTS,
     FEATURE_NAMES,
@@ -84,6 +85,7 @@ class MatchPredictor:
             "baselines": self.meta.get("baselines"),
             "feature_importances": self.meta.get("feature_importances"),
             "trained_at": self.meta.get("trained_at"),
+            "recommend_threshold": RECOMMEND_MIN_COMPATIBILITY,
         }
 
     def predict_proba(self, rows: Sequence[Dict[str, float]]) -> List[float]:
@@ -206,6 +208,11 @@ def match_compatibility(
     for match_id, probability in zip(owners, match_predictor.predict_proba(rows)):
         scores.setdefault(match_id, []).append(probability)
     return {match_id: round(sum(values) / len(values) * 100, 1) for match_id, values in scores.items()}
+
+
+def missing_profile_fields(user: User) -> List[str]:
+    """Các mục hồ sơ mà mô hình ghép cặp cần nhưng người chơi chưa khai."""
+    return ProfileView.from_profile(user.player_profile).missing_fields()
 
 
 def predict_pair(user_a: User, user_b: User) -> dict:

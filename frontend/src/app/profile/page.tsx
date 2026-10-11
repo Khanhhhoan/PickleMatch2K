@@ -21,11 +21,6 @@ import {
   playStyleLabel,
 } from "@/lib/player";
 
-interface Amenity {
-  id: number;
-  name: string;
-}
-
 interface Transaction {
   id: number;
   transaction_code?: string | null;
@@ -51,8 +46,6 @@ interface ProfileForm {
   matches_won: string;
   purpose: string;
   availability: string[];
-  preferred_amenity_ids: number[];
-  budget_max: string;
   latitude: number | null;
   longitude: number | null;
 }
@@ -67,8 +60,6 @@ const EMPTY_FORM: ProfileForm = {
   matches_won: "",
   purpose: "",
   availability: [],
-  preferred_amenity_ids: [],
-  budget_max: "",
   latitude: null,
   longitude: null,
 };
@@ -85,7 +76,6 @@ function ProfileContent() {
   const { success: toastSuccess, error: toastError } = useToast();
 
   const [form, setForm] = useState<ProfileForm>(EMPTY_FORM);
-  const [amenities, setAmenities] = useState<Amenity[]>([]);
   const [locationName, setLocationName] = useState("");
   const [saving, setSaving] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
@@ -118,8 +108,6 @@ function ProfileContent() {
       matches_won: profile.matches_won != null ? String(profile.matches_won) : "",
       purpose: profile.purpose || "",
       availability: profile.availability || [],
-      preferred_amenity_ids: profile.preferred_amenity_ids || [],
-      budget_max: profile.budget_max ? String(profile.budget_max) : "",
       latitude: profile.latitude ?? null,
       longitude: profile.longitude ?? null,
     });
@@ -129,10 +117,6 @@ function ProfileContent() {
       setLocationName("");
     }
   }, [profile]);
-
-  useEffect(() => {
-    fetchApi("/venues/amenities").then((data) => setAmenities(Array.isArray(data) ? data : [])).catch(() => setAmenities([]));
-  }, []);
 
   const loadTransactions = useCallback(() => {
     setLoadingTxns(true);
@@ -150,14 +134,6 @@ function ProfileContent() {
     setForm((prev) => ({
       ...prev,
       availability: prev.availability.includes(slot) ? prev.availability.filter((s) => s !== slot) : [...prev.availability, slot],
-    }));
-
-  const toggleAmenity = (id: number) =>
-    setForm((prev) => ({
-      ...prev,
-      preferred_amenity_ids: prev.preferred_amenity_ids.includes(id)
-        ? prev.preferred_amenity_ids.filter((a) => a !== id)
-        : [...prev.preferred_amenity_ids, id],
     }));
 
   const applyLocation = (lat: number, lng: number, name: string) => {
@@ -204,8 +180,6 @@ function ProfileContent() {
           matches_won: won,
           purpose: form.purpose || null,
           availability: form.availability,
-          preferred_amenity_ids: form.preferred_amenity_ids,
-          budget_max: form.budget_max ? Number(form.budget_max) : 0,
           latitude: form.latitude,
           longitude: form.longitude,
         }),
@@ -311,21 +285,21 @@ function ProfileContent() {
                   <Stat label="Tuổi" value={profile?.age != null ? String(profile.age) : "—"} />
                 </div>
                 <p className="mt-3 text-[10px] text-zinc-400 leading-relaxed">
-                  Trình độ và số trận là thông tin bạn tự khai, dùng để gợi ý bạn chơi phù hợp.
+                  Trình độ và số trận là thông tin bạn tự khai; mô hình ghép cặp dùng trình độ để đề xuất phòng đấu phù hợp.
                 </p>
               </div>
 
               {user.role === "PLAYER" && (
                 <div className="p-3.5 rounded-xl bg-white border border-zinc-200/80 text-xs shadow-xs space-y-2">
-                  <p className="font-semibold text-zinc-900">Gợi ý ghép cặp</p>
+                  <p className="font-semibold text-zinc-900">Hồ sơ ghép cặp</p>
                   {missingForMatching.length > 0 ? (
                     <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 leading-relaxed">
-                      Hồ sơ còn thiếu: {missingForMatching.map((f) => PROFILE_FIELD_LABEL[f]).join(", ")}. Bổ sung để gợi ý
-                      chính xác hơn.
+                      Hồ sơ còn thiếu: {missingForMatching.map((f) => PROFILE_FIELD_LABEL[f]).join(", ")}. Bổ sung để mô hình
+                      đề xuất phòng đấu chính xác hơn.
                     </p>
                   ) : (
                     <p className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-2">
-                      Hồ sơ đã đủ thông tin cho gợi ý ghép cặp.
+                      Hồ sơ đã đủ thông tin để mô hình đề xuất phòng đấu.
                     </p>
                   )}
                   <Link href="/survey" className="block w-full py-1.5 text-center bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-lg font-medium transition">
@@ -441,12 +415,7 @@ function ProfileContent() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    <Field label="Ngân sách tối đa mỗi giờ thuê sân (VNĐ)">
-                      <input type="number" min={0} step={10000} className={INPUT} value={form.budget_max}
-                        placeholder="Để trống nếu không giới hạn"
-                        onChange={(e) => setForm({ ...form, budget_max: e.target.value })} />
-                    </Field>
+                  <div>
                     <Field label="Khu vực thường chơi">
                       <div className="flex gap-2">
                         <input type="text" readOnly className={`${INPUT} bg-zinc-50`}
@@ -462,30 +431,6 @@ function ProfileContent() {
                       </div>
                     </Field>
                   </div>
-
-                  {amenities.length > 0 && (
-                    <div>
-                      <p className="text-xs font-semibold text-zinc-800 mb-1.5">Tiện ích bạn ưu tiên khi chọn sân</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {amenities.map((amenity) => {
-                          const checked = form.preferred_amenity_ids.includes(amenity.id);
-                          return (
-                            <button
-                              key={amenity.id}
-                              type="button"
-                              aria-pressed={checked}
-                              onClick={() => toggleAmenity(amenity.id)}
-                              className={`px-2.5 py-1 rounded-full border text-[11px] font-medium transition cursor-pointer ${
-                                checked ? "bg-zinc-900 border-zinc-900 text-white" : "bg-white border-zinc-200 text-zinc-700 hover:border-zinc-400"
-                              }`}
-                            >
-                              {amenity.name}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
 
                   <button type="submit" disabled={saving}
                     className="w-full sm:w-auto px-6 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-semibold text-xs shadow-xs transition-all btn-press disabled:opacity-60 cursor-pointer">

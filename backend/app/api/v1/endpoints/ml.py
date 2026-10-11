@@ -15,11 +15,14 @@ router = APIRouter()
 def model_info(db: Session = Depends(deps.get_db), current_user: User = Depends(deps.get_current_active_user)):
     """
     Trạng thái mô hình ghép cặp: thuật toán, đặc trưng, nguồn dữ liệu huấn luyện (khảo sát thật hay
-    dữ liệu tổng hợp khởi tạo), cách đánh giá và các chỉ số kèm mốc so sánh.
+    dữ liệu tổng hợp khởi tạo), cách đánh giá, các chỉ số kèm mốc so sánh và ngưỡng đề xuất phòng đấu.
+    Người chơi nhận thêm danh sách mục hồ sơ còn thiếu để mô hình chấm điểm chính xác.
     """
     info = ml_service.match_predictor.info()
     if current_user.role == UserRole.ADMIN.value:
         info["survey"] = ml_service.feedback_summary(db)
+    elif current_user.role == UserRole.PLAYER.value:
+        info["missing_profile_fields"] = ml_service.missing_profile_fields(current_user)
     return info
 
 

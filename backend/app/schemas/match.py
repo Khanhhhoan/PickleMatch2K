@@ -103,5 +103,7 @@ class MatchResponse(BaseModel):
     participants: List[MatchParticipantResponse] = []
     # Độ phù hợp do mô hình ghép cặp ước lượng (0-100); None khi chưa có mô hình hoặc chưa đăng nhập
     compatibility: Optional[float] = None
+    # True khi độ phù hợp đạt ngưỡng đề xuất (app/core/matching_policy.py)
+    is_recommended: bool = False
 
     model_config = ConfigDict(from_attributes=True)

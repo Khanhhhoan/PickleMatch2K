@@ -1,4 +1,4 @@
-# PickleMatch2K - Hệ thống đặt sân Pickleball, gợi ý sân và ghép người chơi
+# PickleMatch2K - Hệ thống đặt sân và ghép trận Pickleball
 
 > **Khóa luận tốt nghiệp** - Đề tài: Xây dựng hệ thống đặt sân Pickleball tích hợp gợi ý sân và AI ghép người chơi thông minh.
 
@@ -8,17 +8,21 @@ PickleMatch2K gồm một API và hai ứng dụng web phục vụ bốn vai tr�
 
 | Vai trò | Cổng | Việc chính |
 | :--- | :--- | :--- |
-| **Người chơi** | `http://localhost:3000` | Tìm sân theo vị trí, xem lịch trống theo thời gian thực, đặt sân và cọc 50% qua VietQR, nhận vé QR, hủy/hoàn tiền theo chính sách, mở phòng đấu trên đơn đã cọc, nhận gợi ý sân và bạn chơi |
+| **Người chơi** | `http://localhost:3000` | Tìm sân theo vị trí, xem lịch trống theo thời gian thực, đặt sân và cọc 50% qua VietQR, nhận vé QR, hủy/hoàn tiền theo chính sách, mở phòng đấu trên đơn đã cọc, tham gia các phòng đấu do mô hình đề xuất |
 | **Chủ sân** | `http://localhost:3000/owner` | Thông tin cụm sân, sân con, bảng giá theo khung giờ, giờ mở cửa, nhân viên, quầy đặt sân, doanh thu |
 | **Nhân viên** | `http://localhost:3000/staff` | Quầy đặt sân của cụm sân được phân công: tạo đơn tại quầy, tra mã/quét QR, check-in, thu tiền, dời lịch, xác nhận hoàn tiền |
 | **Quản trị viên** | `http://localhost:3001` | Duyệt cụm sân, khóa/mở tài khoản, giám sát đơn đặt, giao dịch, phòng đấu và mô hình ghép cặp |
 
-Hai thành phần "thông minh" của đề tài:
+Hai trọng tâm của hệ thống:
 
-- **Gợi ý cụm sân**: lọc → chấm điểm đa tiêu chí (khoảng cách, giá, giờ trống, đánh giá, tiện ích) → xếp hạng.
-- **Ghép người chơi**: mô hình Random Forest trên 5 đặc trưng của một cặp người chơi.
+- **Quy trình đặt sân**: giữ chỗ → đặt → cọc 50% qua VietQR → vé QR → check-in → thu phần còn lại, kèm hủy và hoàn tiền
+  theo chính sách.
+- **Ghép trận bằng Random Forest**: mô hình ước lượng độ phù hợp giữa người chơi và từng phòng đấu đã mở, rồi đề xuất
+  những phòng có độ phù hợp cao (từ 70%).
 
-Công thức, tham số và kết quả đánh giá: xem [docs/HUONG_DAN_KLTN.md](docs/HUONG_DAN_KLTN.md).
+Thuật toán gợi ý cụm sân theo điểm đa tiêu chí vẫn có ở backend (`GET /api/v1/recommendations/venues`) nhưng giao diện
+không dùng; trang chủ liệt kê cụm sân từ gần đến xa. Đặc trưng, dữ liệu và kết quả đánh giá của mô hình: xem
+[docs/HUONG_DAN_KLTN.md](docs/HUONG_DAN_KLTN.md).
 
 ## 2. Công nghệ
 
@@ -180,7 +184,7 @@ python -m pytest                                  # từ thư mục gốc, kho�
 python -m pytest backend/tests/test_payments.py -q
 ```
 
-**Kiểm thử đầu-cuối qua trình duyệt** - 18 bước cho cả bốn vai trò. Script tạo và hủy đơn nên chỉ chạy trên
+**Kiểm thử đầu-cuối qua trình duyệt** - 20 bước cho cả bốn vai trò. Script tạo và hủy đơn nên chỉ chạy trên
 CSDL demo, với `SEPAY_SIMULATOR_ENABLED=true` và hai ứng dụng web đã build (`npm run build && npm start`):
 
 ```powershell
@@ -207,7 +211,7 @@ Lệnh in sẵn câu lệnh khôi phục. Muốn quay lại dữ liệu cũ: kh�
 python scripts/backup_db.py --restore-into pickleball_khoi_phuc --file ..\backups\<ten_file>.dump
 ```
 
-Sau khi nâng cấp, các tài khoản demo cũ chưa có mục đích chơi, khung rảnh, ngân sách; bổ sung giá trị mẫu bằng
+Sau khi nâng cấp, các tài khoản demo cũ chưa có mục đích chơi và khung rảnh; bổ sung giá trị mẫu bằng
 `python manage.py seed --preferences` (không đổi dữ liệu khác).
 
 ## 10. Giới hạn đã biết
@@ -228,4 +232,4 @@ Sau khi nâng cấp, các tài khoản demo cũ chưa có mục đích chơi, kh
 - [backend/scripts/README.md](backend/scripts/README.md) - script quản trị, sao lưu, nhập Excel
 - [backend/tests/README.md](backend/tests/README.md) - cách tổ chức bộ kiểm thử
 - [docs/DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md) - thiết kế CSDL và các ràng buộc
-- [docs/HUONG_DAN_KLTN.md](docs/HUONG_DAN_KLTN.md) - thuật toán gợi ý sân và mô hình ghép cặp
+- [docs/HUONG_DAN_KLTN.md](docs/HUONG_DAN_KLTN.md) - nghiệp vụ đặt sân, mô hình ghép cặp và cách đề xuất phòng đấu

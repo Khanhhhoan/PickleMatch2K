@@ -254,3 +254,15 @@ def test_model_info_shows_survey_progress_to_admin_only(client, db):
     assert "survey" not in client.get(f"{ML}/model-info", headers=auth(player)).json()
     info = client.get(f"{ML}/model-info", headers=auth(admin)).json()
     assert info["survey"] == {"labels": 1, "positive": 1, "raters": 1} and info["available"] is True
+
+
+def test_model_info_gives_the_recommendation_threshold_and_what_a_player_still_has_to_fill_in(client, db):
+    from app.core.matching_policy import RECOMMEND_MIN_COMPATIBILITY
+
+    player = make_user(db, "PLAYER", skill_level=3.5)      # chưa khai vị trí, khung rảnh, mục đích, lối đánh
+    info = client.get(f"{ML}/model-info", headers=auth(player)).json()
+    assert info["recommend_threshold"] == RECOMMEND_MIN_COMPATIBILITY == 70
+    assert info["missing_profile_fields"] == ["location", "availability", "purpose", "play_style"]
+
+    admin = make_user(db, "ADMIN")
+    assert "missing_profile_fields" not in client.get(f"{ML}/model-info", headers=auth(admin)).json()

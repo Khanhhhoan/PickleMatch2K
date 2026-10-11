@@ -53,8 +53,8 @@ Ký hiệu: **PK** khóa chính, **FK** khóa ngoại, **U** duy nhất, **NN** 
 | `play_style` | VARCHAR | Phong cách chơi |
 | `purpose` | VARCHAR | `recreational`, `practice`, `competitive` |
 | `availability` | VARCHAR | Danh sách khung rảnh trong tuần (JSON), ví dụ `sat_morning` |
-| `preferred_amenities` | VARCHAR | Danh sách mã tiện ích ưa thích (JSON) |
-| `budget_max` | FLOAT | Ngân sách tối đa mỗi giờ (VNĐ) |
+| `preferred_amenities` | VARCHAR | Danh sách mã tiện ích ưa thích (JSON). Chỉ thuật toán gợi ý sân ở backend dùng; giao diện không còn nhập |
+| `budget_max` | FLOAT | Ngân sách tối đa mỗi giờ (VNĐ). Chỉ thuật toán gợi ý sân ở backend dùng; giao diện không còn nhập |
 | `latitude`, `longitude` | FLOAT | Vị trí thường chơi |
 | `matches_played`, `matches_won` | INTEGER | |
 

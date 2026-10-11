@@ -5,6 +5,7 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.matching_policy import RECOMMEND_MIN_COMPATIBILITY
 from app.core.websocket_manager import dispatch, manager
 from app.models.booking import Booking, BookingSource, BookingStatus
 from app.models.match import Match, MatchParticipant, MatchStatus, ParticipantStatus
@@ -42,6 +43,7 @@ def serialize_match(match: Match, viewer_id: Optional[int] = None, compatibility
         for participant in response.participants:
             participant.phone = None
     response.compatibility = compatibility
+    response.is_recommended = compatibility is not None and compatibility >= RECOMMEND_MIN_COMPATIBILITY
     return response
 
 

@@ -4,7 +4,6 @@ import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { fetchApi, formatVND } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useWebSocket } from "@/lib/use-websocket";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import VenueImageHoverSlider from "@/components/VenueImageHoverSlider";
@@ -16,22 +15,6 @@ import {
   saveLocation,
 } from "@/lib/location";
 
-interface Recommendation {
-  venue: any;
-  score: number;
-  distance_score: number | null;
-  price_score: number | null;
-  time_score: number;
-  rating_score: number;
-  preference_score: number | null;
-  distance_km: number | null;
-  avg_price: number | null;
-  avg_rating: number | null;
-  review_count: number;
-  free_slots: number;
-  total_slots: number;
-}
-
 const WEEKDAY_INDEX = (new Date().getDay() + 6) % 7; // 0 = Thứ Hai, khớp day_of_week của máy chủ
 
 export default function HomePage() {
@@ -40,25 +23,7 @@ export default function HomePage() {
   const [venues, setVenues] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
-
-  const { lastMessage } = useWebSocket("/api/v1/ws/live");
-
-  // Gợi ý theo điểm đa tiêu chí (khoảng cách, giá, giờ trống, đánh giá, tiện ích ưa thích)
-  const loadRecommendations = async (coords?: { lat: number; lng: number }) => {
-    try {
-      const params = new URLSearchParams({ top_n: "3" });
-      if (coords) {
-        params.append("latitude", coords.lat.toString());
-        params.append("longitude", coords.lng.toString());
-      }
-      const data = await fetchApi(`/recommendations/venues?${params.toString()}`);
-      setRecommendations(Array.isArray(data) ? data : []);
-    } catch {
-      setRecommendations([]);
-    }
-  };
 
   // Load venues based on keyword and coordinates
   const loadVenues = async (searchKeyword = "", coords?: { lat: number; lng: number }) => {
@@ -97,20 +62,12 @@ export default function HomePage() {
     setUserLocation(initialLoc);
     const coords = initialLoc ? { lat: initialLoc.lat, lng: initialLoc.lng } : undefined;
     loadVenues(keyword, coords);
-    loadRecommendations(coords);
   }, [user]);
-
-  // Số khung giờ trống thay đổi khi có người đặt/hủy: làm mới phần gợi ý
-  useEffect(() => {
-    if (!lastMessage || !["SLOT_BOOKED", "SLOT_RELEASED"].includes(lastMessage.type)) return;
-    loadRecommendations(userLocation ? { lat: userLocation.lat, lng: userLocation.lng } : undefined);
-  }, [lastMessage]);
 
   const handleSelectLocation = (loc: UserLocation) => {
     saveLocation(loc);
     setUserLocation(loc);
     loadVenues(keyword, { lat: loc.lat, lng: loc.lng });
-    loadRecommendations({ lat: loc.lat, lng: loc.lng });
   };
 
   const handleSearch = (e: React.FormEvent) => {
@@ -238,65 +195,8 @@ export default function HomePage() {
 
       {/* Venues Listing & Simple District Filter */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
-        {/* Vị trí đang dùng để tính khoảng cách */}
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm bg-white border border-zinc-200 rounded-2xl px-4 py-3">
-          <span className="text-zinc-600">
-            {userLocation ? (
-              <>
-                Khoảng cách tính từ: <strong className="text-zinc-950">{userLocation.name}</strong>
-              </>
-            ) : (
-              "Chưa có vị trí của bạn nên chưa tính được khoảng cách tới các cụm sân."
-            )}
-          </span>
-          <button
-            type="button"
-            onClick={() => setIsLocationModalOpen(true)}
-            className="px-3.5 py-1.5 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white text-xs font-bold cursor-pointer"
-          >
-            {userLocation ? "Đổi vị trí" : "Chọn vị trí"}
-          </button>
-        </div>
-
-        {/* Gợi ý theo điểm đa tiêu chí */}
-        {recommendations.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-xl sm:text-2xl font-black text-zinc-950 tracking-tight">Gợi Ý Cho Bạn Hôm Nay</h2>
-            <p className="text-xs text-zinc-500 mt-1 mb-4">
-              Xếp hạng theo khoảng cách, giá, số khung giờ còn trống, đánh giá và tiện ích bạn ưu tiên. Tiêu chí chưa có
-              dữ liệu (ví dụ chưa chọn vị trí) không được tính.
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {recommendations.map((rec, index) => (
-                <Link
-                  key={rec.venue.id}
-                  href={`/venues/${rec.venue.id}`}
-                  className="bg-white rounded-2xl border border-zinc-200/90 shadow-xs hover:shadow-md transition p-4 space-y-2.5"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="font-black text-zinc-950 text-sm leading-snug">
-                      <span className="text-zinc-400 mr-1.5">#{index + 1}</span>
-                      {rec.venue.name}
-                    </p>
-                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-zinc-900 text-white shrink-0">
-                      {(rec.score * 100).toFixed(0)} điểm
-                    </span>
-                  </div>
-                  <ul className="text-[11px] text-zinc-600 space-y-1">
-                    <ScoreRow label="Khoảng cách" score={rec.distance_score} detail={rec.distance_km != null ? `${rec.distance_km} km` : "chưa có vị trí"} />
-                    <ScoreRow label="Giá" score={rec.price_score} detail={rec.avg_price != null ? `${formatVND(rec.avg_price)}/giờ` : "chưa có giá"} />
-                    <ScoreRow label="Giờ trống" score={rec.time_score} detail={`${rec.free_slots}/${rec.total_slots} khung`} />
-                    <ScoreRow label="Đánh giá" score={rec.rating_score} detail={rec.review_count > 0 ? `${rec.avg_rating?.toFixed(1)} (${rec.review_count})` : "chưa có đánh giá"} />
-                    <ScoreRow label="Tiện ích ưu tiên" score={rec.preference_score} detail={rec.preference_score == null ? "chưa khai trong hồ sơ" : ""} />
-                  </ul>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Simple & Clean District Filter Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        {/* Tiêu đề danh sách, vị trí dùng để tính khoảng cách và bộ lọc khu vực */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
           <div className="flex items-center gap-2">
             <h2 className="text-xl sm:text-2xl font-black text-zinc-950 tracking-tight">
               Danh Sách Cụm Sân
@@ -306,24 +206,44 @@ export default function HomePage() {
             </span>
           </div>
 
-          {/* District Dropdown Selector */}
-          <div className="relative shrink-0">
-            <select
-              value={selectedDistrict}
-              onChange={(e) => setSelectedDistrict(e.target.value)}
-              className="bg-white border-2 border-zinc-950 text-zinc-950 font-bold text-xs sm:text-sm rounded-xl px-4 py-2.5 pr-9 focus:outline-none focus:ring-2 focus:ring-zinc-950 cursor-pointer shadow-xs appearance-none transition"
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Có vị trí thì danh sách xếp từ gần đến xa */}
+            <button
+              type="button"
+              onClick={() => setIsLocationModalOpen(true)}
+              title="Vị trí dùng để tính khoảng cách và xếp cụm sân từ gần đến xa"
+              className="max-w-full flex items-center gap-1.5 bg-white border border-zinc-200 hover:border-zinc-400 text-zinc-700 text-xs sm:text-sm rounded-xl px-3.5 py-2.5 cursor-pointer transition"
             >
-              <option value="all">Tất cả khu vực TP.HCM ({venues.length})</option>
-              {ALL_DISTRICTS.filter((d) => d.id !== "all").map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name} {districtCounts[d.id] > 0 ? `(${districtCounts[d.id]} sân)` : ""}
-                </option>
-              ))}
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-zinc-900 font-bold">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-              </svg>
+              {userLocation ? (
+                <>
+                  <span className="text-zinc-500 shrink-0">Gần:</span>
+                  <strong className="text-zinc-950 truncate max-w-[14rem]">{userLocation.name}</strong>
+                  <span className="text-zinc-400 shrink-0">· Đổi</span>
+                </>
+              ) : (
+                <span className="font-semibold">Chọn vị trí để xem khoảng cách</span>
+              )}
+            </button>
+
+            {/* District Dropdown Selector */}
+            <div className="relative shrink-0">
+              <select
+                value={selectedDistrict}
+                onChange={(e) => setSelectedDistrict(e.target.value)}
+                className="bg-white border-2 border-zinc-950 text-zinc-950 font-bold text-xs sm:text-sm rounded-xl px-4 py-2.5 pr-9 focus:outline-none focus:ring-2 focus:ring-zinc-950 cursor-pointer shadow-xs appearance-none transition"
+              >
+                <option value="all">Tất cả khu vực TP.HCM ({venues.length})</option>
+                {ALL_DISTRICTS.filter((d) => d.id !== "all").map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} {districtCounts[d.id] > 0 ? `(${districtCounts[d.id]} sân)` : ""}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-zinc-900 font-bold">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
             </div>
           </div>
         </div>
@@ -563,17 +483,5 @@ export default function HomePage() {
       {/* Rich Interactive Footer */}
       <Footer />
     </div>
-  );
-}
-
-function ScoreRow({ label, score, detail }: { label: string; score: number | null; detail: string }) {
-  return (
-    <li className="flex items-center gap-2">
-      <span className="w-24 shrink-0">{label}</span>
-      <span className="flex-1 h-1.5 rounded-full bg-zinc-100 overflow-hidden">
-        {score != null && <span className="block h-full bg-zinc-900 rounded-full" style={{ width: `${Math.round(score * 100)}%` }} />}
-      </span>
-      <span className="w-28 shrink-0 text-right text-zinc-500 truncate">{detail || (score != null ? `${Math.round(score * 100)}%` : "—")}</span>
-    </li>
   );
 }

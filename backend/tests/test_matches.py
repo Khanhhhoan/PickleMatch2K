@@ -202,6 +202,27 @@ def test_logged_in_player_gets_model_compatibility_for_each_match(client, world,
     assert seen["id"] == match["id"] and 0 <= seen["compatibility"] <= 100
 
 
+def test_only_rooms_the_model_rates_highly_are_recommended(client, db, world, clock):
+    """Phòng được "mô hình đề xuất" khi độ phù hợp đạt ngưỡng; người lệch trình độ xa không được đề xuất phòng đó."""
+    from app.core.matching_policy import RECOMMEND_MIN_COMPATIBILITY
+
+    booking = confirmed_booking(client, world.p1, world.court, clock.day(1), hours=(18,))
+    open_match(client, world.p1, booking)
+    far_level = make_user(db, "PLAYER", "pro@example.com", skill_level=5.5, latitude=10.78, longitude=106.70)
+
+    [for_peer] = client.get(MATCHES, headers=auth(world.p2)).json()        # cùng trình độ 3.5, cùng khu vực
+    assert for_peer["compatibility"] >= RECOMMEND_MIN_COMPATIBILITY and for_peer["is_recommended"] is True
+
+    [for_pro] = client.get(MATCHES, headers=auth(far_level)).json()        # chênh 2.0 điểm trình độ
+    assert for_pro["compatibility"] < RECOMMEND_MIN_COMPATIBILITY and for_pro["is_recommended"] is False
+
+    [public] = client.get(MATCHES).json()                                  # chưa đăng nhập: không có điểm, không đề xuất
+    assert public["compatibility"] is None and public["is_recommended"] is False
+
+    [mine] = client.get(MATCHES, headers=auth(world.p1)).json()            # phòng chỉ có mình: không có ai để so
+    assert mine["compatibility"] is None and mine["is_recommended"] is False
+
+
 # ---------------------------------------------------------------------------
 # Admin
 # ---------------------------------------------------------------------------
