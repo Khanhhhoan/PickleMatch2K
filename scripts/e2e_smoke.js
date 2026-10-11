@@ -351,6 +351,18 @@ async function main() {
       await page.goto(`${WEB}/bookings?tab=cancelled`, { waitUntil: "networkidle2" });
       await waitForText(page, bookingCode);
       await waitForText(page, "Chờ hoàn");
+      // bộ lọc của tab này: chỉ xem các đơn đang chờ hoàn tiền
+      await page.select("#booking-refund-filter", "pending");
+      await sleep(300);
+      const waiting = await page.evaluate(() =>
+        [...document.querySelectorAll("main div.rounded-2xl")]
+          .filter((el) => el.querySelector("span.font-mono"))
+          .map((el) => el.innerText.includes("Chờ hoàn")),
+      );
+      if (waiting.length === 0 || waiting.includes(false)) throw new Error("Lọc \"Chờ hoàn tiền\" vẫn hiện đơn không chờ hoàn");
+      if (!(await hasText(page, bookingCode))) throw new Error("Đơn vừa hủy không có trong danh sách chờ hoàn tiền");
+      await page.select("#booking-refund-filter", "all");
+      await sleep(300);
       // các phiếu xếp theo ngày chơi: mới nhất trước, đổi được sang cũ nhất trước
       const cardDates = () =>
         page.evaluate(() =>

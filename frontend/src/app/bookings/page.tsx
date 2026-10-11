@@ -42,13 +42,8 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "all", label: "Tất Cả" },
 ];
 
-const FILTER_DESCRIPTION: Record<Filter, string> = {
-  pending: "Đơn đang giữ chỗ, chờ bạn chuyển khoản tiền cọc trước khi hết thời gian",
-  upcoming: "Lịch đã thanh toán cọc và sẵn sàng thi đấu",
-  completed: "Các lượt đặt sân đã qua giờ chơi",
-  cancelled: "Đơn đã hủy hoặc hết hạn giữ chỗ, kèm tiến độ hoàn tiền",
-  all: "Toàn bộ lịch đặt sân của bạn",
-};
+const SELECT =
+  "px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-white text-xs font-semibold text-zinc-800 cursor-pointer focus:outline-none focus:border-zinc-900";
 
 const EMPTY_MESSAGE: Record<Filter, string> = {
   pending: "Không có đơn nào đang chờ thanh toán cọc",
@@ -116,6 +111,7 @@ function PlayerBookingsContent() {
   const [expandedIds, setExpandedIds] = useState<number[]>([]);
   const [filter, setFilter] = useState<Filter>("upcoming");
   const [sortOrder, setSortOrder] = useState<SortOrder>("newest"); // thứ tự phiếu theo ngày chơi
+  const [refundOnly, setRefundOnly] = useState(false); // tab Hủy / Hết Hạn: chỉ xem đơn đang chờ hoàn tiền
   const [checkoutBookingId, setCheckoutBookingId] = useState<number | null>(null);
 
   // Hộp thoại hủy đơn: số tiền hoàn do máy chủ tính theo chính sách hủy
@@ -205,8 +201,10 @@ function PlayerBookingsContent() {
   bookings.forEach((b) => (counts[bookingGroup(b)] += 1));
   // Phiếu xếp theo ngày chơi (mặc định mới nhất trước); cùng ngày giờ thì đơn tạo sau đứng trước
   const direction = sortOrder === "newest" ? -1 : 1;
+  const awaitingRefund = bookings.filter((b) => bookingGroup(b) === "cancelled" && b.refund_status === "PENDING").length;
+  const refundFilterOn = filter === "cancelled" && refundOnly;
   const displayed = (filter === "all" ? bookings : bookings.filter((b) => bookingGroup(b) === filter))
-    .slice()
+    .filter((b) => !refundFilterOn || b.refund_status === "PENDING")
     .sort((a, b) => direction * playMoment(a).localeCompare(playMoment(b)) || b.id - a.id);
 
   return (
@@ -215,12 +213,7 @@ function PlayerBookingsContent() {
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-7 sm:py-9 flex-1 w-full">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-black text-zinc-950 tracking-tight">Lịch Đặt Sân Của Bạn</h1>
-            <p className="text-xs sm:text-sm text-zinc-500 mt-1">
-              {FILTER_DESCRIPTION[filter]} ({counts[filter]})
-            </p>
-          </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-zinc-950 tracking-tight">Lịch Đặt Sân Của Bạn</h1>
           <Link
             href="/"
             className="px-4 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-bold text-xs shadow-xs transition-all btn-press cursor-pointer self-start sm:self-auto"
@@ -265,18 +258,31 @@ function PlayerBookingsContent() {
           ))}
         </div>
 
-        {bookings.length > 1 && (
-          <div className="flex items-center justify-end gap-2 mb-4 text-xs text-zinc-500">
-            <label htmlFor="booking-sort">Sắp xếp theo ngày chơi</label>
-            <select
-              id="booking-sort"
-              value={sortOrder}
-              onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-              className="px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-white text-xs font-semibold text-zinc-800 cursor-pointer focus:outline-none focus:border-zinc-900"
-            >
-              <option value="newest">Mới nhất trước</option>
-              <option value="oldest">Cũ nhất trước</option>
-            </select>
+        {(bookings.length > 1 || (filter === "cancelled" && counts.cancelled > 0)) && (
+          <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 mb-4 text-xs text-zinc-500">
+            {filter === "cancelled" && counts.cancelled > 0 && (
+              <div className="flex items-center gap-2">
+                <label htmlFor="booking-refund-filter">Hiển thị</label>
+                <select
+                  id="booking-refund-filter"
+                  value={refundOnly ? "pending" : "all"}
+                  onChange={(e) => setRefundOnly(e.target.value === "pending")}
+                  className={SELECT}
+                >
+                  <option value="all">Tất cả ({counts.cancelled})</option>
+                  <option value="pending">Chờ hoàn tiền ({awaitingRefund})</option>
+                </select>
+              </div>
+            )}
+            {bookings.length > 1 && (
+              <div className="flex items-center gap-2">
+                <label htmlFor="booking-sort">Sắp xếp theo ngày chơi</label>
+                <select id="booking-sort" value={sortOrder} onChange={(e) => setSortOrder(e.target.value as SortOrder)} className={SELECT}>
+                  <option value="newest">Mới nhất trước</option>
+                  <option value="oldest">Cũ nhất trước</option>
+                </select>
+              </div>
+            )}
           </div>
         )}
 
@@ -291,13 +297,17 @@ function PlayerBookingsContent() {
           </div>
         ) : displayed.length === 0 ? (
           <div className="text-center py-14 bg-white rounded-2xl border border-zinc-200 p-6">
-            <h3 className="font-semibold text-zinc-900 text-sm">{EMPTY_MESSAGE[filter]}</h3>
-            <Link
-              href="/"
-              className="mt-4 inline-block px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold btn-press shadow-xs transition"
-            >
-              Tìm Sân Và Đặt Lịch →
-            </Link>
+            <h3 className="font-semibold text-zinc-900 text-sm">
+              {refundFilterOn ? "Không có đơn nào đang chờ hoàn tiền" : EMPTY_MESSAGE[filter]}
+            </h3>
+            {!refundFilterOn && (
+              <Link
+                href="/"
+                className="mt-4 inline-block px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold btn-press shadow-xs transition"
+              >
+                Tìm Sân Và Đặt Lịch →
+              </Link>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
