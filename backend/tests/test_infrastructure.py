@@ -207,6 +207,62 @@ def test_demo_seed_builds_a_consistent_dataset(client, db):
     assert seed.apply_demo_preferences(db) == 0             # không ghi đè sở thích đã có
 
 
+def test_match_demo_adds_rooms_to_a_database_in_use_without_touching_what_is_there(client, db):
+    """`python manage.py seed --matches`: thêm người chơi và phòng đấu mẫu để thử ghép trận, chạy lại được."""
+    from scripts import seed
+
+    seed.seed_database()
+    fingerprint = text("""
+        SELECT md5(string_agg(concat_ws('|', u.id, u.email, u.is_active, p.skill_level, p.play_style, p.purpose,
+                                        p.availability, p.latitude, p.longitude, p.phone), ';' ORDER BY u.id))
+        FROM users u LEFT JOIN player_profiles p ON p.user_id = u.id WHERE u.email NOT LIKE 'ghep%@example.com'
+    """)
+    existing_accounts = db.execute(fingerprint).scalar()
+    existing_bookings = db.execute(text("SELECT count(*), coalesce(sum(paid_amount), 0) FROM bookings")).one()
+    existing_rooms = {row[0] for row in db.execute(text("SELECT id FROM matches")).all()}
+
+    result = seed.seed_match_demo(db)
+
+    assert result["players"] == 12 and len(result["rooms"]) == 10 and result["skipped"] == []
+    db.expire_all()
+    assert db.execute(fingerprint).scalar() == existing_accounts              # tài khoản có sẵn không bị sửa
+    new_rooms = db.query(Match).filter(Match.id.notin_(existing_rooms)).all()
+    assert sorted(room.status for room in new_rooms) == ["FULL"] + ["OPEN"] * 9
+    assert sorted({room.creator.player_profile.skill_level for room in new_rooms}) == [2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
+    assert any(len(room.participants) == room.num_players - 1 for room in new_rooms)   # có phòng còn đúng 1 chỗ
+    for room in new_rooms:                                                    # mỗi phòng có sân thật, đã cọc
+        assert room.creator.email.startswith("ghep") and room.booking.status == "CONFIRMED"
+        assert room.booking.paid_amount == room.booking.deposit_amount > 0
+        assert all(p.user.email.startswith("ghep") for p in room.participants)
+
+    deposits = db.query(PaymentTransaction).filter(PaymentTransaction.gateway == seed.MATCH_DEMO_GATEWAY).all()
+    assert len(deposits) == 10 and all(t.reference_number.startswith("DEMO-PK2K") for t in deposits)
+    after = db.execute(text("SELECT count(*), coalesce(sum(paid_amount), 0) FROM bookings")).one()
+    assert after[0] == existing_bookings[0] + 10 and after[1] == existing_bookings[1] + sum(t.amount_in for t in deposits)
+    clashes = db.execute(text("""
+        SELECT count(*) FROM match_participants a JOIN matches ma ON ma.id = a.match_id
+        JOIN match_participants b ON b.user_id = a.user_id AND b.match_id > a.match_id JOIN matches mb ON mb.id = b.match_id
+        WHERE ma.status IN ('OPEN', 'FULL') AND mb.status IN ('OPEN', 'FULL')
+          AND ma.date = mb.date AND ma.start_time < mb.end_time AND mb.start_time < ma.end_time
+    """)).scalar()
+    assert clashes == 0                                                       # không ai ở hai phòng trùng giờ
+
+    # Người chơi có sẵn mở trang ghép trận: có phòng được mô hình đề xuất, có phòng không
+    viewer = db.query(User).filter_by(email="player@example.com").one()       # trình 3.5
+    rooms = [m for m in client.get("/api/v1/matches", headers=auth(viewer)).json() if m["id"] not in existing_rooms]
+    joinable = [m for m in rooms if m["status"] == "OPEN"]
+    assert len(rooms) == 10 and len(joinable) == 9
+    assert {m["is_recommended"] for m in joinable} == {True, False}
+    login = client.post("/api/v1/auth/login", data={"username": "ghep01@example.com", "password": seed.DEMO_PASSWORD})
+    assert login.status_code == 200
+    mine = client.get("/api/v1/ml/model-info", headers={"Authorization": f"Bearer {login.json()['access_token']}"}).json()
+    assert mine["missing_profile_fields"] == []                               # hồ sơ mẫu đầy đủ cho mô hình
+
+    again = seed.seed_match_demo(db)                                          # chạy lại: không nạp trùng
+    assert again["players"] == 0 and again["rooms"] == [] and len(again["skipped"]) == 10
+    assert db.query(Match).count() == len(existing_rooms) + 10
+
+
 # ---------------------------------------------------------------------------
 # Script quản trị
 # ---------------------------------------------------------------------------

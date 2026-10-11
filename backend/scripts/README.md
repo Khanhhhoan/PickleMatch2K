@@ -12,6 +12,7 @@ trong file `.env`; schema luôn được tạo/cập nhật bằng migration Ale
 | `python manage.py seed --if-empty` | Như trên, nhưng bỏ qua nếu đã có dữ liệu (dùng cho Docker) | Không |
 | `python manage.py seed --feedback` | Chỉ nạp 3.000 phiếu ghép cặp **mô phỏng** vào bảng `pair_feedback` (nguồn `simulated`) để huấn luyện mô hình từ CSDL; bỏ qua nếu đã có | Không |
 | `python manage.py seed --preferences` | Chỉ bổ sung sở thích mẫu (mục đích chơi, khung rảnh…) cho tài khoản demo đang để trống | Không |
+| `python manage.py seed --matches` | Nạp **thêm** 12 người chơi mẫu và 10 phòng đấu cho 6 ngày tới để thử chức năng ghép trận; chạy lại được, không sửa dữ liệu đã có | Không |
 | `python manage.py seed --reset` | Xóa toàn bộ rồi nạp lại dữ liệu demo | **Có** |
 | `python manage.py reset` | Xóa toàn bộ, chỉ giữ danh mục tiện ích và một tài khoản Admin | **Có** |
 | `python manage.py import-excel --file x.xlsx` | Nhập thêm cụm sân từ Excel (thêm `--dry-run` để kiểm tra trước) | Không |
@@ -41,6 +42,11 @@ Trước khi chạy chúng trên CSDL đang dùng, hãy sao lưu: `python manage
 - 3.000 phiếu ghép cặp mô phỏng (mỗi người chơi demo 150 phiếu) làm dữ liệu huấn luyện cho mô hình. Các phiếu mang
   nguồn `simulated`, tách biệt với câu trả lời khảo sát thật (nguồn `survey`); cổng quản trị hiển thị riêng hai con số.
   Muốn sinh lại: `DELETE FROM pair_feedback WHERE source = 'simulated';` rồi chạy lại `python manage.py seed --feedback`.
+- `seed --matches` dùng được trên CSDL đang có dữ liệu: tạo các tài khoản `ghep01@example.com` … `ghep12@example.com`
+  (hồ sơ đầy đủ, trình độ 2.5 - 5.0) và 10 phòng đấu trong 6 ngày tới ở nhiều trạng thái (mới mở, còn 1 chỗ, đã đủ
+  người, phòng 2 người, phòng 6 người, hai phòng trùng giờ). Mỗi phòng gắn với một đơn đã cọc của chủ phòng; khoản
+  cọc ghi sổ với nhãn "Dữ liệu mẫu" và mã tham chiếu `DEMO-PK2K…` để phân biệt với tiền thật. Lệnh không đụng tới
+  tài khoản hay đơn có sẵn. Phòng nào đã nạp thì bỏ qua, nên có thể chạy lại khi các phòng cũ đã qua ngày.
 
 ## Sao lưu và khôi phục (`scripts/backup_db.py`)
 

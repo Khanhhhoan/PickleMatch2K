@@ -170,7 +170,7 @@ Chạy trong `backend/` với môi trường ảo đã kích hoạt:
 | :--- | :--- |
 | `python manage.py migrate` | Sao lưu rồi nâng schema lên bản mới nhất (`--check` chỉ xem trạng thái, `--no-backup` bỏ sao lưu) |
 | `python manage.py show` | Báo cáo tổng quan dữ liệu (chỉ đọc) |
-| `python manage.py seed` | Nạp dữ liệu demo vào CSDL trống (`--reset` xóa rồi nạp lại, có hỏi xác nhận; `--feedback` chỉ nạp phiếu ghép cặp mô phỏng cho mô hình) |
+| `python manage.py seed` | Nạp dữ liệu demo vào CSDL trống (`--reset` xóa rồi nạp lại, có hỏi xác nhận; `--feedback` chỉ nạp phiếu ghép cặp mô phỏng cho mô hình; `--matches` nạp thêm người chơi và phòng đấu mẫu để thử ghép trận, dùng được trên CSDL đang có dữ liệu) |
 | `python manage.py reset` | Xóa sạch, chỉ giữ danh mục tiện ích và một tài khoản quản trị (có hỏi xác nhận) |
 | `python manage.py import-excel --file x.xlsx` | Nhập cụm sân từ Excel theo mẫu trong `docs/` (`--dry-run` để kiểm tra trước) |
 | `python manage.py backup` | Sao lưu CSDL vào `backups/` |

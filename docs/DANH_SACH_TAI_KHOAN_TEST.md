@@ -74,6 +74,45 @@ chức năng gợi ý sân và ghép cặp.
 | 19 | `player17@gmail.com` | Lương Gia Bảo | 4.5 | Tấn công (Offensive) | Thi đấu |
 | 20 | `player18@gmail.com` | Hà Quốc Việt | 3.5 | Toàn diện (All-Round) | Giao lưu |
 
+## 5. Tài khoản mẫu để thử ghép trận (nạp thêm)
+
+Lệnh `python manage.py seed --matches` nạp **thêm** 12 người chơi dưới đây (hồ sơ đầy đủ, cùng mật khẩu `123456`) và
+10 phòng đấu của họ trong 6 ngày tới. Lệnh dùng được trên CSDL đang có dữ liệu, không sửa tài khoản có sẵn, và chạy
+lại được khi các phòng cũ đã qua ngày.
+
+| STT | Email | Họ Tên | DUPR | Phong Cách Đánh | Mục Đích Chơi |
+| :---: | :--- | :--- | :---: | :--- | :--- |
+| 1 | `ghep01@example.com` | Trần Quốc Bảo | 3.5 | Toàn diện (All-Round) | Giao lưu |
+| 2 | `ghep02@example.com` | Nguyễn Thị Mai Anh | 3.5 | Dinking & Kiểm soát | Giao lưu |
+| 3 | `ghep03@example.com` | Lê Minh Khôi | 4.0 | Tấn công (Offensive) | Thi đấu |
+| 4 | `ghep04@example.com` | Phạm Gia Hân | 3.0 | Phòng thủ (Defensive) | Luyện tập |
+| 5 | `ghep05@example.com` | Võ Thành Đạt | 4.5 | Giao bóng & Bắt lưới | Thi đấu |
+| 6 | `ghep06@example.com` | Đinh Ngọc Lan | 2.5 | Phòng thủ (Defensive) | Giao lưu |
+| 7 | `ghep07@example.com` | Bùi Anh Tuấn | 3.0 | Toàn diện (All-Round) | Giao lưu |
+| 8 | `ghep08@example.com` | Hồ Thanh Tùng | 4.0 | Giao bóng & Bắt lưới | Thi đấu |
+| 9 | `ghep09@example.com` | Trương Mỹ Duyên | 3.5 | Tấn công (Offensive) | Luyện tập |
+| 10 | `ghep10@example.com` | Lý Hoàng Phúc | 5.0 | Tấn công (Offensive) | Thi đấu |
+| 11 | `ghep11@example.com` | Đặng Khánh Vy | 3.0 | Dinking & Kiểm soát | Giao lưu |
+| 12 | `ghep12@example.com` | Châu Nhật Minh | 4.5 | Tấn công (Offensive) | Thi đấu |
+
+Các phòng mẫu (ngày tính từ hôm chạy lệnh; giờ có thể lệch 30 phút theo lưới giờ của từng cụm sân):
+
+| Ngày | Giờ | Cụm sân | Chủ phòng | Thành viên | Dùng để thử |
+| :---: | :---: | :--- | :--- | :---: | :--- |
+| +1 | 18:00 - 20:00 | Cụm sân 1 | `ghep01` (3.5) | 2/4 | Tham gia phòng cùng trình |
+| +1 | 19:00 - 20:00 | Cụm sân 2 | `ghep03` (4.0) | 3/4 | Còn 1 chỗ; trùng giờ với phòng trên |
+| +2 | 06:00 - 07:00 | Cụm sân 2 | `ghep09` (3.5) | 1/2 | Phòng 2 người: vào là đủ |
+| +2 | 20:00 - 22:00 | Cụm sân 1 | `ghep05` (4.5) | 2/4 | Trình cao |
+| +2 | 20:00 - 21:00 | Cụm sân 3 | `ghep10` (5.0) | 1/2 | Trình rất cao, đánh đơn |
+| +3 | 17:00 - 19:00 | Cụm sân 3 | `ghep04` (3.0) | 3/4 | Còn 1 chỗ |
+| +3 | 19:00 - 21:00 | Cụm sân 2 | `ghep02` (3.5) | 3/6 | Phòng xoay vòng 6 người |
+| +4 | 07:00 - 08:00 | Cụm sân 1 | `ghep06` (2.5) | 1/4 | Người mới chơi |
+| +5 | 08:00 - 10:00 | Cụm sân 2 | `ghep08` (4.0) | 4/4 | Đã đủ người: không hiện với người ngoài |
+| +6 | 18:00 - 20:00 | Cụm sân 3 | `ghep09` (3.5) | 1/4 | Phòng mới mở |
+
+Mỗi phòng gắn với một đơn đã cọc của chủ phòng. Khoản cọc ghi vào sổ giao dịch với nhãn "Dữ liệu mẫu" (mã tham
+chiếu `DEMO-PK2K…`). Qua giờ chơi mà không ai check-in thì đơn chuyển "Không đến sân" và phòng tự đóng, như mọi đơn khác.
+
 ## Ghi chú
 
 - Bộ dữ liệu demo còn có sẵn đơn đặt sân ở nhiều trạng thái, giao dịch, phòng đấu và đánh giá; ngày tháng được tính

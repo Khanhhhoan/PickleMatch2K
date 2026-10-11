@@ -6,6 +6,7 @@ Nạp bộ dữ liệu demo của đồ án PickleMatch2K.
     python scripts/seed.py --reset       # XÓA toàn bộ dữ liệu rồi nạp lại (phải xác nhận, hoặc thêm --yes)
     python scripts/seed.py --preferences # chỉ bổ sung sở thích mẫu cho các tài khoản demo đang để trống
     python scripts/seed.py --feedback    # chỉ nạp phiếu ghép cặp MÔ PHỎNG để huấn luyện mô hình từ CSDL
+    python scripts/seed.py --matches     # nạp THÊM người chơi và phòng đấu mẫu để thử chức năng ghép trận
 
 Nội dung: 8 tiện ích, 3 cụm sân, 33 tài khoản đúng như docs/DANH_SACH_TAI_KHOAN_TEST.md
 (1 admin, 3 chủ sân, 9 nhân viên, 20 người chơi) cùng đơn đặt sân, giao dịch, phòng đấu và đánh giá mẫu,
@@ -31,19 +32,21 @@ if str(BACKEND_DIR) not in sys.path:
 
 from scripts._common import ensure_schema, rebuild_empty_schema  # noqa: E402
 
+from fastapi import HTTPException  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.core.config import settings  # noqa: E402
 from app.db.database import SessionLocal  # noqa: E402
 from app.ml.features import AVAILABILITY_SLOTS, FEATURE_NAMES, ProfileView, canonical_style, pair_features  # noqa: E402
 from app.models.booking import Booking, BookingSource  # noqa: E402
+from app.models.match import Match, MatchParticipant  # noqa: E402
 from app.models.ml import SIMULATED_SOURCE, PairFeedback  # noqa: E402
 from app.models.payment import PaymentKind, PaymentMethod, PaymentTransaction  # noqa: E402
 from app.models.user import User, UserRole  # noqa: E402
 from app.models.venue import Amenity, Court, OperatingHour, PriceRule, Review, Venue  # noqa: E402
 from app.schemas.match import MatchCreate  # noqa: E402
 from app.services import booking_service, ledger, match_service, ml_service  # noqa: E402
-from app.services.availability_service import iter_day_slots  # noqa: E402
+from app.services.availability_service import get_operating_hour, iter_day_slots  # noqa: E402
 from app.services.booking_service import SlotRequest  # noqa: E402
 from app.services.user_service import create_user  # noqa: E402
 from app.utils import timeutils  # noqa: E402
@@ -596,6 +599,201 @@ class _RefundInfo:
 
 
 # ---------------------------------------------------------------------------
+# Người chơi và phòng đấu mẫu để thử chức năng ghép trận (python manage.py seed --matches)
+# ---------------------------------------------------------------------------
+# Nạp THÊM vào CSDL đang có dữ liệu: chỉ tạo các tài khoản ghepNN@example.com cùng đơn đặt sân và phòng đấu của
+# chính các tài khoản này; không sửa tài khoản hay dữ liệu đã có. Ngày tính từ hôm chạy lệnh và phòng nào đã có thì
+# bỏ qua, nên có thể chạy lại (ví dụ trước buổi bảo vệ) để có phòng mới cho tuần tới.
+MATCH_DEMO_GATEWAY = "Dữ liệu mẫu"  # nhãn trên giao dịch cọc của các đơn mẫu, để phân biệt với tiền thật
+
+MATCH_DEMO_PLAYERS = [
+    # email, họ tên, điện thoại, DUPR, phong cách, ngày sinh, vĩ độ, kinh độ, số trận, số thắng, mục đích, khung rảnh
+    PlayerSeed("ghep01@example.com", "Trần Quốc Bảo", "0900000101", 3.5, "All-Round", None, 10.7850, 106.7200, 24, 13,
+     "recreational", EVENINGS, [], 0),
+    PlayerSeed("ghep02@example.com", "Nguyễn Thị Mai Anh", "0900000102", 3.5, "Dinking & Control", None, 10.8000, 106.7100, 18, 10,
+     "recreational", EVENINGS + _avail(WEEKEND, "morning"), [], 0),
+    PlayerSeed("ghep03@example.com", "Lê Minh Khôi", "0900000103", 4.0, "Offensive", None, 10.7760, 106.7000, 40, 26,
+     "competitive", EVENINGS, [], 0),
+    PlayerSeed("ghep04@example.com", "Phạm Gia Hân", "0900000104", 3.0, "Defensive", None, 10.8300, 106.6800, 12, 5,
+     "practice", WEEKEND_ALL + _avail(["wed"], "evening"), [], 0),
+    PlayerSeed("ghep05@example.com", "Võ Thành Đạt", "0900000105", 4.5, "Serve & Volley", None, 10.7900, 106.6900, 60, 41,
+     "competitive", EVENINGS + _avail(WEEKEND, "afternoon"), [], 0),
+    PlayerSeed("ghep06@example.com", "Đinh Ngọc Lan", "0900000106", 2.5, "Defensive", None, 10.8000, 106.7250, 6, 2,
+     "recreational", EARLY_BIRD, [], 0),
+    PlayerSeed("ghep07@example.com", "Bùi Anh Tuấn", "0900000107", 3.0, "All-Round", None, 10.8250, 106.6850, 15, 7,
+     "recreational", _avail(["tue", "wed", "thu"], "evening") + WEEKEND_ALL, [], 0),
+    PlayerSeed("ghep08@example.com", "Hồ Thanh Tùng", "0900000108", 4.0, "Serve & Volley", None, 10.7830, 106.7150, 35, 21,
+     "competitive", EVENINGS + _avail(WEEKEND, "afternoon"), [], 0),
+    PlayerSeed("ghep09@example.com", "Trương Mỹ Duyên", "0900000109", 3.5, "Offensive", None, 10.7800, 106.7050, 20, 11,
+     "practice", EARLY_BIRD + _avail(["wed", "sat"], "evening"), [], 0),
+    PlayerSeed("ghep10@example.com", "Lý Hoàng Phúc", "0900000110", 5.0, "Offensive", None, 10.8300, 106.6700, 80, 60,
+     "competitive", EVENINGS + WEEKEND_ALL, [], 0),
+    PlayerSeed("ghep11@example.com", "Đặng Khánh Vy", "0900000111", 3.0, "Dinking & Control", None, 10.8400, 106.6800, 10, 4,
+     "recreational", _avail(WEEKEND, "morning") + _avail(["wed"], "evening"), [], 0),
+    PlayerSeed("ghep12@example.com", "Châu Nhật Minh", "0900000112", 4.5, "Offensive", None, 10.7950, 106.7280, 55, 36,
+     "competitive", EVENINGS, [], 0),
+]
+
+
+@dataclass(frozen=True)
+class RoomSeed:
+    host: str                      # email người mở phòng
+    venue: int                     # thứ tự cụm sân đang hoạt động (0 = cụm đầu tiên theo id)
+    days_ahead: int
+    hour: int                      # khung giờ đầu tiên trên lưới của cụm sân không sớm hơn giờ này
+    hours: int                     # số khung 60 phút liên tiếp
+    players: int
+    purpose: str
+    notes: str
+    joiners: Tuple[str, ...] = ()
+
+
+def _g(number: int) -> str:
+    return f"ghep{number:02d}@example.com"
+
+
+# Đủ các tình huống cần thử: phòng mới mở, còn đúng 1 chỗ, đã đủ người, phòng 2 người, phòng xoay vòng 6 người,
+# nhiều mức trình độ (2.5 - 5.0) và hai phòng trùng giờ trong cùng một tối (phòng 1 và 2).
+MATCH_DEMO_ROOMS = [
+    RoomSeed(_g(1), 0, 1, 18, 2, 4, "recreational", "Giao lưu sau giờ làm, trình 3.5, chia đều tiền sân.", (_g(2),)),
+    RoomSeed(_g(3), 1, 1, 19, 1, 4, "competitive", "Đánh đôi tính điểm, cần thêm 1 người trình 4.0.", (_g(8), _g(5))),
+    RoomSeed(_g(9), 1, 2, 6, 1, 2, "practice", "Tập dink và drop buổi sáng, một kèm một."),
+    RoomSeed(_g(5), 0, 2, 20, 2, 4, "competitive", "Đánh đôi tốc độ cao, ưu tiên trình 4.5.", (_g(12),)),
+    RoomSeed(_g(10), 2, 2, 20, 1, 2, "competitive", "Tìm đối đánh đơn trình 4.5 - 5.0."),
+    RoomSeed(_g(4), 2, 3, 17, 2, 4, "recreational", "Nhóm 3.0 đánh vui, còn thiếu 1 người cho đủ đôi.", (_g(7), _g(11))),
+    RoomSeed(_g(2), 1, 3, 19, 2, 6, "recreational", "Xoay vòng 6 người, trình 3.0 - 3.5 đều vào được.", (_g(1), _g(9))),
+    RoomSeed(_g(6), 0, 4, 7, 1, 4, "practice", "Mới chơi, đánh nhẹ nhàng làm quen."),
+    RoomSeed(_g(8), 1, 5, 8, 2, 4, "competitive", "Đủ đội hình, hẹn có mặt trước 10 phút.", (_g(3), _g(5), _g(12))),
+    RoomSeed(_g(9), 2, 6, 18, 2, 4, "recreational", "Cuối tuần giao lưu, có sẵn bóng và vợt dự phòng."),
+]
+
+
+def _demo_player(db: Session, player: PlayerSeed) -> Tuple[User, bool]:
+    """Tài khoản người chơi mẫu theo email; tạo mới kèm hồ sơ đầy đủ nếu chưa có. Trả về (tài khoản, vừa tạo?)."""
+    user = db.query(User).filter(User.email == player.email).first()
+    if user is not None:
+        return user, False
+    user = create_user(db, email=player.email, password=DEMO_PASSWORD, role=UserRole.PLAYER.value,
+                       full_name=player.full_name, phone=player.phone, commit=False)
+    db.refresh(user)
+    profile = user.player_profile
+    profile.skill_level, profile.play_style = player.skill_level, player.play_style
+    profile.latitude, profile.longitude = player.lat, player.lng
+    profile.matches_played, profile.matches_won = player.matches_played, player.matches_won
+    profile.purpose = player.purpose
+    profile.availability = json.dumps(sorted(set(player.availability)))
+    return user, True
+
+
+def _court_slot_options(venue: Venue, day: date, from_hour: int, count: int) -> List[List[SlotRequest]]:
+    """Với từng sân đang hoạt động: `count` khung liên tiếp, bắt đầu từ khung đầu tiên không sớm hơn from_hour."""
+    opening = get_operating_hour(venue, day)
+    if opening is None:
+        return []
+    grid = iter_day_slots(opening.open_time, opening.close_time)
+    start = next((i for i, (begin, _) in enumerate(grid) if begin >= time(from_hour, 0)), None)
+    if start is None or start + count > len(grid):
+        return []
+    window = grid[start:start + count]
+    courts = sorted((c for c in venue.courts if c.status == "ACTIVE"), key=lambda c: c.id)
+    return [[SlotRequest(court.id, day, begin, end) for begin, end in window] for court in courts]
+
+
+def _in_active_room(db: Session, user_id: int, day: date, start: time, end: time) -> bool:
+    return db.query(Match.id).join(MatchParticipant, MatchParticipant.match_id == Match.id).filter(
+        MatchParticipant.user_id == user_id,
+        Match.status.in_(match_service.ACTIVE_MATCH_STATUSES),
+        Match.date == day, Match.start_time < end, Match.end_time > start,
+    ).first() is not None
+
+
+def seed_match_demo(db: Session) -> dict:
+    """
+    Nạp thêm người chơi và phòng đấu mẫu vào CSDL đang dùng. Mỗi phòng gắn với một đơn đã cọc của chủ phòng
+    (tiền cọc ghi vào sổ giao dịch với nhãn "Dữ liệu mẫu"), tạo bằng chính các hàm nghiệp vụ của ứng dụng.
+    Trả về {"players": số tài khoản vừa tạo, "rooms": [phòng vừa mở], "skipped": [lý do bỏ qua]}.
+    """
+    result: dict = {"players": 0, "rooms": [], "skipped": []}
+    venues = db.query(Venue).filter(Venue.status == "ACTIVE").order_by(Venue.id).all()
+    if not venues:
+        result["skipped"].append("CSDL chưa có cụm sân nào đang hoạt động.")
+        return result
+
+    users: Dict[str, User] = {}
+    for player in MATCH_DEMO_PLAYERS:
+        users[player.email], created = _demo_player(db, player)
+        result["players"] += int(created)
+    db.commit()
+
+    today = today_vn()
+    for room in MATCH_DEMO_ROOMS:
+        host, venue = users[room.host], venues[room.venue % len(venues)]
+        day = today + timedelta(days=room.days_ahead)
+        label = f"{day:%d/%m} từ {room.hour}h tại {venue.name}"
+        options = _court_slot_options(venue, day, room.hour, room.hours)
+        if not options:
+            result["skipped"].append(f"{label}: cụm sân không mở cửa khung giờ này.")
+            continue
+        start, end = options[0][0].start_time, options[0][-1].end_time
+        if _in_active_room(db, host.id, day, start, end):
+            result["skipped"].append(f"{label}: chủ phòng đã có phòng trong khung giờ này (đã nạp trước đó).")
+            continue
+
+        booking, reason = None, "mọi sân đều đã có người đặt"
+        for slots in options:
+            try:
+                booking = booking_service.create_booking(db, user=host, slots=slots)
+                break
+            except HTTPException as exc:
+                db.rollback()
+                if exc.status_code != 409:   # không phải do sân bận thì thử sân khác cũng vô ích
+                    reason = str(exc.detail)
+                    break
+        if booking is None:
+            result["skipped"].append(f"{label}: {reason}.")
+            continue
+
+        deposit = float(booking.deposit_amount)
+        ledger.record_transaction(
+            db, booking, amount=deposit, kind=PaymentKind.DEPOSIT.value, method=PaymentMethod.BANK_TRANSFER.value,
+            gateway=MATCH_DEMO_GATEWAY, reference_number=f"DEMO-{booking.booking_code}",
+            content=f"{booking.booking_code} tien coc (du lieu mau)",
+        )
+        booking_service.apply_payment(db, booking, deposit)
+        db.commit()
+
+        match = match_service.create_match(db, host, MatchCreate(
+            booking_id=booking.id, required_skill=host.player_profile.skill_level,
+            num_players=room.players, purpose=room.purpose, notes=room.notes,
+        ))
+        for email in room.joiners:
+            try:
+                match = match_service.join_match(db, match.id, users[email].id)
+            except HTTPException:
+                db.rollback()   # ví dụ người này đã ở phòng khác trùng giờ từ lần nạp trước
+        result["rooms"].append({
+            "day": day, "start": start, "end": end, "venue": venue.name, "court": match.court_name,
+            "host": host.player_profile.full_name, "level": host.player_profile.skill_level,
+            "members": len(match.participants), "players": match.num_players, "status": match.status,
+            "booking_code": booking.booking_code, "deposit": deposit,
+        })
+    return result
+
+
+def report_match_demo(result: dict) -> None:
+    for room in result["rooms"]:
+        print(f"  {room['day']:%d/%m} {room['start']:%H:%M}-{room['end']:%H:%M}  {room['venue']} ({room['court']})  "
+              f"chủ phòng {room['host']} (trình {room['level']})  {room['members']}/{room['players']} người  "
+              f"{'đã đủ' if room['status'] == 'FULL' else 'đang tuyển'}  [{room['booking_code']}]")
+    for reason in result["skipped"]:
+        print(f"  bỏ qua - {reason}")
+    deposits = sum(room["deposit"] for room in result["rooms"])
+    print(f"Đã tạo {result['players']} tài khoản người chơi mẫu và mở {len(result['rooms'])} phòng đấu "
+          f"(tiền cọc mẫu ghi sổ: {deposits:,.0f}đ, nhãn \"{MATCH_DEMO_GATEWAY}\").")
+    print(f"Tài khoản mẫu: {MATCH_DEMO_PLAYERS[0].email} ... {MATCH_DEMO_PLAYERS[-1].email}, mật khẩu {DEMO_PASSWORD}.")
+
+
+# ---------------------------------------------------------------------------
 # Điểm vào
 # ---------------------------------------------------------------------------
 def seed_database(if_empty: bool = False, reset: bool = False, assume_yes: bool = False) -> bool:
@@ -663,6 +861,11 @@ def main() -> None:
         ensure_schema()
         with SessionLocal() as db:
             report_simulated_feedback(seed_simulated_feedback(db))
+        return
+    if "--matches" in args:
+        ensure_schema()
+        with SessionLocal() as db:
+            report_match_demo(seed_match_demo(db))
         return
     seed_database(if_empty="--if-empty" in args, reset="--reset" in args, assume_yes="--yes" in args)
 

@@ -4,7 +4,7 @@
 | :--- | :--- |
 | [HUONG_DAN_KLTN.md](HUONG_DAN_KLTN.md) | Phạm vi chức năng, kiến trúc, nghiệp vụ đặt sân, công thức gợi ý cụm sân, mô hình Random Forest ghép người chơi và kết quả đánh giá, cách kiểm thử |
 | [DATABASE_DESIGN.md](DATABASE_DESIGN.md) | Sơ đồ quan hệ, mô tả từng bảng, các ràng buộc chống đặt trùng và chống ghi trùng giao dịch, chỉ mục, lịch sử schema |
-| [DANH_SACH_TAI_KHOAN_TEST.md](DANH_SACH_TAI_KHOAN_TEST.md) | 33 tài khoản demo do `python manage.py seed` tạo (mật khẩu `123456`) |
+| [DANH_SACH_TAI_KHOAN_TEST.md](DANH_SACH_TAI_KHOAN_TEST.md) | 33 tài khoản demo do `python manage.py seed` tạo và 12 tài khoản mẫu ghép trận của `seed --matches` (mật khẩu `123456`) |
 | `DANH_SACH_TAI_KHOAN_TEST.docx` | Bản in của danh sách tài khoản; bản `.md` là bản được cập nhật theo mã nguồn |
 | `Mau_Nhap_Du_Lieu_Pickleball.xlsx` | Mẫu Excel để nhập cụm sân bằng `python manage.py import-excel` |
 | `Nhom_6_Khanh_va_Khang.docx` | Báo cáo khóa luận của nhóm |
