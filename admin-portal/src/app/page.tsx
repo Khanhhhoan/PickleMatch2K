@@ -34,6 +34,7 @@ export default function AdminDashboard() {
   const [data, setData] = useState<AdminData>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [mobileMenu, setMobileMenu] = useState(false);
 
   const isAdmin = user?.role === "ADMIN";
 
@@ -96,28 +97,71 @@ export default function AdminDashboard() {
   );
 
   if (authLoading || !isAdmin || !user) {
-    return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-sm font-semibold text-slate-600">Đang kiểm tra quyền quản trị...</div>;
+    return <div className="fixed inset-0 bg-[#f5f7fb] flex items-center justify-center text-xs text-[#51627c]">Đang kiểm tra quyền quản trị...</div>;
   }
 
   const pendingVenues = data.venues.filter((v) => v.status === "PENDING").length;
   const pendingRefunds = data.bookings.filter((b) => b.refund_status === "PENDING").length;
-  const nav: { key: Tab; label: string; count?: number; alert?: number }[] = [
+  const nav: { key: Tab; label: string; alert?: number }[] = [
     { key: "overview", label: "Tổng quan" },
-    { key: "venues", label: "Cụm sân", count: data.venues.length, alert: pendingVenues },
-    { key: "users", label: "Tài khoản", count: data.users.length },
-    { key: "bookings", label: "Đơn đặt sân", count: data.bookings.length, alert: pendingRefunds },
-    { key: "transactions", label: "Sổ giao dịch", count: data.transactions.length },
-    { key: "matches", label: "Phòng đấu", count: data.matches.length },
+    { key: "venues", label: "Cụm sân", alert: pendingVenues },
+    { key: "users", label: "Tài khoản" },
+    { key: "bookings", label: "Đơn đặt sân", alert: pendingRefunds },
+    { key: "transactions", label: "Sổ giao dịch" },
+    { key: "matches", label: "Phòng đấu" },
   ];
-
+  const currentLabel = nav.find((item) => item.key === activeTab)?.label || "";
+  const todayLabel = new Date().toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
   const tabProps = { data, run };
 
+  // Cùng khung với khu vực chủ sân: thanh bên tối, thanh trên trắng, nội dung trên nền xám nhạt
+  const brand = (
+    <div className="flex items-center gap-3 select-none">
+      <div className="w-10 h-10 shrink-0 flex items-center justify-center rounded-xl bg-white p-1.5 shadow-sm border border-white/20">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/images/logo_transparent.png" alt="PickleMatch2K" className="w-full h-full object-contain" />
+      </div>
+      <div className="flex flex-col justify-center">
+        <div className="flex items-center">
+          <span className="text-[16px] font-black tracking-tight text-white leading-tight">PickleMatch</span>
+          <span className="ml-1.5 px-1.5 py-0.5 rounded-md bg-[#476cf3] text-white font-black text-[10px] tracking-wider uppercase shadow-xs">2K</span>
+        </div>
+        <span className="text-[10px] text-[#7990ae] font-bold uppercase tracking-wider mt-0.5">Cổng Quản Trị</span>
+      </div>
+    </div>
+  );
+
+  const navButtons = (afterPick?: () => void) =>
+    nav.map((item) => {
+      const active = activeTab === item.key;
+      return (
+        <button
+          key={item.key}
+          type="button"
+          onClick={() => {
+            setActiveTab(item.key);
+            afterPick?.();
+          }}
+          className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-[13.5px] font-bold transition-all cursor-pointer ${
+            active ? "bg-[#476cf3] text-white shadow-[0_7px_18px_rgba(24,42,98,0.5)]" : "text-[#9daec7] hover:text-white hover:bg-white/10"
+          }`}
+        >
+          <span>{item.label}</span>
+          {!!item.alert && (
+            <span className="px-2 py-0.5 rounded-md bg-[#e9a451]/20 text-[#ffc97f] text-[10px] font-black" title="Cần xử lý">
+              {item.alert}
+            </span>
+          )}
+        </button>
+      );
+    });
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col md:flex-row font-sans text-sm">
+    <div className="fixed inset-0 bg-[#f5f7fb] flex flex-col md:flex-row font-sans overflow-hidden text-[#17253d]">
       {toast && (
         <div
           role="status"
-          className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl shadow-lg border text-sm font-semibold max-w-md ${
+          className={`fixed bottom-6 right-6 z-[60] px-5 py-3 rounded-xl shadow-lg border text-xs font-bold max-w-md ${
             toast.type === "error" ? "bg-red-50 border-red-200 text-red-700" : "bg-emerald-50 border-emerald-200 text-emerald-700"
           }`}
         >
@@ -125,72 +169,89 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      <aside className="w-full md:w-60 bg-white border-r border-slate-200 flex flex-col shrink-0">
-        <div className="p-5 border-b border-slate-200">
-          <div className="text-base font-bold text-slate-900 tracking-tight">PickleMatch2K</div>
-          <div className="text-xs text-slate-500 mt-0.5">Cổng quản trị</div>
-        </div>
-
-        <nav className="p-3 space-y-1 flex-1 text-sm font-medium">
-          {nav.map((item) => (
-            <button
-              key={item.key}
-              onClick={() => setActiveTab(item.key)}
-              className={`w-full px-4 py-2.5 rounded-lg flex items-center justify-between transition cursor-pointer ${
-                activeTab === item.key ? "bg-blue-600 text-white font-bold shadow-xs" : "text-slate-700 hover:bg-slate-100"
-              }`}
-            >
-              <span>{item.label}</span>
-              <span className="flex items-center gap-1.5">
-                {!!item.alert && (
-                  <span className="text-[11px] px-1.5 py-0.5 rounded-full font-bold bg-amber-400 text-amber-950" title="Cần xử lý">
-                    {item.alert}
-                  </span>
-                )}
-                {item.count !== undefined && (
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-mono ${activeTab === item.key ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-600"}`}>
-                    {item.count}
-                  </span>
-                )}
-              </span>
-            </button>
-          ))}
-        </nav>
-
-        <div className="p-4 border-t border-slate-200 flex items-center justify-between text-sm bg-slate-50/50">
-          <div className="truncate pr-2">
-            <div className="font-bold truncate text-slate-900">{user.email}</div>
-            <div className="text-xs text-slate-500 font-medium">Quản trị viên</div>
-          </div>
-          <button onClick={logout} className="px-2.5 py-1 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg text-xs font-semibold cursor-pointer transition">
+      {/* Điện thoại: thanh trên tối và menu xổ xuống */}
+      <header className="md:hidden bg-[#101c31] px-4 py-3 flex items-center justify-between shrink-0 border-b border-[#1b2b48]">
+        {brand}
+        <button
+          type="button"
+          onClick={() => setMobileMenu((open) => !open)}
+          className="px-2.5 py-1.5 rounded-lg bg-[#1a2b47] text-slate-200 hover:text-white text-xs font-semibold cursor-pointer"
+        >
+          Menu
+        </button>
+      </header>
+      {mobileMenu && (
+        <div className="md:hidden bg-[#101c31] px-4 pb-4 space-y-1 shrink-0">
+          {navButtons(() => setMobileMenu(false))}
+          <button type="button" onClick={logout} className="w-full text-left px-3.5 py-2.5 rounded-xl text-[13.5px] font-bold text-rose-400 hover:bg-white/10 cursor-pointer">
             Thoát
           </button>
         </div>
+      )}
+
+      <aside className="hidden md:flex w-[242px] bg-[#101c31] text-[#9faec4] flex-col shrink-0 h-full px-4 py-6">
+        <div className="px-2 mb-6">{brand}</div>
+        <div className="text-[10px] font-bold tracking-[1.5px] uppercase text-[#7990ae] px-3 mb-3">Danh mục</div>
+        <nav className="space-y-1">{navButtons()}</nav>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        <header className="h-16 bg-white border-b border-slate-200 px-7 flex items-center justify-between shrink-0">
-          <div className="font-bold text-base text-slate-900">{TAB_TITLE[activeTab]}</div>
-          <button onClick={loadData} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-sm font-semibold cursor-pointer transition">
-            Làm mới dữ liệu
-          </button>
+      <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+        <header className="hidden md:flex h-[76px] bg-white border-b border-[#e8edf3] items-center justify-between px-6 sm:px-9 shrink-0 gap-4">
+          <div className="text-[13px] text-[#9ba5b5] flex items-center gap-1.5">
+            <span>Không gian quản trị</span>
+            <span>/</span>
+            <b className="text-[#3d4e68] font-bold">{currentLabel}</b>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-[#405c94] text-white flex items-center justify-center text-xs font-black shrink-0 shadow-xs">QT</div>
+              <div className="text-left">
+                <strong className="block text-xs font-bold text-[#17253d] max-w-[200px] truncate leading-tight">{user.email}</strong>
+                <span className="block text-[10.5px] text-[#8696ab] font-medium leading-tight mt-0.5">Quản trị viên</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={logout}
+              className="px-3 py-1.5 text-xs font-bold text-rose-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+              title="Đăng xuất"
+            >
+              Thoát
+            </button>
+          </div>
         </header>
 
-        <div className="p-7 flex-1">
-          {loading ? (
-            <p className="text-sm text-slate-500">Đang tải dữ liệu quản trị...</p>
-          ) : (
-            <>
-              {activeTab === "overview" && <OverviewTab {...tabProps} />}
-              {activeTab === "venues" && <VenuesTab {...tabProps} />}
-              {activeTab === "users" && <UsersTab {...tabProps} currentUserId={user.id} />}
-              {activeTab === "bookings" && <BookingsTab {...tabProps} />}
-              {activeTab === "transactions" && <TransactionsTab {...tabProps} />}
-              {activeTab === "matches" && <MatchesTab {...tabProps} />}
-            </>
-          )}
-        </div>
-      </main>
+        <main className="flex-1 overflow-y-auto bg-[#f5f7fb] p-6 sm:p-9 pb-16">
+          <div className="max-w-[1650px] mx-auto w-full space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-[#6b7ba1] first-letter:uppercase">{todayLabel}</p>
+                <h1 className="text-2xl sm:text-[26px] font-black text-[#17253d] tracking-tight m-0 mt-0.5">{TAB_TITLE[activeTab]}</h1>
+              </div>
+              <button
+                type="button"
+                onClick={loadData}
+                className="self-start sm:self-auto px-3.5 py-2.5 bg-white hover:bg-[#f1f4fb] border border-[#d5dfed] rounded-xl text-xs font-bold text-[#405c94] whitespace-nowrap cursor-pointer"
+              >
+                Làm mới dữ liệu
+              </button>
+            </div>
+
+            {loading ? (
+              <p className="text-xs text-[#51627c]">Đang tải dữ liệu quản trị...</p>
+            ) : (
+              <>
+                {activeTab === "overview" && <OverviewTab {...tabProps} />}
+                {activeTab === "venues" && <VenuesTab {...tabProps} />}
+                {activeTab === "users" && <UsersTab {...tabProps} currentUserId={user.id} />}
+                {activeTab === "bookings" && <BookingsTab {...tabProps} />}
+                {activeTab === "transactions" && <TransactionsTab {...tabProps} />}
+                {activeTab === "matches" && <MatchesTab {...tabProps} />}
+              </>
+            )}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

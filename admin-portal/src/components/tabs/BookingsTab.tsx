@@ -74,21 +74,21 @@ export default function BookingsTab({ data, run }: TabProps) {
         {filtered.map((b) => (
           <tr key={b.id}>
             <td className={TD}>
-              <p className="font-mono font-bold text-slate-900">{b.booking_code || `#${b.id}`}</p>
-              <p className="text-xs text-slate-500">{b.source === "DESK" ? "Tạo tại quầy" : "Đặt trên web"}</p>
-              <p className="text-xs text-slate-400">{formatDateTime(b.created_at)}</p>
+              <p className="font-mono font-bold text-[#17253d]">{b.booking_code || `#${b.id}`}</p>
+              <p className="text-xs text-[#718096]">{b.source === "DESK" ? "Tạo tại quầy" : "Đặt trên web"}</p>
+              <p className="text-xs text-[#9aa7bb]">{formatDateTime(b.created_at)}</p>
             </td>
             <td className={TD}>
-              <p className="text-slate-900">{b.user_name || "—"}</p>
-              <p className="text-xs text-slate-500">{[b.user_phone, b.user_email].filter(Boolean).join(" • ")}</p>
+              <p className="text-[#17253d]">{b.user_name || "—"}</p>
+              <p className="text-xs text-[#718096]">{[b.user_phone, b.user_email].filter(Boolean).join(" • ")}</p>
             </td>
             <td className={`${TD} text-xs`}>
-              <p className="font-semibold text-slate-900">{b.details[0]?.venue_name || "—"}</p>
-              {describeSlots(b).map((line) => <p key={line} className="text-slate-600">{line}</p>)}
+              <p className="font-semibold text-[#17253d]">{b.details[0]?.venue_name || "—"}</p>
+              {describeSlots(b).map((line) => <p key={line} className="text-[#51627c]">{line}</p>)}
             </td>
             <td className={`${TD} whitespace-nowrap`}>
-              <p className="font-bold text-slate-900">{formatVND(b.total_price)}</p>
-              <p className="text-xs text-slate-500">Đã trả {formatVND(b.paid_amount)}</p>
+              <p className="font-bold text-[#17253d]">{formatVND(b.total_price)}</p>
+              <p className="text-xs text-[#718096]">Đã trả {formatVND(b.paid_amount)}</p>
             </td>
             <td className={`${TD} space-y-1`}>
               <Badge tone={statusTone(b.status)}>{BOOKING_STATUS_LABEL[b.status] || b.status}</Badge>
@@ -111,7 +111,7 @@ export default function BookingsTab({ data, run }: TabProps) {
           </tr>
         ))}
       </DataTable>
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-[#718096]">
         Check-in, thu tiền và xác nhận hoàn tiền do chủ sân/nhân viên thực hiện tại quầy. Đơn đã phát sinh giao dịch không xóa được để giữ sổ sách.
       </p>
     </div>

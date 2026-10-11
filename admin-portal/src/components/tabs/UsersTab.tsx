@@ -30,7 +30,7 @@ const EMPTY: UserForm = {
 };
 
 const ROLE_TONE: Record<Role, string> = {
-  ADMIN: "bg-slate-900 text-white border-slate-900",
+  ADMIN: "bg-[#101c31] text-white border-[#17253d]",
   OWNER: "bg-amber-50 text-amber-800 border-amber-200",
   STAFF: "bg-emerald-50 text-emerald-800 border-emerald-200",
   PLAYER: "bg-sky-50 text-sky-800 border-sky-200",
@@ -117,11 +117,11 @@ export default function UsersTab({ data, run, currentUserId }: TabProps & { curr
         {filtered.map((user) => (
           <tr key={user.id}>
             <td className={TD}>
-              <p className="font-bold text-slate-900">{userDisplayName(user)}</p>
-              <p className="text-xs text-slate-500">{user.email}{userPhone(user) ? ` • ${userPhone(user)}` : ""}</p>
+              <p className="font-bold text-[#17253d]">{userDisplayName(user)}</p>
+              <p className="text-xs text-[#718096]">{user.email}{userPhone(user) ? ` • ${userPhone(user)}` : ""}</p>
             </td>
             <td className={TD}><Badge tone={ROLE_TONE[user.role]}>{ROLE_LABEL[user.role]}</Badge></td>
-            <td className={`${TD} text-xs text-slate-600`}>
+            <td className={`${TD} text-xs text-[#51627c]`}>
               {user.role === "PLAYER" && (user.player_profile?.skill_level != null ? `Trình độ ${user.player_profile.skill_level} • ${user.player_profile.play_style || "chưa khai lối đánh"}` : "Chưa khai trình độ")}
               {user.role === "OWNER" && (user.owner_profile?.company_name || "Chưa khai đơn vị")}
               {user.role === "STAFF" && (user.staff_profile?.venue_name ? `Trực tại ${user.staff_profile.venue_name}` : <span className="text-amber-700">Chưa gán cụm sân</span>)}

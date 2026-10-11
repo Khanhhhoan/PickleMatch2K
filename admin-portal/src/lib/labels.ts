@@ -46,7 +46,7 @@ const TONE = {
   good: "bg-emerald-50 text-emerald-800 border-emerald-200",
   wait: "bg-amber-50 text-amber-800 border-amber-200",
   info: "bg-sky-50 text-sky-800 border-sky-200",
-  done: "bg-slate-100 text-slate-600 border-slate-200",
+  done: "bg-[#eef1f6] text-[#51627c] border-[#dde4ef]",
   bad: "bg-rose-50 text-rose-700 border-rose-200",
 };
 

@@ -25,7 +25,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="vi" data-scroll-behavior="smooth" className={`${inter.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col font-sans bg-slate-50 text-slate-900 selection:bg-blue-600 selection:text-white">
+      <body className="min-h-full flex flex-col font-sans bg-[#f5f7fb] text-[#17253d] selection:bg-[#476cf3] selection:text-white">
         <AdminAuthProvider>
           {children}
         </AdminAuthProvider>

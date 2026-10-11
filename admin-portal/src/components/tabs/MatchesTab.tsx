@@ -87,14 +87,14 @@ export default function MatchesTab({ data, run }: TabProps) {
       <DataTable headers={["Phòng", "Cụm sân / lịch", "Chủ phòng", "Yêu cầu", "Thành viên", "Trạng thái", ""]} empty={filtered.length === 0}>
         {filtered.map((m) => (
           <tr key={m.id}>
-            <td className={`${TD} font-mono font-bold text-slate-900`}>#{m.id}</td>
+            <td className={`${TD} font-mono font-bold text-[#17253d]`}>#{m.id}</td>
             <td className={`${TD} text-xs`}>
-              <p className="font-semibold text-slate-900">{m.venue_name}</p>
-              <p className="text-slate-600">{m.court_name ? `${m.court_name} • ` : ""}{m.date} • {m.start_time.slice(0, 5)}-{m.end_time.slice(0, 5)}</p>
-              <p className={m.booking_code ? "text-slate-400" : "text-amber-700"}>{m.booking_code ? `Đơn ${m.booking_code}` : "Không gắn đơn đặt sân"}</p>
+              <p className="font-semibold text-[#17253d]">{m.venue_name}</p>
+              <p className="text-[#51627c]">{m.court_name ? `${m.court_name} • ` : ""}{m.date} • {m.start_time.slice(0, 5)}-{m.end_time.slice(0, 5)}</p>
+              <p className={m.booking_code ? "text-[#9aa7bb]" : "text-amber-700"}>{m.booking_code ? `Đơn ${m.booking_code}` : "Không gắn đơn đặt sân"}</p>
             </td>
             <td className={TD}>{m.creator_name}</td>
-            <td className={`${TD} text-xs text-slate-600`}>
+            <td className={`${TD} text-xs text-[#51627c]`}>
               {PURPOSE_LABEL[m.purpose || ""] || "—"}
               <br />
               {m.required_skill != null ? `Trình độ ${m.required_skill}` : "Mọi trình độ"}
@@ -123,12 +123,12 @@ export default function MatchesTab({ data, run }: TabProps) {
         <Modal title={`Thành viên phòng #${viewing.id}`} onClose={() => setViewId(null)}>
           <ul className="space-y-2">
             {viewing.participants.map((p) => (
-              <li key={p.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200 text-sm">
+              <li key={p.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-[#f8fafd] border border-[#e8edf3] text-sm">
                 <div>
-                  <p className="font-semibold text-slate-900">
+                  <p className="font-semibold text-[#17253d]">
                     {p.user_name} {p.user_id === viewing.creator_id && <Badge tone="bg-amber-50 text-amber-800 border-amber-200">Chủ phòng</Badge>}
                   </p>
-                  <p className="text-xs text-slate-500">{p.skill_level != null ? `Trình độ ${p.skill_level}` : "Chưa khai trình độ"}{p.phone ? ` • ${p.phone}` : ""}</p>
+                  <p className="text-xs text-[#718096]">{p.skill_level != null ? `Trình độ ${p.skill_level}` : "Chưa khai trình độ"}{p.phone ? ` • ${p.phone}` : ""}</p>
                 </div>
                 {p.user_id !== viewing.creator_id && (
                   <button
@@ -141,7 +141,7 @@ export default function MatchesTab({ data, run }: TabProps) {
                 )}
               </li>
             ))}
-            {viewing.participants.length === 0 && <li className="text-sm text-slate-500">Phòng chưa có thành viên.</li>}
+            {viewing.participants.length === 0 && <li className="text-sm text-[#718096]">Phòng chưa có thành viên.</li>}
           </ul>
         </Modal>
       )}

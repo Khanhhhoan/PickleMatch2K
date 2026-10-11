@@ -46,8 +46,8 @@ export default function TransactionsTab({ data }: TabProps) {
           ["Thực thu", formatVND(collected - refunded)],
         ].map(([label, value]) => (
           <Card key={label} className="p-4">
-            <div className="text-xs text-slate-500 font-bold uppercase tracking-wider">{label}</div>
-            <div className="text-lg font-black text-slate-900 mt-1">{value}</div>
+            <div className="text-xs text-[#718096] font-bold uppercase tracking-wider">{label}</div>
+            <div className="text-lg font-black text-[#17253d] mt-1">{value}</div>
           </Card>
         ))}
       </div>
@@ -67,18 +67,18 @@ export default function TransactionsTab({ data }: TabProps) {
       <DataTable headers={["Mã giao dịch", "Thời gian", "Đơn", "Loại", "Hình thức", "Nội dung / tham chiếu", "Số tiền"]} empty={rows.length === 0}>
         {rows.map((t) => (
           <tr key={t.id}>
-            <td className={`${TD} font-mono font-bold text-slate-900`}>{t.transaction_code || `#${t.id}`}</td>
-            <td className={`${TD} text-xs text-slate-600 whitespace-nowrap`}>{formatDateTime(t.created_at)}</td>
+            <td className={`${TD} font-mono font-bold text-[#17253d]`}>{t.transaction_code || `#${t.id}`}</td>
+            <td className={`${TD} text-xs text-[#51627c] whitespace-nowrap`}>{formatDateTime(t.created_at)}</td>
             <td className={`${TD} font-mono text-xs`}>{t.booking?.booking_code || `#${t.booking_id}`}</td>
             <td className={TD}>
               <Badge tone={t.kind === "REFUND" ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-emerald-50 text-emerald-800 border-emerald-200"}>
                 {KIND_LABEL[t.kind || ""] || t.kind}
               </Badge>
             </td>
-            <td className={`${TD} text-xs`}>{METHOD_LABEL[t.method || ""] || t.method} <span className="text-slate-400">• {t.gateway}</span></td>
-            <td className={`${TD} text-xs text-slate-600`}>
+            <td className={`${TD} text-xs`}>{METHOD_LABEL[t.method || ""] || t.method} <span className="text-[#9aa7bb]">• {t.gateway}</span></td>
+            <td className={`${TD} text-xs text-[#51627c]`}>
               <p className="max-w-xs truncate">{t.transaction_content}</p>
-              {t.reference_number && <p className="text-slate-400 font-mono">{t.reference_number}</p>}
+              {t.reference_number && <p className="text-[#9aa7bb] font-mono">{t.reference_number}</p>}
             </td>
             <td className={`${TD} text-right font-bold whitespace-nowrap ${t.kind === "REFUND" ? "text-rose-600" : "text-emerald-700"}`}>
               {t.kind === "REFUND" ? "-" : "+"}{formatVND(t.amount_in)}
@@ -86,7 +86,7 @@ export default function TransactionsTab({ data }: TabProps) {
           </tr>
         ))}
       </DataTable>
-      <p className="text-xs text-slate-500">Hiển thị tối đa 500 giao dịch gần nhất.</p>
+      <p className="text-xs text-[#718096]">Hiển thị tối đa 500 giao dịch gần nhất.</p>
     </div>
   );
 }

@@ -36,13 +36,19 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 relative">
-      <div className="w-full max-w-md bg-white border border-slate-200/90 rounded-2xl shadow-xl shadow-slate-200/50 p-8 relative z-10">
+    <div className="min-h-screen flex items-center justify-center bg-[#101c31] p-4 relative">
+      <div className="w-full max-w-md bg-white border border-[#e8edf3] rounded-2xl shadow-xl shadow-black/20 p-8 relative z-10">
         {/* Header */}
-        <div className="text-center mb-7">
-          <h1 className="text-xl font-black tracking-tight text-slate-900">
-            Cổng Quản Trị Hệ Thống
-          </h1>
+        <div className="flex flex-col items-center text-center mb-7">
+          <div className="w-14 h-14 flex items-center justify-center rounded-2xl bg-white p-2 shadow-sm border border-[#e8edf3] mb-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/images/logo_transparent.png" alt="PickleMatch2K" className="w-full h-full object-contain" />
+          </div>
+          <div className="flex items-center">
+            <span className="text-xl font-black tracking-tight text-[#17253d]">PickleMatch</span>
+            <span className="ml-1.5 px-1.5 py-0.5 rounded-md bg-[#476cf3] text-white font-black text-[10px] tracking-wider uppercase">2K</span>
+          </div>
+          <h1 className="text-[11px] font-bold uppercase tracking-wider text-[#7990ae] mt-1">Cổng Quản Trị</h1>
         </div>
 
         {/* Error Alert */}
@@ -58,8 +64,8 @@ export default function AdminLoginPage() {
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Email Quản Trị Viên (Admin)
+            <label className="block text-[11px] font-bold text-[#51627c] mb-1.5">
+              Email
             </label>
             <input
               type="email"
@@ -68,13 +74,13 @@ export default function AdminLoginPage() {
               placeholder="Email tài khoản quản trị"
               autoComplete="username"
               required
-              className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 text-sm transition-all"
+              className="w-full px-3.5 py-2.5 bg-[#f8fafd] border border-[#dde4ef] rounded-xl text-[#17253d] placeholder-[#9aa7bb] focus:outline-none focus:bg-white focus:border-[#476cf3] focus:ring-2 focus:ring-[#476cf3]/20 text-sm transition-all"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Mật Khẩu Xác Thực
+            <label className="block text-[11px] font-bold text-[#51627c] mb-1.5">
+              Mật khẩu
             </label>
             <input
               type="password"
@@ -83,14 +89,14 @@ export default function AdminLoginPage() {
               placeholder="••••••••"
               autoComplete="current-password"
               required
-              className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 text-sm transition-all"
+              className="w-full px-3.5 py-2.5 bg-[#f8fafd] border border-[#dde4ef] rounded-xl text-[#17253d] placeholder-[#9aa7bb] focus:outline-none focus:bg-white focus:border-[#476cf3] focus:ring-2 focus:ring-[#476cf3]/20 text-sm transition-all"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full mt-2 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md shadow-blue-600/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
+            className="w-full mt-2 py-3 px-4 bg-[#476cf3] hover:bg-[#3b61e8] text-white font-bold rounded-xl shadow-md shadow-[#476cf3]/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
           >
             {loading ? (
               <>
@@ -101,7 +107,7 @@ export default function AdminLoginPage() {
                 <span>Đang đăng nhập...</span>
               </>
             ) : (
-              <span>Đăng Nhập Quản Trị →</span>
+              <span>Đăng nhập</span>
             )}
           </button>
         </form>

@@ -91,22 +91,22 @@ export default function VenuesTab({ data, run }: TabProps) {
           return (
             <tr key={venue.id}>
               <td className={TD}>
-                <p className="font-bold text-slate-900">{venue.name}</p>
-                <p className="text-xs text-slate-500">{venue.address}</p>
+                <p className="font-bold text-[#17253d]">{venue.name}</p>
+                <p className="text-xs text-[#718096]">{venue.address}</p>
                 {(venue.latitude == null || venue.longitude == null) && <p className="text-xs text-amber-700">Chưa có toạ độ</p>}
               </td>
               <td className={TD}>
-                <p className="text-slate-900">{venue.owner_full_name || `#${venue.owner_id}`}</p>
+                <p className="text-[#17253d]">{venue.owner_full_name || `#${venue.owner_id}`}</p>
               </td>
               <td className={TD}>
                 <p>{venue.courts.length} sân</p>
-                <p className="text-xs text-slate-500">{base ? `${formatVND(base.price)}/giờ` : "Chưa có bảng giá"}</p>
+                <p className="text-xs text-[#718096]">{base ? `${formatVND(base.price)}/giờ` : "Chưa có bảng giá"}</p>
               </td>
               <td className={`${TD} text-xs`}>
                 {venue.owner_bank_account ? (
                   <>
-                    <p className="font-mono text-slate-900">{venue.owner_bank_account}</p>
-                    <p className="text-slate-500">{venue.owner_company_name}</p>
+                    <p className="font-mono text-[#17253d]">{venue.owner_bank_account}</p>
+                    <p className="text-[#718096]">{venue.owner_company_name}</p>
                   </>
                 ) : (
                   <span className="text-amber-700">Chưa cấu hình</span>
@@ -164,7 +164,7 @@ export default function VenuesTab({ data, run }: TabProps) {
                 </Field>
               </div>
             )}
-            <p className="text-xs text-slate-500">Sân con, giờ hoạt động, giá cao điểm, tiện ích và ảnh do chủ sân cấu hình trong cổng Chủ sân.</p>
+            <p className="text-xs text-[#718096]">Sân con, giờ hoạt động, giá cao điểm, tiện ích và ảnh do chủ sân cấu hình trong cổng Chủ sân.</p>
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" className={BTN_SECONDARY} onClick={() => setForm(null)}>Đóng</button>
               <button type="submit" className={BTN_PRIMARY}>Lưu</button>
