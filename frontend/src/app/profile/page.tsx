@@ -67,6 +67,11 @@ const EMPTY_FORM: ProfileForm = {
 const KIND_LABEL: Record<string, string> = { DEPOSIT: "Tiền cọc", BALANCE: "Thanh toán tại sân", REFUND: "Hoàn tiền" };
 const METHOD_LABEL: Record<string, string> = { BANK_TRANSFER: "Chuyển khoản", CASH: "Tiền mặt" };
 const INPUT = "w-full px-3 py-1.5 border border-zinc-200 rounded-lg text-xs text-zinc-900 bg-white focus:outline-none focus:border-zinc-900";
+const FILTER_SELECT =
+  "px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-white text-xs font-semibold text-zinc-800 cursor-pointer focus:outline-none focus:border-zinc-900";
+
+type TransactionFilter = "all" | "paid" | "refund";
+type TransactionOrder = "newest" | "oldest";
 
 function ProfileContent() {
   const { user, isLoading, refreshUser } = useAuth();
@@ -87,6 +92,8 @@ function ProfileContent() {
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingTxns, setLoadingTxns] = useState(false);
+  const [txnFilter, setTxnFilter] = useState<TransactionFilter>("all"); // lịch sử thanh toán: loại giao dịch đang xem
+  const [txnOrder, setTxnOrder] = useState<TransactionOrder>("newest");
 
   const activeTab: "profile" | "payments" = tabParam === "payments" ? "payments" : "profile";
   const profile = user?.player_profile;
@@ -232,6 +239,11 @@ function ProfileContent() {
 
   const paid = transactions.filter((t) => t.status === "SUCCESS" && t.kind !== "REFUND").reduce((sum, t) => sum + t.amount_in, 0);
   const refunded = transactions.filter((t) => t.status === "SUCCESS" && t.kind === "REFUND").reduce((sum, t) => sum + t.amount_in, 0);
+  const refundCount = transactions.filter((t) => t.kind === "REFUND").length;
+  const txnTime = (t: Transaction) => (t.created_at ? parseUtcDate(t.created_at).getTime() : 0);
+  const shownTransactions = transactions
+    .filter((t) => txnFilter === "all" || (txnFilter === "refund") === (t.kind === "REFUND"))
+    .sort((a, b) => (txnOrder === "newest" ? -1 : 1) * (txnTime(a) - txnTime(b) || a.id - b.id));
 
   return (
     <div className="min-h-screen flex flex-col bg-zinc-50 font-sans text-zinc-900 selection:bg-zinc-900 selection:text-white">
@@ -483,6 +495,36 @@ function ProfileContent() {
               <Summary label="Số giao dịch" value={String(transactions.length)} tone="text-zinc-950" />
             </div>
 
+            {transactions.length > 1 && (
+              <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 text-xs text-zinc-500">
+                <div className="flex items-center gap-2">
+                  <label htmlFor="txn-kind-filter">Hiển thị</label>
+                  <select
+                    id="txn-kind-filter"
+                    value={txnFilter}
+                    onChange={(e) => setTxnFilter(e.target.value as TransactionFilter)}
+                    className={FILTER_SELECT}
+                  >
+                    <option value="all">Tất cả ({transactions.length})</option>
+                    <option value="paid">Đã thanh toán ({transactions.length - refundCount})</option>
+                    <option value="refund">Hoàn tiền ({refundCount})</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label htmlFor="txn-sort">Sắp xếp theo thời gian</label>
+                  <select
+                    id="txn-sort"
+                    value={txnOrder}
+                    onChange={(e) => setTxnOrder(e.target.value as TransactionOrder)}
+                    className={FILTER_SELECT}
+                  >
+                    <option value="newest">Mới nhất trước</option>
+                    <option value="oldest">Cũ nhất trước</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
             {loadingTxns ? (
               <div className="bg-white rounded-xl p-4 border border-zinc-200 animate-pulse h-20" />
             ) : transactions.length === 0 ? (
@@ -493,9 +535,13 @@ function ProfileContent() {
                   Xem Lịch Đặt Sân →
                 </Link>
               </div>
+            ) : shownTransactions.length === 0 ? (
+              <div className="text-center py-10 bg-white rounded-2xl border border-zinc-200 shadow-xs">
+                <h3 className="font-semibold text-zinc-900 text-sm">Không có giao dịch nào thuộc loại này</h3>
+              </div>
             ) : (
               <div className="space-y-3">
-                {transactions.map((t) => {
+                {shownTransactions.map((t) => {
                   const isRefund = t.kind === "REFUND";
                   return (
                     <div key={t.id} className="bg-white rounded-2xl border border-zinc-200/80 p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">

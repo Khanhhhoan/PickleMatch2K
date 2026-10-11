@@ -403,6 +403,23 @@ async function main() {
     if (await hasText(page, "Ngân sách tối đa")) throw new Error("Hồ sơ vẫn còn ô ngân sách");
     await clickText(page, 'button[type="submit"]', "Lưu Thông Tin");
     await waitForText(page, "Đã lưu hồ sơ");
+    // lịch sử thanh toán: lọc theo loại giao dịch
+    await page.goto(`${WEB}/profile?tab=payments`, { waitUntil: "networkidle2" });
+    await waitForText(page, "Lịch Sử Thanh Toán");
+    await page.waitForSelector("#txn-kind-filter", { timeout: TIMEOUT });
+    const refundRows = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll("main div.rounded-2xl")]
+          .filter((el) => el.querySelector("span.font-mono"))
+          .map((el) => el.innerText.includes("Hoàn tiền")),
+      );
+    await page.select("#txn-kind-filter", "refund");
+    await sleep(300);
+    if ((await refundRows()).includes(false)) throw new Error("Lọc \"Hoàn tiền\" vẫn hiện giao dịch khác");
+    await page.select("#txn-kind-filter", "paid");
+    await sleep(300);
+    const paidRows = await refundRows();
+    if (paidRows.length === 0 || paidRows.includes(true)) throw new Error("Lọc \"Đã thanh toán\" hiện sai giao dịch");
   });
   await p1.context.close();
 
