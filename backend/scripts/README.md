@@ -63,3 +63,14 @@ Lệnh khôi phục không bao giờ ghi đè CSDL đang cấu hình, và từ c
 Dùng mẫu `docs/Mau_Nhap_Du_Lieu_Pickleball.xlsx`. Dòng thiếu ô bắt buộc (tên, địa chỉ, sân con, email chủ sân,
 giá thường, giờ mở/đóng cửa) bị bỏ qua và được báo lại; script không tự điền dữ liệu thay thế. Tài khoản chủ sân
 mới nhận mật khẩu ngẫu nhiên, in ra một lần khi chạy xong.
+
+## Webhook SePay trên máy cá nhân (`scripts/sepay_tunnel.py`)
+
+SePay chỉ báo giao dịch về được khi gọi tới được API. Trên máy cá nhân, chạy `start_sepay_tunnel.bat` ở thư mục gốc
+(hoặc `python scripts/sepay_tunnel.py` trong `backend/`) sau khi API đã chạy: lệnh mở một đường hầm Cloudflare tới
+cổng 8000, in ra và chép sẵn địa chỉ webhook, rồi tự kiểm tra địa chỉ đó. Cần cài `cloudflared`.
+
+- Địa chỉ `https://….trycloudflare.com` **đổi sau mỗi lần chạy** và chỉ sống khi cửa sổ lệnh còn mở. Mỗi lần mở lại
+  phải dán địa chỉ mới vào webhook trên SePay; để địa chỉ cũ thì SePay báo "Lỗi kết nối".
+- Giao dịch SePay báo lỗi có thể bấm "Gửi lại" sau khi đã cập nhật địa chỉ.
+- Nên đặt `SEPAY_WEBHOOK_API_KEY` trong `.env` và chọn chứng thực API Key trên SePay, vì địa chỉ đường hầm là công khai.

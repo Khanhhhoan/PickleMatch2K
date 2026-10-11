@@ -80,9 +80,14 @@ def sepay_webhook(
     db: Session = Depends(deps.get_db),
     authorization: Optional[str] = Header(None),
 ):
-    """SePay gọi vào đây mỗi khi tài khoản nhận có giao dịch. Header: `Authorization: Apikey <KEY>`."""
+    """
+    SePay gọi vào đây mỗi khi tài khoản nhận có giao dịch. Header: `Authorization: Apikey <KEY>`.
+    SePay chỉ coi lần gọi là thành công khi nhận HTTP 200/201 và body có `"success": true` trong 30 giây; nếu không
+    nó tính là thất bại và gọi lại tới 7 lần. Vì vậy mọi yêu cầu đã tiếp nhận (kể cả giao dịch không liên quan đơn
+    nào) đều trả `success: true`; kết quả xử lý nằm ở `status` / `outcome`.
+    """
     _verify_webhook_key(authorization)
-    return payment_service.process_sepay_webhook(db, payload)
+    return {"success": True, **payment_service.process_sepay_webhook(db, payload)}
 
 
 @router.post("/simulate-sepay/{booking_id}")

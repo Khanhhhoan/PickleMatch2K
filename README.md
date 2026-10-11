@@ -159,6 +159,13 @@ Danh sách đầy đủ 33 tài khoản: [docs/DANH_SACH_TAI_KHOAN_TEST.md](docs
 - Dùng SePay thật: khai báo `SEPAY_BANK_*`, `SEPAY_WEBHOOK_API_KEY` và trỏ webhook của SePay tới
   `POST /api/v1/payments/sepay-webhook` (header `Authorization: Apikey <khóa>`). Đã đặt khóa thì yêu cầu sai khóa
   bị từ chối; khi `ENVIRONMENT=production` mà chưa đặt khóa, webhook ngừng nhận yêu cầu.
+- SePay phải gọi được vào máy đang chạy API. Trên máy cá nhân: chạy `start_all.bat` rồi `start_sepay_tunnel.bat`
+  (cần cài `cloudflared`). Lệnh mở một đường hầm Cloudflare và in ra địa chỉ webhook để dán vào SePay. **Mỗi lần mở
+  lại, địa chỉ đổi** và địa chỉ cũ ngừng hoạt động: phải dán địa chỉ mới vào SePay, nếu không SePay báo
+  "Lỗi kết nối" và đơn không tự xác nhận. Giao dịch bị lỗi có thể bấm "Gửi lại" trên SePay; nếu đơn đã quá 15 phút
+  nhưng khung giờ còn trống thì đơn được khôi phục và xác nhận, ngược lại hệ thống tạo yêu cầu hoàn tiền.
+- SePay chỉ coi webhook là thành công khi nhận HTTP 200/201 kèm `"success": true` trong 30 giây, nên API trả
+  `success: true` cho mọi lần gọi đã tiếp nhận (kết quả xử lý nằm ở `status` và `outcome`).
 - `SEPAY_UNIFIED_TEST_MODE=true`: mọi cụm sân nhận tiền vào một tài khoản chung khai báo trong `.env`;
   `false`: mỗi cụm sân dùng tài khoản của chủ sân.
 

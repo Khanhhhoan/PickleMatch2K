@@ -112,6 +112,27 @@ def test_webhook_without_a_key_is_refused_in_production_but_allowed_in_developme
     assert sepay(client, pending["booking_code"], 75000, key=None)["outcome"] == "confirmed"
 
 
+def test_webhook_acknowledges_every_delivery_the_way_sepay_expects(client, db, pending):
+    """
+    SePay chỉ coi một lần gọi là thành công khi nhận HTTP 200/201 kèm body có "success": true; thiếu trường này
+    SePay tính là thất bại và gọi lại tới 7 lần, kể cả khi giao dịch đã được ghi nhận.
+    """
+    unrelated = sepay(client, "chuyen tien an trua", 50000)                      # tiền vào không liên quan đơn nào
+    outgoing = sepay(client, "rut tien", 30000, transfer_type="out")
+    partial = sepay(client, pending["booking_code"], 20000)
+    confirmed = sepay(client, pending["booking_code"], 55000, reference="FT-ACK")
+    repeated = sepay(client, pending["booking_code"], 55000, reference="FT-ACK")  # SePay gửi lại cùng giao dịch
+
+    assert [r["success"] for r in (unrelated, outgoing, partial, confirmed, repeated)] == [True] * 5
+    assert (unrelated["status"], outgoing["status"], partial["outcome"], confirmed["outcome"]) == (
+        "ignored", "ignored", "partial", "confirmed")
+    assert len(transactions(db, pending)) == 2
+
+    # Yêu cầu sai khóa không được xác nhận là đã nhận
+    refused = sepay(client, pending["booking_code"], 75000, key="wrong-key", expect=401)
+    assert "success" not in refused
+
+
 # ---------------------------------------------------------------------------
 # Khớp đơn và cập nhật trạng thái
 # ---------------------------------------------------------------------------
