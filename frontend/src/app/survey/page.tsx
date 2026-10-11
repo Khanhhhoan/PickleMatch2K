@@ -41,7 +41,7 @@ export default function MatchingSurveyPage() {
   const [totalSaved, setTotalSaved] = useState(0);
 
   useEffect(() => {
-    if (!isLoading && !user) router.push("/login");
+    if (!isLoading && !user) router.push("/login?next=/survey");
   }, [user, isLoading, router]);
 
   const loadPairs = useCallback(async () => {

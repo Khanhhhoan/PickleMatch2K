@@ -27,7 +27,7 @@ function CreateMatchContent() {
   const [form, setForm] = useState({ num_players: "4", required_skill: "", purpose: "recreational", notes: "" });
 
   useEffect(() => {
-    if (!authLoading && !user) router.push("/login");
+    if (!authLoading && !user) router.push("/login?next=/matches/create");
   }, [user, authLoading, router]);
 
   const loadData = useCallback(async () => {

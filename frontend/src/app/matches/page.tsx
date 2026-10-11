@@ -94,7 +94,7 @@ function MatchesContent() {
   const { lastMessage } = useWebSocket("/api/v1/ws/live");
 
   useEffect(() => {
-    if (!authLoading && !user) router.push("/login");
+    if (!authLoading && !user) router.push("/login?next=/matches");
   }, [user, authLoading, router]);
 
   useEffect(() => {

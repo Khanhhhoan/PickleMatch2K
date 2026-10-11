@@ -46,7 +46,7 @@ export default function Navbar() {
               onClick={() => {
                 if (!user) {
                   toastInfo("Vui lòng đăng nhập để sử dụng tính năng Ghép Trận!");
-                  router.push("/login");
+                  router.push("/login?next=/matches");
                 } else {
                   router.push("/matches");
                 }
@@ -65,7 +65,7 @@ export default function Navbar() {
               onClick={() => {
                 if (!user) {
                   toastInfo("Vui lòng đăng nhập để tạo phòng!");
-                  router.push("/login");
+                  router.push("/login?next=/matches/create");
                 } else {
                   router.push("/matches/create");
                 }
@@ -270,7 +270,7 @@ export default function Navbar() {
                 setMobileNavOpen(false);
                 if (!user) {
                   toastInfo("Vui lòng đăng nhập để sử dụng tính năng Ghép Trận!");
-                  router.push("/login");
+                  router.push("/login?next=/matches");
                 } else {
                   router.push("/matches");
                 }
@@ -286,7 +286,7 @@ export default function Navbar() {
                 setMobileNavOpen(false);
                 if (!user) {
                   toastInfo("Vui lòng đăng nhập để tạo phòng!");
-                  router.push("/login");
+                  router.push("/login?next=/matches/create");
                 } else {
                   router.push("/matches/create");
                 }

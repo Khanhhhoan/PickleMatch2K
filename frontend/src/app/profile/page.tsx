@@ -92,7 +92,7 @@ function ProfileContent() {
   const profile = user?.player_profile;
 
   useEffect(() => {
-    if (!isLoading && !user) router.push("/login");
+    if (!isLoading && !user) router.push("/login?next=/profile");
   }, [user, isLoading, router]);
 
   // Nạp biểu mẫu từ hồ sơ thật; trường chưa khai để trống, không điền giá trị mặc định thay người dùng

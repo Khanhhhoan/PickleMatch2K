@@ -142,7 +142,7 @@ function PlayerBookingsContent() {
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.push("/login");
+      router.push("/login?next=/bookings");
       return;
     }
     if (user) loadMyBookings();
