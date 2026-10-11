@@ -117,6 +117,81 @@ def test_too_few_survey_labels_fall_back_to_the_synthetic_prior(db, monkeypatch)
     assert source == "synthetic_prior" and groups is None and len(data) == 3000
 
 
+def _load_simulated_feedback(db, players: int = 3, per_player: int = 120):
+    """Tạo vài tài khoản demo rồi nạp phiếu mô phỏng cho họ, đúng như `python manage.py seed --feedback`."""
+    from scripts import seed
+
+    raters = [make_user(db, "PLAYER", persona.email, skill_level=persona.skill_level) for persona in seed.PLAYERS[:players]]
+    return raters, seed.seed_simulated_feedback(db, per_player=per_player)
+
+
+def test_simulated_feedback_is_stored_in_the_database_and_marked_as_simulated(db):
+    from scripts import seed
+
+    raters, added = _load_simulated_feedback(db)
+    assert added == 360
+    rows = db.query(PairFeedback).all()
+    assert {r.source for r in rows} == {"simulated"} and {r.rater_id for r in rows} == {u.id for u in raters}
+    assert {r.label for r in rows} == {0, 1}
+    assert all(0 <= r.availability_overlap <= 1 and r.distance_km > 0 and r.level_diff >= 0 for r in rows)
+    # cả năm đặc trưng đều biến thiên, không đặc trưng nào bị đứng yên
+    assert {r.purpose_match for r in rows} == {0, 1} == {r.style_match for r in rows}
+    assert len({r.level_diff for r in rows}) >= 4 and len({round(r.availability_overlap, 1) for r in rows}) >= 4
+
+    assert seed.seed_simulated_feedback(db, per_player=120) == 0                     # chạy lại không nạp trùng
+    assert db.query(PairFeedback).count() == 360
+    # phiếu mô phỏng không được tính là nhãn khảo sát thật
+    assert ml_service.feedback_summary(db) == {"labels": 0, "positive": 0, "raters": 0, "simulated": 360}
+
+
+def test_simulated_feedback_is_the_same_on_every_installation(db):
+    _load_simulated_feedback(db)
+    first = [(r.rater_id, r.level_diff, r.distance_km, r.availability_overlap, r.purpose_match, r.style_match, r.label)
+             for r in db.query(PairFeedback).order_by(PairFeedback.id)]
+    db.query(PairFeedback).delete()
+    db.commit()
+    from scripts import seed
+
+    seed.seed_simulated_feedback(db, per_player=120)
+    second = [(r.rater_id, r.level_diff, r.distance_km, r.availability_overlap, r.purpose_match, r.style_match, r.label)
+              for r in db.query(PairFeedback).order_by(PairFeedback.id)]
+    assert first == second
+
+
+def test_training_reads_simulated_feedback_from_the_database_and_says_so(db):
+    _load_simulated_feedback(db)
+    data, source, groups = train_model.choose_dataset(force_synthetic=False)
+    assert (source, len(data), groups.nunique()) == ("simulated", 360, 3)
+
+    meta = train_model.train(report_only=True)
+    assert (meta["data_source"], meta["n_samples"], meta["n_raters"]) == ("simulated", 360, 3)
+    assert (meta["n_simulated"], meta["n_survey"]) == (360, 0)
+    assert "GroupKFold" in meta["evaluation_protocol"] and RULE_CEILING in meta["baselines"]
+
+
+def test_real_survey_answers_replace_simulated_ones_once_there_are_enough(db):
+    raters, _ = _load_simulated_feedback(db)
+    real = train_model.generate_synthetic_pairs(300, seed=5)
+    db.add_all([
+        PairFeedback(rater_id=raters[i % 3].id, label=int(row.label), level_diff=float(row.level_diff),
+                     distance_km=float(row.distance_km), availability_overlap=float(row.availability_overlap),
+                     purpose_match=int(row.purpose_match), style_match=int(row.style_match))
+        for i, row in enumerate(real.itertuples())
+    ])
+    db.commit()
+
+    data, source, _ = train_model.choose_dataset(force_synthetic=False)
+    assert (source, len(data)) == ("survey", 300)
+    assert (data.attrs["n_survey"], data.attrs["n_simulated"]) == (300, 0)
+    assert ml_service.feedback_summary(db)["labels"] == 300 and ml_service.feedback_summary(db)["simulated"] == 360
+
+
+def test_survey_pairs_can_be_generated_for_a_player_who_is_free_all_week(db):
+    busy_free = make_user(db, "PLAYER", skill_level=3.5, availability=json.dumps(F.AVAILABILITY_SLOTS))
+    pairs, _ = ml_service.generate_survey_pairs(busy_free, count=30)
+    assert len(pairs) == 30 and all(0 <= p["features"]["availability_overlap"] <= 1 for p in pairs)
+
+
 # ---------------------------------------------------------------------------
 # Phục vụ mô hình
 # ---------------------------------------------------------------------------
@@ -124,7 +199,7 @@ def test_shipped_model_matches_the_feature_module_and_its_metadata():
     assert match_predictor.available, match_predictor.error
     info = match_predictor.info()
     assert info["features"] == FEATURE_NAMES and list(match_predictor.model.feature_names_in_) == FEATURE_NAMES
-    assert info["data_source"] in ("synthetic_prior", "survey")
+    assert info["data_source"] in ("synthetic_prior", "simulated", "survey")
     assert info["metrics"]["accuracy"] > 0.8 and info["baselines"]
 
 
@@ -253,7 +328,7 @@ def test_model_info_shows_survey_progress_to_admin_only(client, db):
     assert client.get(f"{ML}/model-info").status_code == 401
     assert "survey" not in client.get(f"{ML}/model-info", headers=auth(player)).json()
     info = client.get(f"{ML}/model-info", headers=auth(admin)).json()
-    assert info["survey"] == {"labels": 1, "positive": 1, "raters": 1} and info["available"] is True
+    assert info["survey"] == {"labels": 1, "positive": 1, "raters": 1, "simulated": 0} and info["available"] is True
 
 
 def test_model_info_gives_the_recommendation_threshold_and_what_a_player_still_has_to_fill_in(client, db):

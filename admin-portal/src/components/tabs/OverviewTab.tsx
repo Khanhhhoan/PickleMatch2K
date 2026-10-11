@@ -95,7 +95,13 @@ export default function OverviewTab({ data }: TabProps) {
                 <br />
                 Nguồn dữ liệu:{" "}
                 <strong className="text-slate-900">
-                  {model.data_source === "survey" ? `khảo sát thật (${model.n_raters} người trả lời)` : "dữ liệu tổng hợp khởi tạo theo quy tắc"}
+                  {model.data_source === "survey"
+                    ? `khảo sát thật (${model.n_raters} người trả lời)`
+                    : model.data_source === "simulated"
+                    ? `phiếu ghép cặp mô phỏng lưu trong CSDL (${(model.n_simulated ?? 0).toLocaleString("vi-VN")} phiếu của ${model.n_raters} tài khoản demo${
+                        model.n_survey ? `, kèm ${model.n_survey} nhãn khảo sát thật` : ""
+                      })`
+                    : "dữ liệu tổng hợp khởi tạo theo quy tắc"}
                 </strong>
                 <br />
                 Cách đánh giá: {model.evaluation_protocol}
@@ -150,8 +156,11 @@ export default function OverviewTab({ data }: TabProps) {
           )}
           {model?.survey && (
             <p className="text-xs text-slate-600 pt-2 border-t border-slate-100">
-              Nhãn khảo sát đã thu: <strong className="text-slate-900">{model.survey.labels}</strong> ({model.survey.positive} “muốn ghép”) từ{" "}
-              {model.survey.raters} người chơi. Huấn luyện lại bằng lệnh <code className="bg-slate-100 px-1 rounded">python manage.py train-model</code>.
+              Bảng <code className="bg-slate-100 px-1 rounded">pair_feedback</code> đang có{" "}
+              <strong className="text-slate-900">{(model.survey.simulated ?? 0).toLocaleString("vi-VN")}</strong> phiếu mô phỏng và{" "}
+              <strong className="text-slate-900">{model.survey.labels}</strong> nhãn khảo sát thật ({model.survey.positive} “muốn ghép”, từ{" "}
+              {model.survey.raters} người chơi). Huấn luyện lại bằng lệnh{" "}
+              <code className="bg-slate-100 px-1 rounded">python manage.py train-model</code>.
             </p>
           )}
         </Card>

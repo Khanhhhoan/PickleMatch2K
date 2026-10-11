@@ -10,12 +10,13 @@ trong file `.env`; schema luôn được tạo/cập nhật bằng migration Ale
 | `python manage.py show` | Báo cáo tổng quan dữ liệu | Không (chỉ đọc) |
 | `python manage.py seed` | Nạp bộ dữ liệu demo vào CSDL **trống** | Không |
 | `python manage.py seed --if-empty` | Như trên, nhưng bỏ qua nếu đã có dữ liệu (dùng cho Docker) | Không |
+| `python manage.py seed --feedback` | Chỉ nạp 3.000 phiếu ghép cặp **mô phỏng** vào bảng `pair_feedback` (nguồn `simulated`) để huấn luyện mô hình từ CSDL; bỏ qua nếu đã có | Không |
 | `python manage.py seed --preferences` | Chỉ bổ sung sở thích mẫu (mục đích chơi, khung rảnh…) cho tài khoản demo đang để trống | Không |
 | `python manage.py seed --reset` | Xóa toàn bộ rồi nạp lại dữ liệu demo | **Có** |
 | `python manage.py reset` | Xóa toàn bộ, chỉ giữ danh mục tiện ích và một tài khoản Admin | **Có** |
 | `python manage.py import-excel --file x.xlsx` | Nhập thêm cụm sân từ Excel (thêm `--dry-run` để kiểm tra trước) | Không |
 | `python manage.py backup` | Sao lưu CSDL vào `backups/` (pg_dump) | Không |
-| `python manage.py train-model` | Huấn luyện lại mô hình ghép cặp, ghi `match_rf_model.pkl` + `model_meta.json` | Không |
+| `python manage.py train-model` | Huấn luyện mô hình ghép cặp từ bảng `pair_feedback`, ghi `match_rf_model.pkl` + `model_meta.json` | Không |
 | `python manage.py test` | Chạy bộ kiểm thử trên CSDL riêng `pickleball_test` | Không (CSDL test) |
 
 Các lệnh có xóa dữ liệu bắt gõ lại tên CSDL để xác nhận; thêm `--yes` để bỏ qua bước hỏi (ví dụ trong CI).
@@ -37,6 +38,9 @@ Trước khi chạy chúng trên CSDL đang dùng, hãy sao lưu: `python manage
   ứng dụng, nên luôn thỏa các ràng buộc hiện hành (không đặt trùng, tiền đã trả khớp sổ giao dịch, chỉ người
   đã chơi xong mới có đánh giá). Ngày tháng tính tương đối theo ngày chạy script.
 - Tài khoản nhận tiền của chủ sân lấy từ biến `SEPAY_BANK_*` trong `.env`; mã nguồn không chứa số tài khoản nào.
+- 3.000 phiếu ghép cặp mô phỏng (mỗi người chơi demo 150 phiếu) làm dữ liệu huấn luyện cho mô hình. Các phiếu mang
+  nguồn `simulated`, tách biệt với câu trả lời khảo sát thật (nguồn `survey`); cổng quản trị hiển thị riêng hai con số.
+  Muốn sinh lại: `DELETE FROM pair_feedback WHERE source = 'simulated';` rồi chạy lại `python manage.py seed --feedback`.
 
 ## Sao lưu và khôi phục (`scripts/backup_db.py`)
 

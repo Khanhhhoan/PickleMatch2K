@@ -295,6 +295,8 @@ function MatchesContent() {
                 chênh lệch trình độ, khoảng cách tới sân, khung giờ rảnh, mục đích chơi và lối đánh.{" "}
                 {model.data_source === "survey"
                   ? `Mô hình học từ ${model.n_samples} câu trả lời khảo sát của ${model.n_raters} người chơi.`
+                  : model.data_source === "simulated"
+                  ? `Mô hình học từ ${model.n_samples?.toLocaleString("vi-VN")} phiếu ghép cặp mô phỏng lưu trong hệ thống, chưa phải lựa chọn của người chơi thật.`
                   : "Mô hình hiện học từ dữ liệu tổng hợp, chưa phải lựa chọn của người chơi thật."}{" "}
                 <Link href="/survey" className="font-semibold text-zinc-900 underline">
                   Trả lời khảo sát để mô hình học từ bạn

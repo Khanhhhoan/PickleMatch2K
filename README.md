@@ -170,11 +170,11 @@ Chạy trong `backend/` với môi trường ảo đã kích hoạt:
 | :--- | :--- |
 | `python manage.py migrate` | Sao lưu rồi nâng schema lên bản mới nhất (`--check` chỉ xem trạng thái, `--no-backup` bỏ sao lưu) |
 | `python manage.py show` | Báo cáo tổng quan dữ liệu (chỉ đọc) |
-| `python manage.py seed` | Nạp dữ liệu demo vào CSDL trống (`--reset` xóa rồi nạp lại, có hỏi xác nhận) |
+| `python manage.py seed` | Nạp dữ liệu demo vào CSDL trống (`--reset` xóa rồi nạp lại, có hỏi xác nhận; `--feedback` chỉ nạp phiếu ghép cặp mô phỏng cho mô hình) |
 | `python manage.py reset` | Xóa sạch, chỉ giữ danh mục tiện ích và một tài khoản quản trị (có hỏi xác nhận) |
 | `python manage.py import-excel --file x.xlsx` | Nhập cụm sân từ Excel theo mẫu trong `docs/` (`--dry-run` để kiểm tra trước) |
 | `python manage.py backup` | Sao lưu CSDL vào `backups/` |
-| `python manage.py train-model` | Huấn luyện lại mô hình ghép cặp (`--report` chỉ in bảng đánh giá) |
+| `python manage.py train-model` | Huấn luyện mô hình ghép cặp từ bảng `pair_feedback` (`--report` chỉ in bảng đánh giá) |
 | `python manage.py test` | Chạy bộ kiểm thử |
 
 **Kiểm thử backend** - hơn 300 ca kiểm thử chạy trên CSDL riêng `pickleball_test` (tự tạo, không đụng CSDL đang dùng):
@@ -221,8 +221,9 @@ Sau khi nâng cấp, các tài khoản demo cũ chưa có mục đích chơi và
 - Số tiền lưu bằng kiểu số thực (`FLOAT`); mọi giá trị trong hệ thống là số nguyên VNĐ.
 - Quét QR bằng camera cần trình duyệt hỗ trợ `BarcodeDetector` và trang chạy trên HTTPS hoặc `localhost`;
   các trường hợp khác nhân viên nhập mã đơn bằng tay.
-- Mô hình ghép cặp đang được huấn luyện trên **dữ liệu tổng hợp**. Khi khảo sát trong ứng dụng (`/survey`) thu đủ
-  300 nhãn, lệnh `python manage.py train-model` tự chuyển sang huấn luyện bằng nhãn thật.
+- Mô hình ghép cặp đang được huấn luyện trên **3.000 phiếu ghép cặp mô phỏng** lưu trong bảng `pair_feedback`
+  (nạp bằng `python manage.py seed --feedback`), không phải khảo sát người chơi thật. Khi khảo sát trong ứng dụng
+  (`/survey`) thu đủ 300 nhãn thật, lệnh `python manage.py train-model` tự chuyển sang huấn luyện bằng nhãn thật.
   Xem phần đánh giá trong `docs/HUONG_DAN_KLTN.md`.
 - Tài liệu Swagger (`/docs`) đang mở công khai; nên tắt hoặc chặn khi triển khai thật.
 

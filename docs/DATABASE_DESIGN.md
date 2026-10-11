@@ -155,7 +155,7 @@ Duy nhất theo (`match_id`, `user_id`).
 
 ### 2.5. Nhãn cho mô hình ghép cặp
 
-**`pair_feedback`**: `rater_id` (FK → `users.id`), `source`, năm đặc trưng của cặp được hỏi (`level_diff`, `distance_km`,
+**`pair_feedback`**: `rater_id` (FK → `users.id`), `source` (`survey` = câu trả lời khảo sát thật, `simulated` = phiếu mô phỏng nạp sẵn bằng `python manage.py seed --feedback`), năm đặc trưng của cặp được hỏi (`level_diff`, `distance_km`,
 `availability_overlap`, `purpose_match`, `style_match`), `label` (1 = muốn ghép, 0 = không), `created_at`.
 Bảng chỉ lưu đặc trưng của cặp, không lưu danh tính người được so sánh.
 

@@ -3,7 +3,7 @@ Bộ lệnh quản trị PickleMatch2K. Chạy trong thư mục backend/ với m
 
     python manage.py migrate        Sao lưu rồi đưa schema lên phiên bản mới nhất (--check | --no-backup)
     python manage.py show           Báo cáo tổng quan dữ liệu (chỉ đọc)
-    python manage.py seed           Nạp dữ liệu demo vào CSDL trống   (--if-empty | --reset | --preferences)
+    python manage.py seed           Nạp dữ liệu demo vào CSDL trống   (--if-empty | --reset | --preferences | --feedback)
     python manage.py reset          Xóa sạch, dựng lại CSDL trống + tài khoản Admin (phải xác nhận)
     python manage.py import-excel   Nhập cụm sân từ file Excel        (--file duong_dan.xlsx, --dry-run)
     python manage.py backup         Sao lưu CSDL ra thư mục backups/
@@ -92,6 +92,7 @@ def main() -> None:
     parser.add_argument("--if-empty", action="store_true", help="seed: bỏ qua nếu CSDL đã có dữ liệu")
     parser.add_argument("--reset", action="store_true", help="seed: xóa toàn bộ dữ liệu rồi nạp lại")
     parser.add_argument("--preferences", action="store_true", help="seed: chỉ bổ sung sở thích mẫu cho tài khoản demo")
+    parser.add_argument("--feedback", action="store_true", help="seed: chỉ nạp phiếu ghép cặp mô phỏng để huấn luyện mô hình")
     parser.add_argument("--file", "-f", default=None, help="import-excel: đường dẫn file .xlsx")
     parser.add_argument("--dry-run", action="store_true", help="import-excel: chỉ kiểm tra, không ghi")
     parser.add_argument("--report", action="store_true", help="train-model: chỉ in bảng đánh giá")
@@ -117,6 +118,13 @@ def main() -> None:
             ensure_schema()
             with SessionLocal() as db:
                 print(f"Đã bổ sung sở thích mẫu cho {seed.apply_demo_preferences(db)} tài khoản demo.")
+        elif args.feedback:
+            from app.db.database import SessionLocal
+            from scripts._common import ensure_schema
+
+            ensure_schema()
+            with SessionLocal() as db:
+                seed.report_simulated_feedback(seed.seed_simulated_feedback(db))
         else:
             seed.seed_database(if_empty=args.if_empty, reset=args.reset, assume_yes=args.yes)
     elif args.action == "reset":

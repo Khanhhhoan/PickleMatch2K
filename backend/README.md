@@ -121,7 +121,8 @@ giờ, đóng phòng đấu đã qua giờ. Một tác vụ lỗi không chặn 
 ## Mô hình ghép cặp
 
 ```powershell
-python manage.py train-model            # huấn luyện và ghi app/ml/match_rf_model.pkl + model_meta.json
+python manage.py seed --feedback        # nạp 3.000 phiếu ghép cặp mô phỏng vào bảng pair_feedback (bỏ qua nếu đã có)
+python manage.py train-model            # huấn luyện từ bảng pair_feedback, ghi app/ml/match_rf_model.pkl + model_meta.json
 python manage.py train-model --report   # chỉ in bảng đánh giá, không ghi file
 ```
 

@@ -175,45 +175,61 @@ nhất quán. Thiếu trình độ của một trong hai người thì không d�
 
 ### 5.2. Dữ liệu huấn luyện
 
-Hệ thống chưa có đủ dữ liệu ghép cặp thật, nên có hai nguồn:
+Dữ liệu huấn luyện nằm trong bảng `pair_feedback` của CSDL. Mỗi dòng là một "phiếu ghép cặp": 5 đặc trưng của một cặp,
+người trả lời, nhãn muốn ghép (1) hay không (0), và cột `source` ghi nguồn. Lệnh huấn luyện chọn nguồn theo thứ tự:
 
-1. **Dữ liệu tổng hợp khởi tạo** (đang dùng): 60.000 cặp sinh ngẫu nhiên; nhãn được gán bằng một quy tắc viết tay
-   (`synthetic_rule_score`: ưu tiên chênh lệch trình độ nhỏ, ở gần, trùng giờ rảnh, cùng mục đích và phong cách)
-   cộng nhiễu Gauss $\sigma = 0.08$. Nguồn này chỉ để hệ thống có mô hình chạy được từ đầu.
-2. **Nhãn thật từ khảo sát** trong ứng dụng (trang `/survey`): người chơi xem các hồ sơ ứng viên giả định xoay quanh
-   hồ sơ của chính mình (trải đều các mức chênh trình độ, khoảng cách, độ trùng lịch) và trả lời có muốn ghép hay
-   không; câu trả lời lưu vào bảng `pair_feedback` cùng đặc trưng của cặp. Khi có từ 300 nhãn trở lên,
-   `train-model` tự chuyển sang huấn luyện bằng nhãn thật và đánh giá bằng **GroupKFold theo người trả lời**, để nhãn
-   của cùng một người không nằm ở cả tập huấn luyện lẫn tập kiểm tra.
+1. **Nhãn khảo sát thật** (`source = survey`): người chơi trả lời trên trang `/survey` về các hồ sơ ứng viên giả định xoay
+   quanh hồ sơ của chính mình. Khi có từ 300 nhãn thật trở lên, mô hình chỉ học từ các nhãn này.
+2. **Phiếu ghép cặp mô phỏng** (`source = simulated`, **đang dùng**): 3.000 phiếu nạp bằng
+   `python manage.py seed --feedback`. Mỗi tài khoản trong 20 tài khoản người chơi demo "trả lời" 150 phiếu. Hồ sơ ứng
+   viên được sinh bằng đúng hàm mà trang khảo sát dùng (trải các mức chênh trình độ, khoảng cách, độ trùng lịch); câu trả
+   lời được sinh từ một quy tắc viết tay (`synthetic_rule_score`: ưu tiên chênh lệch trình độ nhỏ, ở gần, trùng giờ
+   rảnh, cùng mục đích và phong cách) cộng nhiễu Gauss $\sigma = 0.08$. Hạt giống ngẫu nhiên cố định nên cài ở đâu
+   cũng ra cùng một bộ dữ liệu. Đây là dữ liệu mô phỏng để minh họa quy trình, **không phải** câu trả lời của người
+   chơi thật.
+3. **Dữ liệu tổng hợp trong bộ nhớ**: 60.000 cặp sinh từ cùng quy tắc, chỉ dùng khi CSDL chưa có đủ 300 dòng.
+
+Dữ liệu lấy từ CSDL (nguồn 1 và 2) được đánh giá bằng **GroupKFold theo người trả lời**, để phiếu của cùng một người
+không nằm ở cả tập huấn luyện lẫn tập kiểm tra.
+
+Quy trình đầy đủ:
+
+```text
+python manage.py seed --feedback     # nạp phiếu mô phỏng vào bảng pair_feedback (bỏ qua nếu đã có)
+python manage.py train-model         # đọc bảng pair_feedback, đánh giá, ghi match_rf_model.pkl + model_meta.json
+```
+
+Cổng quản trị (thẻ Tổng quan) hiển thị nguồn dữ liệu, số phiếu, cách đánh giá và bảng chỉ số của mô hình đang chạy.
 
 ### 5.3. Mô hình
 
-`RandomForestClassifier` của scikit-learn: 200 cây, độ sâu tối đa 8, tối thiểu 20 mẫu mỗi lá, `class_weight="balanced"`,
-`random_state=42`. Mô hình được lưu thành `match_rf_model.pkl`, kèm `model_meta.json` ghi nguồn dữ liệu, cách đánh giá
-và các chỉ số.
+`RandomForestClassifier` của scikit-learn: 200 cây, độ sâu tối đa 8, tối thiểu 5 mẫu mỗi lá (20 khi dữ liệu có từ 5.000
+dòng), `class_weight="balanced"`, `random_state=42`. Mô hình được lưu thành `match_rf_model.pkl`, kèm `model_meta.json`
+ghi nguồn dữ liệu, cách đánh giá và các chỉ số.
 
 ### 5.4. Kết quả đánh giá hiện tại
 
-Dữ liệu tổng hợp, 60.000 cặp, tỷ lệ nhãn dương 50,62%, tách ngẫu nhiên 80/20 có phân tầng:
+3.000 phiếu mô phỏng của 20 tài khoản demo, tỷ lệ nhãn "muốn ghép" 41,8%, GroupKFold 5 phần theo người trả lời (số
+trong bảng là trung bình của 5 phần):
 
 | Mô hình | Accuracy | Precision | Recall | F1 | ROC-AUC |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| Đoán theo lớp đa số | 0.5062 | 0.5062 | 1.0000 | 0.6722 | - |
-| Luật một ngưỡng: chênh trình độ ≤ 0.5 | 0.8818 | 0.8914 | 0.8728 | 0.8820 | - |
-| Hồi quy logistic | 0.9259 | 0.9226 | 0.9319 | 0.9272 | 0.9789 |
-| **Random Forest** | **0.9319** | **0.9354** | **0.9297** | **0.9326** | **0.9843** |
-| Quy tắc sinh nhãn, không nhiễu (mốc trần) | 0.9330 | 0.9351 | 0.9323 | 0.9337 | - |
+| Đoán theo lớp đa số | 0.5817 | 0.0000 | 0.0000 | 0.0000 | - |
+| Luật một ngưỡng: chênh trình độ ≤ 0.5 | 0.8910 | 0.8772 | 0.8607 | 0.8684 | - |
+| Hồi quy logistic | 0.9254 | 0.9143 | 0.9067 | 0.9105 | 0.9792 |
+| **Random Forest** | **0.9313** | **0.9046** | **0.9343** | **0.9191** | **0.9826** |
+| Quy tắc sinh nhãn, không nhiễu (mốc trần) | 0.9380 | 0.9287 | 0.9223 | 0.9254 | - |
 
-Mức đóng góp của đặc trưng: `level_diff` 0.821, `distance_km` 0.089, `purpose_match` 0.038, `availability_overlap` 0.038,
+Mức đóng góp của đặc trưng: `level_diff` 0.787, `distance_km` 0.117, `availability_overlap` 0.053, `purpose_match` 0.028,
 `style_match` 0.015.
 
-**Cách đọc các con số này.** Nhãn tổng hợp được sinh từ một quy tắc cộng nhiễu, nên:
+**Cách đọc các con số này.** Nhãn mô phỏng được sinh từ một quy tắc cộng nhiễu, nên:
 
-- Mốc trần 93,30% là độ chính xác của chính quy tắc sinh nhãn; không mô hình nào vượt được vì phần còn lại là nhiễu.
-- Random Forest đạt 93,19%, tức gần như học lại trọn quy tắc và cao hơn luật một ngưỡng (88,18%) cùng hồi quy logistic
-  (92,59%).
-- Các con số cho thấy quy trình huấn luyện, đánh giá hoạt động đúng. Chúng **chưa** nói lên mức độ mô hình dự đoán
-  đúng mong muốn của người chơi thật; kết luận đó cần nhãn khảo sát thật (mục 5.2).
+- Mốc trần 93,80% là độ chính xác của chính quy tắc sinh nhãn; không mô hình nào vượt được vì phần còn lại là nhiễu.
+- Random Forest đạt 93,13%, tức gần như học lại trọn quy tắc và cao hơn luật một ngưỡng (89,10%) cùng hồi quy logistic
+  (92,54%).
+- Các con số cho thấy quy trình dữ liệu → huấn luyện → đánh giá → phục vụ hoạt động đúng. Chúng **không** nói lên mức
+  độ mô hình dự đoán đúng mong muốn của người chơi thật; kết luận đó cần nhãn khảo sát thật.
 
 ### 5.5. Đề xuất phòng đấu
 

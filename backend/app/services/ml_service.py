@@ -29,7 +29,7 @@ from app.ml.features import (
     pair_features,
 )
 from app.models.match import Match
-from app.models.ml import PairFeedback
+from app.models.ml import SIMULATED_SOURCE, SURVEY_SOURCE, PairFeedback
 from app.models.user import PlayerProfile, User, UserRole
 
 logger = logging.getLogger("pickleball.ml")
@@ -80,6 +80,8 @@ class MatchPredictor:
             "data_source": self.meta.get("data_source"),
             "n_samples": self.meta.get("n_samples"),
             "n_raters": self.meta.get("n_raters"),
+            "n_survey": self.meta.get("n_survey"),
+            "n_simulated": self.meta.get("n_simulated"),
             "evaluation_protocol": self.meta.get("evaluation_protocol"),
             "metrics": self.meta.get("metrics"),
             "baselines": self.meta.get("baselines"),
@@ -235,6 +237,26 @@ def _sign(features: Dict[str, float]) -> str:
     return hmac.new(settings.SECRET_KEY.encode(), canonical.encode(), hashlib.sha256).hexdigest()
 
 
+def hypothetical_candidate(rng: random.Random, viewer: ProfileView) -> Tuple[ProfileView, float, int]:
+    """
+    Một hồ sơ ứng viên GIẢ ĐỊNH xoay quanh hồ sơ `viewer`, trải các mức chênh trình độ, khoảng cách và độ trùng lịch.
+    Dùng chung cho khảo sát thu nhãn và cho bộ phiếu mô phỏng. Trả về (ứng viên, khoảng cách km, số khung rảnh trùng).
+    """
+    my_slots = list(viewer.availability)
+    others = [s for s in AVAILABILITY_SLOTS if s not in my_slots]
+    level = min(8.0, max(1.0, viewer.skill_level + rng.choice([-2.0, -1.5, -1.0, -0.5, 0.0, 0.0, 0.5, 1.0, 1.5, 2.0])))
+    shared = rng.sample(my_slots, rng.randint(0, len(my_slots)))
+    extra = rng.sample(others, rng.randint(0, min(5, len(others))))
+    candidate = ProfileView(
+        skill_level=level,
+        availability=shared + extra,
+        purpose=rng.choice(PURPOSES),
+        play_style=rng.choice(PLAY_STYLES),
+    )
+    distance = round(rng.choice([1, 2, 3, 5, 8, 12, 18, 25, 35]) * rng.uniform(0.8, 1.2), 1)
+    return candidate, distance, len(shared)
+
+
 def generate_survey_pairs(user: User, count: int = 10) -> Tuple[List[dict], List[str]]:
     """
     Sinh các hồ sơ ứng viên GIẢ ĐỊNH xoay quanh hồ sơ thật của người trả lời, trải đều các mức
@@ -246,25 +268,16 @@ def generate_survey_pairs(user: User, count: int = 10) -> Tuple[List[dict], List
 
     rng = random.Random()
     my_slots = me.availability or rng.sample(AVAILABILITY_SLOTS, 6)
+    viewer = ProfileView(me.skill_level, None, None, my_slots, me.purpose, me.play_style)
     pairs = []
     for _ in range(count):
-        level = min(8.0, max(1.0, me.skill_level + rng.choice([-2.0, -1.5, -1.0, -0.5, 0.0, 0.0, 0.5, 1.0, 1.5, 2.0])))
-        shared = rng.sample(my_slots, rng.randint(0, len(my_slots)))
-        extra = rng.sample([s for s in AVAILABILITY_SLOTS if s not in my_slots], rng.randint(0, 5))
-        candidate = ProfileView(
-            skill_level=level,
-            availability=shared + extra,
-            purpose=rng.choice(PURPOSES),
-            play_style=rng.choice(PLAY_STYLES),
-        )
-        distance = round(rng.choice([1, 2, 3, 5, 8, 12, 18, 25, 35]) * rng.uniform(0.8, 1.2), 1)
-        viewer = ProfileView(me.skill_level, None, None, my_slots, me.purpose, me.play_style)
+        candidate, distance, shared_slots = hypothetical_candidate(rng, viewer)
         features = pair_features(viewer, candidate, distance_km=distance)
         pairs.append({
             "candidate": {
-                "skill_level": level,
+                "skill_level": candidate.skill_level,
                 "distance_km": distance,
-                "shared_slots": len(shared),
+                "shared_slots": shared_slots,
                 "availability": candidate.availability,
                 "purpose": candidate.purpose,
                 "play_style": candidate.play_style,
@@ -283,7 +296,7 @@ def save_survey_answers(db: Session, user: User, answers: Sequence) -> int:
             continue  # bỏ qua câu trả lời có đặc trưng bị sửa
         db.add(PairFeedback(
             rater_id=user.id,
-            source="survey",
+            source=SURVEY_SOURCE,
             label=int(bool(answer.label)),
             level_diff=float(features["level_diff"]),
             distance_km=float(features["distance_km"]),
@@ -297,9 +310,11 @@ def save_survey_answers(db: Session, user: User, answers: Sequence) -> int:
 
 
 def feedback_summary(db: Session) -> dict:
+    """Số nhãn khảo sát thật (labels, positive, raters) và số phiếu mô phỏng nạp sẵn (simulated)."""
     from sqlalchemy import func
 
     total, positive, raters = db.query(
         func.count(PairFeedback.id), func.coalesce(func.sum(PairFeedback.label), 0), func.count(func.distinct(PairFeedback.rater_id))
-    ).one()
-    return {"labels": int(total), "positive": int(positive), "raters": int(raters)}
+    ).filter(PairFeedback.source != SIMULATED_SOURCE).one()
+    simulated = db.query(func.count(PairFeedback.id)).filter(PairFeedback.source == SIMULATED_SOURCE).scalar()
+    return {"labels": int(total), "positive": int(positive), "raters": int(raters), "simulated": int(simulated or 0)}

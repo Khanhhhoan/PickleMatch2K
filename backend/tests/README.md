@@ -47,7 +47,7 @@ def test_vi_du(client, world, clock):
 | `test_slot_holds.py` | Giữ chỗ tạm trên bộ nhớ và Redis (client giả), Redis lỗi |
 | `test_matches.py` | Phòng đấu gắn với đơn đặt, tham gia/rời, tự cập nhật, quyền riêng tư |
 | `test_recommendation.py` | Chuẩn hóa từng tiêu chí và xếp hạng gợi ý cụm sân |
-| `test_ml.py` | Đặc trưng, huấn luyện/đánh giá, phục vụ mô hình, khảo sát thu nhãn |
+| `test_ml.py` | Đặc trưng, huấn luyện/đánh giá, phục vụ mô hình, khảo sát thu nhãn, phiếu mô phỏng nạp trong CSDL (tách khỏi nhãn thật) |
 | `test_infrastructure.py` | Schema sau migration, nâng cấp CSDL cũ bằng `manage.py migrate`, tác vụ nền, WebSocket, script seed / nhập Excel / reset |
 
 `helpers.py` chứa hàm dựng dữ liệu và thao tác API dùng chung; `conftest.py` chứa fixture (`db`, `client`,

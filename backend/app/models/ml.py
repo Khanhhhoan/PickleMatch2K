@@ -4,10 +4,15 @@ from sqlalchemy.sql import func
 from app.db.base_class import Base
 
 
+SURVEY_SOURCE = "survey"        # câu trả lời khảo sát của người chơi thật
+SIMULATED_SOURCE = "simulated"  # phiếu mô phỏng nạp sẵn để minh họa quy trình (python manage.py seed --feedback)
+
+
 class PairFeedback(Base):
     """
-    Nhãn thật cho mô hình ghép cặp: một người chơi trả lời "có muốn ghép với người này không"
-    cho một cặp hồ sơ (khảo sát trong ứng dụng). Mỗi dòng lưu đúng 5 đặc trưng mà mô hình dùng.
+    Nhãn cho mô hình ghép cặp: một người chơi trả lời "có muốn ghép với người này không" cho một cặp hồ sơ.
+    Mỗi dòng lưu đúng 5 đặc trưng mà mô hình dùng. Cột `source` phân biệt câu trả lời khảo sát thật (survey)
+    với phiếu mô phỏng nạp sẵn (simulated); hai loại không bao giờ được trình bày lẫn với nhau.
     """
     __tablename__ = "pair_feedback"
 

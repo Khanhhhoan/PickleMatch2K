@@ -5,9 +5,11 @@ Nạp bộ dữ liệu demo của đồ án PickleMatch2K.
     python scripts/seed.py --if-empty    # đã có dữ liệu thì bỏ qua, không báo lỗi (dùng cho Docker)
     python scripts/seed.py --reset       # XÓA toàn bộ dữ liệu rồi nạp lại (phải xác nhận, hoặc thêm --yes)
     python scripts/seed.py --preferences # chỉ bổ sung sở thích mẫu cho các tài khoản demo đang để trống
+    python scripts/seed.py --feedback    # chỉ nạp phiếu ghép cặp MÔ PHỎNG để huấn luyện mô hình từ CSDL
 
 Nội dung: 8 tiện ích, 3 cụm sân, 33 tài khoản đúng như docs/DANH_SACH_TAI_KHOAN_TEST.md
-(1 admin, 3 chủ sân, 9 nhân viên, 20 người chơi) cùng đơn đặt sân, giao dịch, phòng đấu và đánh giá mẫu.
+(1 admin, 3 chủ sân, 9 nhân viên, 20 người chơi) cùng đơn đặt sân, giao dịch, phòng đấu và đánh giá mẫu,
+và 3.000 phiếu ghép cặp mô phỏng (ghi rõ nguồn "simulated") làm dữ liệu huấn luyện mô hình.
 
 Đơn đặt, thanh toán, check-in, hủy và phòng đấu được tạo bằng chính các hàm nghiệp vụ của ứng dụng
 (đồng hồ nghiệp vụ được "tua" về quá khứ để có dữ liệu lịch sử), nên dữ liệu mẫu luôn hợp lệ theo
@@ -16,6 +18,7 @@ các ràng buộc hiện hành. Mọi ngày tháng tính tương đối so với
 MẬT KHẨU DEMO dùng chung là 123456: chỉ dành cho môi trường phát triển/bảo vệ đồ án.
 """
 import json
+import random
 import sys
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
@@ -32,12 +35,14 @@ from sqlalchemy.orm import Session  # noqa: E402
 
 from app.core.config import settings  # noqa: E402
 from app.db.database import SessionLocal  # noqa: E402
+from app.ml.features import AVAILABILITY_SLOTS, FEATURE_NAMES, ProfileView, canonical_style, pair_features  # noqa: E402
 from app.models.booking import Booking, BookingSource  # noqa: E402
+from app.models.ml import SIMULATED_SOURCE, PairFeedback  # noqa: E402
 from app.models.payment import PaymentKind, PaymentMethod, PaymentTransaction  # noqa: E402
 from app.models.user import User, UserRole  # noqa: E402
 from app.models.venue import Amenity, Court, OperatingHour, PriceRule, Review, Venue  # noqa: E402
 from app.schemas.match import MatchCreate  # noqa: E402
-from app.services import booking_service, ledger, match_service  # noqa: E402
+from app.services import booking_service, ledger, match_service, ml_service  # noqa: E402
 from app.services.availability_service import iter_day_slots  # noqa: E402
 from app.services.booking_service import SlotRequest  # noqa: E402
 from app.services.user_service import create_user  # noqa: E402
@@ -334,6 +339,69 @@ def apply_demo_preferences(db: Session) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Phiếu ghép cặp mô phỏng: dữ liệu huấn luyện nằm trong CSDL
+# ---------------------------------------------------------------------------
+SIMULATED_FEEDBACK_PER_PLAYER = 150
+SIMULATED_FEEDBACK_SEED = 2026
+
+
+def seed_simulated_feedback(db: Session, per_player: int = SIMULATED_FEEDBACK_PER_PLAYER) -> int:
+    """
+    Nạp phiếu ghép cặp MÔ PHỎNG (source = "simulated") để mô hình có dữ liệu huấn luyện nằm trong CSDL.
+
+    Mỗi tài khoản người chơi demo "trả lời" per_player phiếu về các hồ sơ ứng viên giả định xoay quanh chân dung của
+    mình (lấy từ PLAYERS ở trên, không phụ thuộc hồ sơ đang lưu), sinh bằng đúng hàm mà trang khảo sát dùng. Nhãn
+    "muốn ghép / không" sinh từ quy tắc viết tay có cộng nhiễu của app/ml/train_model.py. Bộ sinh số ngẫu nhiên cố
+    định hạt giống nên chạy ở đâu cũng ra cùng một bộ dữ liệu.
+
+    Bỏ qua nếu CSDL đã có phiếu mô phỏng; không đụng tới câu trả lời khảo sát thật. Trả về số phiếu vừa nạp.
+    """
+    import numpy as np
+    import pandas as pd
+
+    from app.ml.train_model import noisy_rule_labels
+
+    if db.query(PairFeedback).filter(PairFeedback.source == SIMULATED_SOURCE).count():
+        return 0
+
+    rows = []
+    for index, player in enumerate(PLAYERS):
+        user = db.query(User).filter(User.email == player.email).first()
+        if user is None:
+            continue
+        rng = random.Random(SIMULATED_FEEDBACK_SEED + index)
+        me = ProfileView(
+            skill_level=player.skill_level,
+            availability=sorted(slot for slot in set(player.availability) if slot in AVAILABILITY_SLOTS),
+            purpose=player.purpose,
+            play_style=canonical_style(player.play_style),
+        )
+        for _ in range(per_player):
+            candidate, distance, _shared = ml_service.hypothetical_candidate(rng, me)
+            rows.append({"rater_id": user.id, **pair_features(me, candidate, distance_km=distance)})
+    if not rows:
+        return 0
+
+    frame = pd.DataFrame(rows)
+    labels = noisy_rule_labels(frame[FEATURE_NAMES], np.random.default_rng(SIMULATED_FEEDBACK_SEED))
+    db.bulk_insert_mappings(PairFeedback, [
+        {
+            "rater_id": int(row["rater_id"]),
+            "source": SIMULATED_SOURCE,
+            "level_diff": float(row["level_diff"]),
+            "distance_km": float(row["distance_km"]),
+            "availability_overlap": float(row["availability_overlap"]),
+            "purpose_match": int(row["purpose_match"]),
+            "style_match": int(row["style_match"]),
+            "label": int(label),
+        }
+        for row, label in zip(rows, labels)
+    ])
+    db.commit()
+    return len(rows)
+
+
+# ---------------------------------------------------------------------------
 # Hoạt động mẫu: đơn đặt, thanh toán, check-in, hủy, phòng đấu, đánh giá
 # ---------------------------------------------------------------------------
 class DemoActivity:
@@ -561,16 +629,27 @@ def seed_database(if_empty: bool = False, reset: bool = False, assume_yes: bool 
 
         from app.models.match import Match
 
+        print("Đang nạp phiếu ghép cặp mô phỏng cho mô hình...")
+        simulated = seed_simulated_feedback(db)
+
         print("=" * 72)
         print(f"Đã nạp: {db.query(User).count()} tài khoản | {db.query(Venue).count()} cụm sân | "
               f"{db.query(Court).count()} sân | {db.query(Booking).count()} đơn đặt | "
               f"{db.query(PaymentTransaction).count()} giao dịch | {db.query(Match).count()} phòng đấu | "
-              f"{db.query(Review).count()} đánh giá")
+              f"{db.query(Review).count()} đánh giá | {simulated:,} phiếu ghép cặp mô phỏng")
         print(f"Mật khẩu demo dùng chung: {DEMO_PASSWORD}  (xem docs/DANH_SACH_TAI_KHOAN_TEST.md)")
         print("=" * 72)
         return True
     finally:
         db.close()
+
+
+def report_simulated_feedback(added: int) -> None:
+    if added:
+        print(f"Đã nạp {added:,} phiếu ghép cặp mô phỏng vào bảng pair_feedback (nguồn \"{SIMULATED_SOURCE}\").")
+        print("Huấn luyện mô hình từ dữ liệu này: python manage.py train-model")
+    else:
+        print("Không nạp thêm: CSDL đã có phiếu mô phỏng, hoặc chưa có tài khoản người chơi demo.")
 
 
 def main() -> None:
@@ -579,6 +658,11 @@ def main() -> None:
         ensure_schema()
         with SessionLocal() as db:
             print(f"Đã bổ sung sở thích mẫu cho {apply_demo_preferences(db)} tài khoản demo.")
+        return
+    if "--feedback" in args:
+        ensure_schema()
+        with SessionLocal() as db:
+            report_simulated_feedback(seed_simulated_feedback(db))
         return
     seed_database(if_empty="--if-empty" in args, reset="--reset" in args, assume_yes="--yes" in args)
 
