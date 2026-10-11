@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { deleteVenueImage, fetchApi, formatVND, getMediaUrl, uploadVenueImage } from "@/lib/api";
 import { searchAddressGeocode } from "@/lib/location";
 import { useAuth } from "@/lib/auth-context";
@@ -89,6 +89,7 @@ function parseImages(venue: Venue): string[] {
 function OwnerVenueManagementContent() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { success: toastSuccess, error: toastError } = useToast();
 
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -112,6 +113,12 @@ function OwnerVenueManagementContent() {
     const tab = searchParams.get("tab");
     if (tab && TABS.some((t) => t.key === tab)) setActiveTab(tab as Tab);
   }, [searchParams]);
+
+  // Đổi tab qua URL để mục đang chọn ở menu bên trái luôn khớp với tab đang xem
+  const openTab = (tab: Tab) => {
+    setActiveTab(tab);
+    router.replace(`/owner/venues?tab=${tab}`, { scroll: false });
+  };
 
   const venue = useMemo(() => venues.find((v) => v.id === selectedVenueId) || venues[0] || null, [venues, selectedVenueId]);
 
@@ -414,7 +421,7 @@ function OwnerVenueManagementContent() {
             <button
               key={tab.key}
               type="button"
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => openTab(tab.key)}
               className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition ${
                 activeTab === tab.key ? "bg-[#476cf3] text-white shadow-sm" : "text-[#51627c] hover:text-[#17253d]"
               }`}
