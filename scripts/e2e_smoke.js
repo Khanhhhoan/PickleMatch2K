@@ -351,7 +351,9 @@ async function main() {
   await step(owner, "bảng tổng quan hiển thị thực thu từ sổ giao dịch", async (page) => {
     await login(owner, WEB, "owner_rudal@pickleball.vn");
     await page.waitForFunction(() => location.pathname.startsWith("/owner"), { timeout: TIMEOUT });
-    await waitForText(page, "Thực thu (đã trừ hoàn tiền)");
+    await waitForText(page, "Thu hôm nay");
+    await waitForText(page, "Tổng thực thu");
+    await waitForText(page, "Lịch hôm nay");
     await waitForText(page, "Giao dịch gần đây");
   });
   await step(owner, "lưu bảng giá và giờ hoạt động", async (page) => {

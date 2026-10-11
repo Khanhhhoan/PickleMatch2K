@@ -57,8 +57,9 @@ type ListFilter = "date" | "todo" | "all";
 const CARD = "bg-white rounded-2xl border border-[#e8edf3] shadow-[0_12px_35px_rgba(29,51,87,0.035)]";
 const INPUT = "w-full h-10 px-3 bg-white border border-[#dde4ef] rounded-xl text-xs font-bold text-[#263b53] outline-none focus:border-[#476cf3]";
 const LABEL = "block text-[11px] font-bold text-[#51627c] mb-1";
-const PRIMARY = "px-4 py-2.5 bg-[#476cf3] text-white rounded-xl text-xs font-bold hover:bg-[#3b61e8] disabled:opacity-50 transition cursor-pointer";
-const SECONDARY = "px-3 py-2 bg-[#f1f4fb] hover:bg-[#e4ebf7] border border-[#d5dfed] rounded-xl text-xs font-bold text-[#405c94] cursor-pointer disabled:opacity-50";
+const PRIMARY = "px-4 py-2.5 bg-[#476cf3] text-white rounded-xl text-xs font-bold whitespace-nowrap hover:bg-[#3b61e8] disabled:opacity-50 transition cursor-pointer";
+const ICON_BUTTON = "h-10 w-10 shrink-0 flex items-center justify-center bg-[#f1f4fb] hover:bg-[#e4ebf7] border border-[#d5dfed] rounded-xl text-sm font-bold text-[#405c94] cursor-pointer";
+const SECONDARY = "px-3 py-2 bg-[#f1f4fb] hover:bg-[#e4ebf7] border border-[#d5dfed] rounded-xl text-xs font-bold whitespace-nowrap text-[#405c94] cursor-pointer disabled:opacity-50";
 const DANGER = "px-3 py-2 rounded-xl text-xs font-bold text-rose-600 border border-rose-200 hover:bg-rose-50 cursor-pointer disabled:opacity-50";
 
 const PAYMENT_OPTIONS: { value: CreateForm["payment"]; label: string }[] = [
@@ -242,13 +243,18 @@ export default function BookingDesk({ heading }: { heading: string }) {
   }
 
   const slotTimes = grid?.courts[0]?.slots || [];
+  // Tình hình trong ngày đang xem: số khung đã có đơn và số khung còn đặt được
+  const daySlots = (grid?.courts || []).flatMap((court) => court.slots.map((slot) => ({ slot, taken: occupied.has(slotKey(court.court_id, date, slot.start_time)) })));
+  const bookedSlots = daySlots.filter((entry) => entry.taken).length;
+  const freeSlots = daySlots.filter((entry) => !entry.taken && entry.slot.is_available && !entry.slot.is_held).length;
+  const currentHour = date === today ? String(new Date().getHours()).padStart(2, "0") : null;
 
   return (
     <div className="space-y-6 font-sans">
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+      <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
         <div>
-          <div className="text-[10px] font-black text-[#6b7ba1] tracking-[1.6px] uppercase mb-1">{heading}</div>
-          <h1 className="text-2xl sm:text-[26px] font-black text-[#17253d] tracking-tight m-0">{venue.name}</h1>
+          <p className="text-xs font-semibold text-[#6b7ba1]">{heading}</p>
+          <h1 className="text-2xl sm:text-[26px] font-black text-[#17253d] tracking-tight m-0 mt-0.5">{venue.name}</h1>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -257,10 +263,10 @@ export default function BookingDesk({ heading }: { heading: string }) {
               {venues.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
             </select>
           )}
-          <form onSubmit={(e) => { e.preventDefault(); if (codeInput.trim()) openByCode(codeInput); }} className="flex gap-2">
-            <input className={`${INPUT} w-44 font-mono uppercase`} placeholder="Mã đơn PK2K..." value={codeInput} onChange={(e) => setCodeInput(e.target.value)} aria-label="Mã đơn để check-in" />
+          <form onSubmit={(e) => { e.preventDefault(); if (codeInput.trim()) openByCode(codeInput); }} className="flex items-center gap-2">
+            <input className={`${INPUT} w-48 font-mono uppercase`} placeholder="Nhập mã đơn" value={codeInput} onChange={(e) => setCodeInput(e.target.value)} aria-label="Mã đơn để check-in" />
             <button type="submit" className={PRIMARY}>Tìm đơn</button>
-            <button type="button" className={SECONDARY} onClick={() => setScanning(true)}>Quét QR</button>
+            <button type="button" className={`${SECONDARY} h-10`} onClick={() => setScanning(true)}>Quét QR</button>
           </form>
         </div>
       </div>
@@ -269,40 +275,41 @@ export default function BookingDesk({ heading }: { heading: string }) {
       <section className={`${CARD} p-5 space-y-4`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <button type="button" className={SECONDARY} onClick={() => shiftDate(-1)} aria-label="Ngày trước">←</button>
-            <input type="date" className={`${INPUT} w-40`} value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
-            <button type="button" className={SECONDARY} onClick={() => shiftDate(1)} aria-label="Ngày sau">→</button>
-            <button type="button" className={date === today ? PRIMARY : SECONDARY} onClick={() => setDate(today)}>Hôm nay</button>
+            <button type="button" className={ICON_BUTTON} onClick={() => shiftDate(-1)} aria-label="Ngày trước">←</button>
+            <input type="date" className={`${INPUT} w-40`} value={date} onChange={(e) => e.target.value && setDate(e.target.value)} aria-label="Chọn ngày" />
+            <button type="button" className={ICON_BUTTON} onClick={() => shiftDate(1)} aria-label="Ngày sau">→</button>
+            <button type="button" className={`${date === today ? PRIMARY : SECONDARY} h-10`} onClick={() => setDate(today)}>Hôm nay</button>
+            <p className="ml-2 text-sm font-black text-[#17253d] whitespace-nowrap">{formatDisplayDate(date)}</p>
           </div>
-          <p className="text-xs font-bold text-[#17253d]">{formatDisplayDate(date)}</p>
-          <div className="flex flex-wrap gap-3 text-[11px] text-[#51627c]">
-            <Legend className="bg-white border-[#dde4ef]" label="Trống (bấm để tạo đơn)" />
-            <Legend className="bg-amber-50 border-amber-200" label="Chờ cọc" />
-            <Legend className="bg-emerald-50 border-emerald-200" label="Đã xác nhận" />
-            <Legend className="bg-sky-50 border-sky-200" label="Đã nhận sân" />
-            <Legend className="bg-[#eef1f6] border-[#dde4ef]" label="Đã qua / không đặt được" />
-          </div>
+          {daySlots.length > 0 && (
+            <div className="flex items-center gap-4 text-xs text-[#51627c] whitespace-nowrap">
+              <span>Đã đặt <b className="text-[#17253d]">{bookedSlots}</b> khung</span>
+              <span>Còn trống <b className="text-emerald-700">{freeSlots}</b> / {daySlots.length}</span>
+            </div>
+          )}
         </div>
 
         {!grid || grid.courts.length === 0 ? (
-          <p className="text-xs text-[#718096] py-6 text-center">
+          <p className="text-xs text-[#718096] py-10 text-center rounded-xl bg-[#f8fafd] border border-dashed border-[#dde4ef]">
             {venue.status !== "ACTIVE" ? "Cụm sân đang không hoạt động nên không có lịch." : "Cụm sân không mở cửa vào ngày này."}
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="border-separate border-spacing-1 text-[11px]">
+            <table className="w-full min-w-[980px] table-fixed border-separate border-spacing-1 text-[11px]">
               <thead>
                 <tr>
-                  <th className="sticky left-0 bg-white text-left pr-3 font-bold text-[#51627c]">Sân</th>
+                  <th className="sticky left-0 z-10 bg-white w-16 text-left font-bold text-[#51627c]">Sân</th>
                   {slotTimes.map((slot) => (
-                    <th key={slot.start_time} className="font-bold text-[#51627c] min-w-[74px]">{slot.start_time.slice(0, 5)}</th>
+                    <th key={slot.start_time} className={`font-bold ${slot.start_time.slice(0, 2) === currentHour ? "text-[#476cf3]" : "text-[#8a97ab]"}`}>
+                      {slot.start_time.slice(0, 5)}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {grid.courts.map((court) => (
                   <tr key={court.court_id}>
-                    <td className="sticky left-0 bg-white pr-3 font-black text-[#17253d] whitespace-nowrap">{court.court_name}</td>
+                    <td className="sticky left-0 z-10 bg-white font-black text-[#17253d] whitespace-nowrap">{court.court_name}</td>
                     {court.slots.map((slot) => {
                       const booking = occupied.get(slotKey(court.court_id, date, slot.start_time));
                       if (booking) {
@@ -311,8 +318,8 @@ export default function BookingDesk({ heading }: { heading: string }) {
                             <button
                               type="button"
                               onClick={() => setDetailId(booking.id)}
-                              title={`${bookingCode(booking)} - ${bookingStatusLabel(booking.status)}`}
-                              className={`w-full h-10 px-1 rounded-lg border font-bold truncate cursor-pointer ${bookingStatusTone(booking.status)}`}
+                              title={`${bookingCode(booking)} - ${booking.user_name || "Khách"} - ${bookingStatusLabel(booking.status)}`}
+                              className={`w-full h-10 px-1 rounded-lg border font-bold truncate cursor-pointer hover:brightness-95 ${bookingStatusTone(booking.status)}`}
                             >
                               {(booking.user_name || "Khách").split(" ").slice(-1)[0]}
                             </button>
@@ -327,8 +334,10 @@ export default function BookingDesk({ heading }: { heading: string }) {
                             disabled={!free}
                             onClick={() => openCreate(court.court_id, slot.start_time)}
                             title={slot.is_past ? "Khung giờ đã qua" : slot.is_held ? "Đang có khách giữ tạm trên web" : free ? "Tạo đơn tại quầy" : "Không đặt được"}
-                            className={`w-full h-10 rounded-lg border font-bold ${
-                              free ? "bg-white border-[#dde4ef] text-[#476cf3] hover:border-[#476cf3] cursor-pointer" : "bg-[#eef1f6] border-[#e3e8f0] text-[#b1bccd] cursor-not-allowed"
+                            className={`w-full h-10 rounded-lg border font-bold transition ${
+                              free
+                                ? "bg-white border-[#dde4ef] text-[#b9c6dd] hover:border-[#476cf3] hover:bg-[#f3f6ff] hover:text-[#476cf3] cursor-pointer"
+                                : "bg-[#f3f5f9] border-transparent text-[#b1bccd] cursor-not-allowed"
                             }`}
                           >
                             {free ? "+" : slot.is_held ? "giữ" : ""}
@@ -342,58 +351,82 @@ export default function BookingDesk({ heading }: { heading: string }) {
             </table>
           </div>
         )}
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-[#51627c]">
+          <Legend className="bg-white border-[#cfd9e8]" label="Còn trống" />
+          <Legend className="bg-amber-50 border-amber-200" label="Chờ cọc" />
+          <Legend className="bg-emerald-50 border-emerald-200" label="Đã xác nhận" />
+          <Legend className="bg-sky-50 border-sky-200" label="Đã nhận sân" />
+          <Legend className="bg-[#f3f5f9] border-[#e3e8f0]" label="Đã qua" />
+          <span className="text-[#8a97ab]">Bấm ô trống để tạo đơn, bấm ô đã đặt để xem đơn.</span>
+        </div>
       </section>
 
       {/* Danh sách đơn */}
       <section className={`${CARD} p-5 space-y-4`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex gap-1.5">
+          <div className="inline-flex p-1 rounded-xl bg-[#f1f4fb] border border-[#e3e9f3]">
             {([["date", `Ngày ${date.slice(8)}/${date.slice(5, 7)}`], ["todo", `Cần xử lý (${todoCount})`], ["all", "Tất cả"]] as [ListFilter, string][]).map(([key, label]) => (
-              <button key={key} type="button" onClick={() => setListFilter(key)} className={listFilter === key ? PRIMARY : SECONDARY}>{label}</button>
+              <button
+                key={key}
+                type="button"
+                onClick={() => setListFilter(key)}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition ${
+                  listFilter === key ? "bg-white text-[#17253d] shadow-sm" : "text-[#51627c] hover:text-[#17253d]"
+                }`}
+              >
+                {label}
+              </button>
             ))}
           </div>
-          <input className={`${INPUT} w-64`} placeholder="Tìm theo tên, số điện thoại, mã đơn" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <div className="w-72 max-w-full">
+            <input className={INPUT} placeholder="Tìm theo tên, số điện thoại, mã đơn" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
         </div>
 
         {listed.length === 0 ? (
-          <p className="text-xs text-[#718096] py-6 text-center">Không có đơn nào.</p>
+          <p className="text-xs text-[#8a97ab] py-10 text-center rounded-xl bg-[#f8fafd] border border-dashed border-[#dde4ef]">Không có đơn nào trong mục này.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-left text-[11px] text-[#718096] border-b border-[#eef1f6]">
-                  <th className="py-2 pr-3">Mã đơn</th>
-                  <th className="py-2 pr-3">Khách</th>
-                  <th className="py-2 pr-3">Lịch</th>
-                  <th className="py-2 pr-3 text-right">Tổng / đã trả</th>
-                  <th className="py-2 pr-3">Trạng thái</th>
+                <tr className="text-left text-[11px] text-[#8a97ab] border-b border-[#eef1f6]">
+                  <th className="py-2 pr-3 font-bold">Mã đơn</th>
+                  <th className="py-2 pr-3 font-bold">Khách</th>
+                  <th className="py-2 pr-3 font-bold">Lịch chơi</th>
+                  <th className="py-2 pr-3 font-bold text-right">Tổng tiền</th>
+                  <th className="py-2 pr-3 font-bold">Trạng thái</th>
                   <th className="py-2" />
                 </tr>
               </thead>
               <tbody>
                 {listed.map((b) => (
-                  <tr key={b.id} className="border-b border-[#f3f5f9] align-top">
-                    <td className="py-2.5 pr-3 font-mono font-bold text-[#17253d]">{bookingCode(b)}{b.source === "DESK" && <span className="ml-1 text-[10px] text-[#718096]">quầy</span>}</td>
-                    <td className="py-2.5 pr-3">
-                      <p className="font-bold text-[#17253d]">{b.user_name}</p>
-                      <p className="text-[#718096]">{b.user_phone || "—"}</p>
+                  <tr key={b.id} className="border-b border-[#f3f5f9] align-top hover:bg-[#fafbfe]">
+                    <td className="py-3 pr-3 font-mono font-bold text-[#17253d] whitespace-nowrap">
+                      {bookingCode(b)}
+                      {b.source === "DESK" && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-[#eef1f6] font-sans text-[10px] text-[#51627c]">Tại quầy</span>}
                     </td>
-                    <td className="py-2.5 pr-3 text-[#3d4e68]">
+                    <td className="py-3 pr-3">
+                      <p className="font-bold text-[#17253d]">{b.user_name}</p>
+                      <p className="text-[#8a97ab]">{b.user_phone || "—"}</p>
+                    </td>
+                    <td className="py-3 pr-3 text-[#3d4e68]">
                       {mergeSlots(b.details).map((s, i) => (
-                        <p key={i}>{s.court_name} • {s.date.slice(8)}/{s.date.slice(5, 7)} • {s.start_time}-{s.end_time}</p>
+                        <p key={i} className="whitespace-nowrap">{s.court_name} • {s.date.slice(8)}/{s.date.slice(5, 7)} • {s.start_time}-{s.end_time}</p>
                       ))}
                     </td>
-                    <td className="py-2.5 pr-3 text-right">
+                    <td className="py-3 pr-3 text-right whitespace-nowrap">
                       <p className="font-bold text-[#17253d]">{formatVND(b.total_price)}</p>
-                      <p className="text-[#718096]">{formatVND(b.paid_amount)}</p>
+                      <p className="text-[#8a97ab]">Đã trả {formatVND(b.paid_amount)}</p>
                     </td>
-                    <td className="py-2.5 pr-3 space-y-1">
-                      <span className={`inline-block px-2 py-0.5 rounded-md border font-bold ${bookingStatusTone(b.status)}`}>{bookingStatusLabel(b.status)}</span>
-                      <br />
-                      <span className={`inline-block px-2 py-0.5 rounded-md border font-bold ${paymentStatusTone(b.payment_status)}`}>{paymentStatusLabel(b.payment_status)}</span>
-                      {b.refund_status === "PENDING" && <p className="font-bold text-amber-700">Chờ hoàn {formatVND(b.refund_amount || 0)}</p>}
+                    <td className="py-3 pr-3">
+                      <div className="flex flex-wrap gap-1">
+                        <span className={`px-2 py-0.5 rounded-md border font-bold whitespace-nowrap ${bookingStatusTone(b.status)}`}>{bookingStatusLabel(b.status)}</span>
+                        <span className={`px-2 py-0.5 rounded-md border font-bold whitespace-nowrap ${paymentStatusTone(b.payment_status)}`}>{paymentStatusLabel(b.payment_status)}</span>
+                      </div>
+                      {b.refund_status === "PENDING" && <p className="font-bold text-amber-700 mt-1">Chờ hoàn {formatVND(b.refund_amount || 0)}</p>}
                     </td>
-                    <td className="py-2.5 text-right">
+                    <td className="py-3 text-right">
                       <button type="button" className={SECONDARY} onClick={() => setDetailId(b.id)}>Xử lý</button>
                     </td>
                   </tr>

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { fetchApi } from "@/lib/api";
 import { useWebSocket } from "@/lib/use-websocket";
@@ -10,22 +10,17 @@ import { useWebSocket } from "@/lib/use-websocket";
 const navItems = [
   { href: "/owner/dashboard", label: "Tổng quan", key: "overview" },
   { href: "/owner/bookings", label: "Lịch đặt", key: "bookings" },
-  { href: "/owner/venues?tab=info_sepay", label: "Thông tin & nhận tiền", key: "payment" },
-  { href: "/owner/venues?tab=courts_pricing", label: "Sân & bảng giá", key: "courts" },
-  { href: "/owner/venues?tab=hours", label: "Giờ hoạt động", key: "hours" },
-  { href: "/owner/venues?tab=staff", label: "Nhân sự", key: "staff" },
+  { href: "/owner/venues", label: "Cài đặt cụm sân", key: "settings" },
 ];
 
 function OwnerLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const router = useRouter();
   const { user, logout, isLoading } = useAuth();
   const [mobileDrawer, setMobileDrawer] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [venueName, setVenueName] = useState("");
 
-  const currentTab = searchParams.get("tab");
   const isManager = user?.role === "OWNER" || user?.role === "ADMIN";
 
   // Cổng chủ sân chỉ dành cho Chủ sân và Admin
@@ -79,19 +74,9 @@ function OwnerLayoutInner({ children }: { children: React.ReactNode }) {
   }, [lastMessage]);
 
   const isItemActive = (item: typeof navItems[0]) => {
-    if (item.key === "overview") {
-      return pathname === "/owner/dashboard";
-    }
-    if (item.key === "bookings") {
-      return pathname.startsWith("/owner/bookings");
-    }
-    if (pathname.startsWith("/owner/venues")) {
-      if (item.key === "courts") return currentTab === "courts_pricing";
-      if (item.key === "hours") return currentTab === "hours";
-      if (item.key === "staff") return currentTab === "staff";
-      if (item.key === "payment") return currentTab === "info_sepay" || !currentTab;
-    }
-    return false;
+    if (item.key === "overview") return pathname === "/owner/dashboard";
+    if (item.key === "bookings") return pathname.startsWith("/owner/bookings");
+    return pathname.startsWith("/owner/venues");
   };
 
   const currentNav = navItems.find((n) => isItemActive(n)) || navItems[0];

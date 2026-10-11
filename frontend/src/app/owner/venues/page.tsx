@@ -61,8 +61,12 @@ const STATUS_LABEL: Record<string, string> = {
 const CARD = "bg-white rounded-2xl border border-[#e8edf3] shadow-[0_12px_35px_rgba(29,51,87,0.035)] p-6 space-y-4";
 const LABEL = "block text-[11px] font-bold text-[#51627c] mb-1";
 const INPUT = "w-full h-10 px-3 bg-white border border-[#dde4ef] rounded-xl text-xs font-bold text-[#263b53] outline-none focus:border-[#476cf3]";
-const PRIMARY = "px-4 py-2.5 bg-[#476cf3] text-white rounded-xl text-xs font-bold hover:bg-[#3b61e8] disabled:opacity-50 transition cursor-pointer";
-const SECONDARY = "px-3 py-2 bg-[#f1f4fb] hover:bg-[#e4ebf7] border border-[#d5dfed] rounded-xl text-xs font-bold text-[#405c94] cursor-pointer disabled:opacity-50";
+const PRIMARY = "px-4 py-2.5 bg-[#476cf3] text-white rounded-xl text-xs font-bold whitespace-nowrap hover:bg-[#3b61e8] disabled:opacity-50 transition cursor-pointer";
+const SECONDARY = "px-3 py-2 bg-[#f1f4fb] hover:bg-[#e4ebf7] border border-[#d5dfed] rounded-xl text-xs font-bold whitespace-nowrap text-[#405c94] cursor-pointer disabled:opacity-50";
+// Thao tác phụ trên từng dòng của danh sách
+const ROW_ACTION = "px-2 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap text-[#405c94] hover:bg-[#eef2fb] cursor-pointer disabled:opacity-50";
+const ROW_DANGER = "px-2 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap text-rose-600 hover:bg-rose-50 cursor-pointer disabled:opacity-50";
+const ROW = "flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl border border-[#e8edf3] bg-white hover:bg-[#fafbfe]";
 
 /** Tách "0123456789 - MBBank" hoặc "0123456789 (MBBank)" thành số tài khoản và tên ngân hàng. */
 function parseBankAccount(raw?: string | null): { number: string; bank: string } {
@@ -90,7 +94,6 @@ function OwnerVenueManagementContent() {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [amenities, setAmenities] = useState<{ id: number; name: string }[]>([]);
-  const [unifiedAccountMode, setUnifiedAccountMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("info_sepay");
   const [selectedVenueId, setSelectedVenueId] = useState<number | null>(null);
@@ -114,16 +117,14 @@ function OwnerVenueManagementContent() {
 
   const loadData = useCallback(async () => {
     try {
-      const [venueData, staffData, amenityData, config] = await Promise.all([
+      const [venueData, staffData, amenityData] = await Promise.all([
         fetchApi("/venues/me"),
         fetchApi("/users/owner/staff").catch(() => []),
         fetchApi("/venues/amenities").catch(() => []),
-        fetchApi("/payments/config").catch(() => null),
       ]);
       setVenues(Array.isArray(venueData) ? venueData : []);
       setStaffList(Array.isArray(staffData) ? staffData : []);
       setAmenities(Array.isArray(amenityData) ? amenityData : []);
-      setUnifiedAccountMode(Boolean(config?.unified_account_mode));
     } catch (err: any) {
       toastError(err.message || "Không tải được dữ liệu cụm sân.");
     } finally {
@@ -378,14 +379,22 @@ function OwnerVenueManagementContent() {
 
   return (
     <div className="space-y-6 max-w-[1650px] mx-auto font-sans">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <div className="text-[10px] font-black text-[#6b7ba1] tracking-[1.6px] uppercase mb-1">Thiết lập cơ sở</div>
-          <h1 className="text-2xl sm:text-[26px] font-black text-[#17253d] tracking-tight m-0">{venue.name}</h1>
-          <p className="text-xs text-[#51627c] mt-1">
-            Trạng thái: <strong>{STATUS_LABEL[venue.status] || venue.status}</strong>
-            {venue.status !== "ACTIVE" && " - người chơi hiện không nhìn thấy và không đặt được cụm sân này."}
-          </p>
+          <p className="text-xs font-semibold text-[#6b7ba1]">Cài đặt cụm sân</p>
+          <div className="flex flex-wrap items-center gap-2.5 mt-0.5">
+            <h1 className="text-2xl sm:text-[26px] font-black text-[#17253d] tracking-tight m-0">{venue.name}</h1>
+            <span
+              className={`px-2.5 py-1 rounded-full border text-[11px] font-bold whitespace-nowrap ${
+                venue.status === "ACTIVE" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-amber-50 border-amber-200 text-amber-800"
+              }`}
+            >
+              {STATUS_LABEL[venue.status] || venue.status}
+            </span>
+          </div>
+          {venue.status !== "ACTIVE" && (
+            <p className="text-xs text-[#51627c] mt-1">Người chơi hiện không nhìn thấy và không đặt được cụm sân này.</p>
+          )}
         </div>
         {venues.length > 1 && (
           <select
@@ -399,18 +408,21 @@ function OwnerVenueManagementContent() {
         )}
       </div>
 
-      <div className="flex items-center gap-2 border-b border-[#e5eaf2] pb-px overflow-x-auto">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2.5 text-xs font-bold transition border-b-2 cursor-pointer whitespace-nowrap ${
-              activeTab === tab.key ? "border-[#476cf3] text-[#476cf3]" : "border-transparent text-[#718096] hover:text-[#17253d]"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="overflow-x-auto">
+        <div className="inline-flex p-1 rounded-xl bg-white border border-[#e3e9f3]">
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition ${
+                activeTab === tab.key ? "bg-[#476cf3] text-white shadow-sm" : "text-[#51627c] hover:text-[#17253d]"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {activeTab === "info_sepay" && (
@@ -442,7 +454,7 @@ function OwnerVenueManagementContent() {
                   onChange={(e) => setInfo({ ...info, longitude: e.target.value })} />
               </div>
             </div>
-            <p className="text-[11px] text-[#718096] -mt-2">Toạ độ dùng để tính khoảng cách và gợi ý sân cho người chơi.</p>
+            <p className="text-[11px] text-[#8a97ab] -mt-2">Toạ độ dùng để tính khoảng cách từ người chơi tới sân.</p>
             <div>
               <label className={LABEL}>Giới thiệu</label>
               <textarea rows={3} className="w-full p-3 bg-white border border-[#dde4ef] rounded-xl text-xs font-medium text-[#263b53] outline-none resize-none"
@@ -462,8 +474,8 @@ function OwnerVenueManagementContent() {
                         ...prev,
                         amenity_ids: checked ? prev.amenity_ids.filter((id) => id !== amenity.id) : [...prev.amenity_ids, amenity.id],
                       }))}
-                      className={`px-2.5 py-1 rounded-full border text-[11px] font-bold cursor-pointer ${
-                        checked ? "bg-[#476cf3] border-[#476cf3] text-white" : "bg-white border-[#dde4ef] text-[#51627c]"
+                      className={`px-2.5 py-1 rounded-full border text-[11px] font-bold cursor-pointer transition ${
+                        checked ? "bg-[#eef2ff] border-[#476cf3] text-[#3454d1]" : "bg-white border-[#dde4ef] text-[#51627c] hover:border-[#b9c6dd]"
                       }`}
                     >
                       {amenity.name}
@@ -478,12 +490,6 @@ function OwnerVenueManagementContent() {
           <div className="space-y-6">
             <form onSubmit={saveBank} className={CARD}>
               <h3 className="text-sm font-black text-[#17253d] m-0">Tài khoản nhận tiền cọc</h3>
-              {unifiedAccountMode && (
-                <p className="text-[11px] text-[#92400e] bg-[#fffbeb] border border-[#fef3c7] rounded-xl p-3 leading-relaxed">
-                  Hệ thống đang chạy ở chế độ demo dùng chung một tài khoản nhận tiền cấu hình trên máy chủ. Tài khoản bên dưới được lưu
-                  lại và chỉ được dùng khi quản trị viên tắt chế độ này.
-                </p>
-              )}
               <div>
                 <label className={LABEL}>Ngân hàng</label>
                 <select className={INPUT} value={bank.bank} onChange={(e) => setBank({ ...bank, bank: e.target.value })}>
@@ -501,8 +507,8 @@ function OwnerVenueManagementContent() {
                 <input className={`${INPUT} uppercase`} placeholder="Chưa cấu hình" value={bank.holder}
                   onChange={(e) => setBank({ ...bank, holder: e.target.value })} />
               </div>
-              <p className="text-[11px] text-[#556987] leading-relaxed">
-                Khi khách đặt sân, hệ thống tạo mã VietQR kèm mã đơn. Khoản chuyển đúng mã đơn sẽ được ghi nhận tự động và đơn chuyển sang “Đã xác nhận”.
+              <p className="text-[11px] text-[#8a97ab] leading-relaxed">
+                Khách quét mã VietQR để chuyển tiền cọc; đơn được xác nhận tự động khi tiền về.
               </p>
               <button type="submit" disabled={busy === "bank"} className={PRIMARY}>{busy === "bank" ? "Đang lưu..." : "Lưu tài khoản"}</button>
             </form>
@@ -563,7 +569,7 @@ function OwnerVenueManagementContent() {
                   ))}
                 </div>
               )}
-              <p className="text-[11px] text-[#718096]">Khi tạm đóng hoặc ngừng hiển thị, người chơi không đặt thêm được; các đơn đã có vẫn giữ nguyên.</p>
+              <p className="text-[11px] text-[#8a97ab]">Khi tạm đóng hoặc ngừng hiển thị, người chơi không đặt thêm được; các đơn đã có vẫn giữ nguyên.</p>
             </div>
           </div>
         </div>
@@ -575,32 +581,34 @@ function OwnerVenueManagementContent() {
             <h3 className="text-sm font-black text-[#17253d] m-0">Sân thuộc cụm ({venue.courts.length})</h3>
             <ul className="space-y-2">
               {venue.courts.map((court) => (
-                <li key={court.id} className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl border border-[#e8edf3] bg-[#fafbfe]">
-                  <div>
-                    <p className="text-xs font-black text-[#17253d]">{court.name}</p>
-                    <p className="text-[11px] text-[#51627c]">
-                      {court.status === "ACTIVE" ? "Đang nhận đặt" : "Đang bảo trì"} •{" "}
-                      {court.price ? `Giá riêng ${formatVND(court.price)}/giờ` : "Theo bảng giá chung"}
-                    </p>
+                <li key={court.id} className={ROW}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${court.status === "ACTIVE" ? "bg-emerald-500" : "bg-amber-500"}`} />
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-[#17253d] truncate">{court.name}</p>
+                      <p className="text-[11px] text-[#8a97ab]">
+                        {court.status === "ACTIVE" ? "Đang nhận đặt" : "Đang bảo trì"} •{" "}
+                        {court.price ? `Giá riêng ${formatVND(court.price)}/giờ` : "Theo bảng giá chung"}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <button type="button" className={SECONDARY} disabled={busy === `court-${court.id}`} onClick={() => renameCourt(court)}>Đổi tên</button>
-                    <button type="button" className={SECONDARY} disabled={busy === `court-${court.id}`} onClick={() => setCourtPrice(court)}>Giá riêng</button>
+                  <div className="flex items-center shrink-0">
+                    <button type="button" className={ROW_ACTION} disabled={busy === `court-${court.id}`} onClick={() => renameCourt(court)}>Đổi tên</button>
+                    <button type="button" className={ROW_ACTION} disabled={busy === `court-${court.id}`} onClick={() => setCourtPrice(court)}>Giá riêng</button>
                     <button
                       type="button"
-                      className={SECONDARY}
+                      className={ROW_ACTION}
                       disabled={busy === `court-${court.id}`}
                       onClick={() => updateCourt(court, { status: court.status === "ACTIVE" ? "MAINTENANCE" : "ACTIVE" },
                         court.status === "ACTIVE" ? "Đã chuyển sân sang bảo trì." : "Sân đã nhận đặt trở lại.")}
                     >
                       {court.status === "ACTIVE" ? "Bảo trì" : "Mở lại"}
                     </button>
-                    <button type="button" className="px-3 py-2 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 cursor-pointer"
-                      disabled={busy === `court-${court.id}`} onClick={() => deleteCourt(court)}>Xóa</button>
+                    <button type="button" className={ROW_DANGER} disabled={busy === `court-${court.id}`} onClick={() => deleteCourt(court)}>Xóa</button>
                   </div>
                 </li>
               ))}
-              {venue.courts.length === 0 && <li className="text-xs text-[#718096]">Chưa có sân nào.</li>}
+              {venue.courts.length === 0 && <li className="text-xs text-[#8a97ab] py-4 text-center">Chưa có sân nào. Thêm sân đầu tiên ở bên dưới.</li>}
             </ul>
             <form onSubmit={addCourt} className="flex flex-wrap items-end gap-2 pt-3 border-t border-[#eef1f6]">
               <div className="flex-1 min-w-36">
@@ -641,9 +649,8 @@ function OwnerVenueManagementContent() {
               <input className={INPUT} type="number" min={0} step={1000} placeholder="Bằng giờ thường" value={prices.weekend}
                 onChange={(e) => setPrices({ ...prices, weekend: e.target.value })} />
             </div>
-            <p className="text-[11px] text-[#556987] leading-relaxed">
-              Mỗi khung giờ dài 60 phút và được tính theo giờ bắt đầu. Cuối tuần trong giờ cao điểm lấy mức cao hơn giữa hai giá.
-              Đơn nhiều giờ bằng tổng giá từng khung. Giá mới chỉ áp dụng cho đơn tạo sau khi lưu.
+            <p className="text-[11px] text-[#8a97ab] leading-relaxed">
+              Giá tính theo từng khung 60 phút. Cuối tuần trong giờ cao điểm áp dụng mức cao hơn. Giá mới áp dụng cho các đơn tạo sau khi lưu.
             </p>
             <button type="submit" disabled={busy === "prices"} className={PRIMARY}>{busy === "prices" ? "Đang lưu..." : "Lưu bảng giá"}</button>
           </form>
@@ -653,30 +660,34 @@ function OwnerVenueManagementContent() {
       {activeTab === "hours" && (
         <form onSubmit={saveHours} className={`${CARD} max-w-2xl`}>
           <h3 className="text-sm font-black text-[#17253d] m-0">Giờ hoạt động trong tuần</h3>
-          <ul className="space-y-2">
+          <ul className="divide-y divide-[#f1f4f9] border border-[#e8edf3] rounded-xl">
             {WEEKDAYS.map((name, day) => (
-              <li key={name} className="flex items-center gap-3 text-xs">
-                <label className="flex items-center gap-2 w-32 font-bold text-[#17253d] cursor-pointer">
-                  <input type="checkbox" checked={hours[day].open}
+              <li key={name} className="flex items-center gap-3 px-3.5 py-2 text-xs">
+                <label className="flex items-center gap-2.5 w-28 shrink-0 font-bold text-[#17253d] whitespace-nowrap cursor-pointer">
+                  <input type="checkbox" className="w-4 h-4 accent-[#476cf3]" checked={hours[day].open}
                     onChange={(e) => setHours((prev) => prev.map((h, i) => (i === day ? { ...h, open: e.target.checked } : h)))} />
                   {name}
                 </label>
                 {hours[day].open ? (
                   <>
-                    <input type="time" className={`${INPUT} w-32`} value={hours[day].open_time} aria-label={`${name} mở cửa`}
-                      onChange={(e) => setHours((prev) => prev.map((h, i) => (i === day ? { ...h, open_time: e.target.value } : h)))} />
-                    <span className="text-[#718096]">đến</span>
-                    <input type="time" className={`${INPUT} w-32`} value={hours[day].close_time} aria-label={`${name} đóng cửa`}
-                      onChange={(e) => setHours((prev) => prev.map((h, i) => (i === day ? { ...h, close_time: e.target.value } : h)))} />
+                    <div className="w-32">
+                      <input type="time" className={INPUT} value={hours[day].open_time} aria-label={`${name} mở cửa`}
+                        onChange={(e) => setHours((prev) => prev.map((h, i) => (i === day ? { ...h, open_time: e.target.value } : h)))} />
+                    </div>
+                    <span className="text-[#8a97ab]">đến</span>
+                    <div className="w-32">
+                      <input type="time" className={INPUT} value={hours[day].close_time} aria-label={`${name} đóng cửa`}
+                        onChange={(e) => setHours((prev) => prev.map((h, i) => (i === day ? { ...h, close_time: e.target.value } : h)))} />
+                    </div>
                   </>
                 ) : (
-                  <span className="text-[#9aa7bb] font-bold">Nghỉ</span>
+                  <span className="h-10 flex items-center text-[#9aa7bb] font-bold">Nghỉ</span>
                 )}
               </li>
             ))}
           </ul>
-          <p className="text-[11px] text-[#556987] leading-relaxed">
-            Các khung giờ đặt sân dài 60 phút, tính từ giờ mở cửa. Phần lẻ cuối ngày không đủ 60 phút sẽ không mở đặt. Đơn đã có không bị ảnh hưởng.
+          <p className="text-[11px] text-[#8a97ab] leading-relaxed">
+            Khung giờ đặt sân dài 60 phút, tính từ giờ mở cửa. Thay đổi không ảnh hưởng tới các đơn đã có.
           </p>
           <button type="submit" disabled={busy === "hours"} className={PRIMARY}>{busy === "hours" ? "Đang lưu..." : "Lưu giờ hoạt động"}</button>
         </form>
@@ -692,24 +703,29 @@ function OwnerVenueManagementContent() {
           </div>
           <ul className="space-y-2">
             {venueStaff.map((staff) => (
-              <li key={staff.id} className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl border border-[#e8edf3] bg-[#fafbfe] text-xs">
-                <div>
-                  <p className="font-black text-[#17253d]">
-                    {staff.staff_profile?.full_name || "(chưa có tên)"}
-                    {!staff.is_active && <span className="ml-2 text-[10px] font-bold text-rose-600">Đã khóa</span>}
-                  </p>
-                  <p className="text-[#51627c]">{staff.email} • {staff.staff_profile?.phone || "chưa có số điện thoại"}</p>
+              <li key={staff.id} className={`${ROW} text-xs`}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="w-8 h-8 rounded-full bg-[#eef2ff] text-[#3454d1] flex items-center justify-center font-black shrink-0">
+                    {(staff.staff_profile?.full_name || staff.email).trim().charAt(0).toUpperCase()}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-black text-[#17253d] truncate">
+                      {staff.staff_profile?.full_name || "(chưa có tên)"}
+                      {!staff.is_active && <span className="ml-2 text-[10px] font-bold text-rose-600">Đã khóa</span>}
+                    </p>
+                    <p className="text-[#8a97ab] truncate">{staff.email} • {staff.staff_profile?.phone || "chưa có số điện thoại"}</p>
+                  </div>
                 </div>
-                <div className="flex gap-1.5">
-                  <button type="button" className={SECONDARY}
+                <div className="flex items-center shrink-0">
+                  <button type="button" className={ROW_ACTION}
                     onClick={() => { setStaffForm({ id: staff.id, email: staff.email, password: "", full_name: staff.staff_profile?.full_name || "", phone: staff.staff_profile?.phone || "" }); setShowStaffForm(true); }}>
                     Sửa
                   </button>
-                  <button type="button" className="px-3 py-2 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 cursor-pointer" onClick={() => deleteStaff(staff)}>Xóa</button>
+                  <button type="button" className={ROW_DANGER} onClick={() => deleteStaff(staff)}>Xóa</button>
                 </div>
               </li>
             ))}
-            {venueStaff.length === 0 && <li className="text-xs text-[#718096]">Chưa có nhân viên nào.</li>}
+            {venueStaff.length === 0 && <li className="text-xs text-[#8a97ab] py-4 text-center">Chưa có nhân viên nào.</li>}
           </ul>
 
           {showStaffForm && (
@@ -738,7 +754,7 @@ function OwnerVenueManagementContent() {
               </div>
             </form>
           )}
-          <p className="text-[11px] text-[#718096]">Nhân viên chỉ xem và thao tác được trên đơn của cụm sân này; không xem được tài khoản nhận tiền.</p>
+          <p className="text-[11px] text-[#8a97ab]">Nhân viên chỉ xem và thao tác được trên đơn của cụm sân này; không xem được tài khoản nhận tiền.</p>
         </div>
       )}
     </div>
