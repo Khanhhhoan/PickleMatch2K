@@ -28,6 +28,11 @@ import SepayCheckoutModal from "@/components/SepayCheckoutModal";
 import { QRCodeSVG } from "qrcode.react";
 
 type Filter = BookingGroup | "all";
+type SortOrder = "newest" | "oldest";
+
+/** Ngày giờ chơi sớm nhất của đơn ("2026-10-09 05:30:00"), dùng để sắp xếp phiếu. */
+const playMoment = (booking: Booking): string =>
+  (booking.details || []).map((d) => `${d.date} ${d.start_time}`).sort()[0] || "";
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "pending", label: "Chờ Cọc" },
@@ -110,6 +115,7 @@ function PlayerBookingsContent() {
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<number[]>([]);
   const [filter, setFilter] = useState<Filter>("upcoming");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("newest"); // thứ tự phiếu theo ngày chơi
   const [checkoutBookingId, setCheckoutBookingId] = useState<number | null>(null);
 
   // Hộp thoại hủy đơn: số tiền hoàn do máy chủ tính theo chính sách hủy
@@ -197,7 +203,11 @@ function PlayerBookingsContent() {
 
   const counts: Record<Filter, number> = { pending: 0, upcoming: 0, completed: 0, cancelled: 0, all: bookings.length };
   bookings.forEach((b) => (counts[bookingGroup(b)] += 1));
-  const displayed = filter === "all" ? bookings : bookings.filter((b) => bookingGroup(b) === filter);
+  // Phiếu xếp theo ngày chơi (mặc định mới nhất trước); cùng ngày giờ thì đơn tạo sau đứng trước
+  const direction = sortOrder === "newest" ? -1 : 1;
+  const displayed = (filter === "all" ? bookings : bookings.filter((b) => bookingGroup(b) === filter))
+    .slice()
+    .sort((a, b) => direction * playMoment(a).localeCompare(playMoment(b)) || b.id - a.id);
 
   return (
     <div className="min-h-screen flex flex-col bg-zinc-50 font-sans text-zinc-900 selection:bg-zinc-900 selection:text-white">
@@ -234,7 +244,7 @@ function PlayerBookingsContent() {
           </div>
         )}
 
-        <div className="flex items-center gap-2 mb-6 border-b border-zinc-200 pb-2 overflow-x-auto scrollbar-none">
+        <div className="flex items-center gap-2 mb-4 border-b border-zinc-200 pb-2 overflow-x-auto scrollbar-none">
           {FILTERS.map(({ key, label }) => (
             <button
               key={key}
@@ -254,6 +264,21 @@ function PlayerBookingsContent() {
             </button>
           ))}
         </div>
+
+        {bookings.length > 1 && (
+          <div className="flex items-center justify-end gap-2 mb-4 text-xs text-zinc-500">
+            <label htmlFor="booking-sort">Sắp xếp theo ngày chơi</label>
+            <select
+              id="booking-sort"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as SortOrder)}
+              className="px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-white text-xs font-semibold text-zinc-800 cursor-pointer focus:outline-none focus:border-zinc-900"
+            >
+              <option value="newest">Mới nhất trước</option>
+              <option value="oldest">Cũ nhất trước</option>
+            </select>
+          </div>
+        )}
 
         {loading ? (
           <div className="space-y-3.5">

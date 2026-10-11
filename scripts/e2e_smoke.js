@@ -351,6 +351,28 @@ async function main() {
       await page.goto(`${WEB}/bookings?tab=cancelled`, { waitUntil: "networkidle2" });
       await waitForText(page, bookingCode);
       await waitForText(page, "Chờ hoàn");
+      // các phiếu xếp theo ngày chơi: mới nhất trước, đổi được sang cũ nhất trước
+      const cardDates = () =>
+        page.evaluate(() =>
+          [...document.querySelectorAll("main div.rounded-2xl")]
+            .filter((el) => el.querySelector("span.font-mono"))
+            .map((el) => {
+              const found = el.innerText.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+              return found ? `${found[3]}-${found[2]}-${found[1]}` : "";
+            }),
+        );
+      const newestFirst = await cardDates();
+      if (newestFirst.join() !== [...newestFirst].sort().reverse().join()) {
+        throw new Error(`Phiếu chưa xếp theo ngày chơi mới nhất trước: ${newestFirst.join(", ")}`);
+      }
+      if (newestFirst.length > 1) {
+        await page.select("#booking-sort", "oldest");
+        await sleep(300);
+        const oldestFirst = await cardDates();
+        if (oldestFirst.join() !== [...oldestFirst].sort().join()) {
+          throw new Error(`Đổi sang cũ nhất trước nhưng thứ tự chưa đúng: ${oldestFirst.join(", ")}`);
+        }
+      }
       // phòng của đơn vừa hủy cũng bị hủy: mục Phòng Của Tôi chỉ giữ những phòng còn dùng được
       await page.goto(`${WEB}/matches?tab=my_matches`, { waitUntil: "networkidle2" });
       await waitForText(page, "Phòng Của Tôi (");
