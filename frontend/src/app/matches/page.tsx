@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState, Suspense } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { fetchApi } from "@/lib/api";
@@ -82,7 +82,7 @@ function MatchesContent() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { success: toastSuccess, error: toastError } = useToast();
+  const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
 
   const [matches, setMatches] = useState<Match[]>([]);
   const [model, setModel] = useState<ModelInfo | null>(null);
@@ -130,6 +130,21 @@ function MatchesContent() {
     [user],
   );
 
+  // Phòng mình đang ở bị hủy thì thẻ rời khỏi mục Phòng Của Tôi: báo một câu để người chơi biết lý do
+  const activeRooms = useRef<Map<number, string>>(new Map());
+  useEffect(() => {
+    const current = new Map<number, string>();
+    for (const m of matches) {
+      if (!isMember(m)) continue;
+      if (m.status === "OPEN" || m.status === "FULL") {
+        current.set(m.id, `${m.venue_name || "cụm sân"} lúc ${m.start_time.slice(0, 5)} ${formatDisplayDate(m.date)}`);
+      } else if (m.status === "CANCELLED" && activeRooms.current.has(m.id)) {
+        toastInfo(`Phòng tại ${activeRooms.current.get(m.id)} đã bị hủy.`);
+      }
+    }
+    activeRooms.current = current;
+  }, [matches, isMember, toastInfo]);
+
   const toggleExpand = (id: number) =>
     setExpandedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
 
@@ -158,6 +173,7 @@ function MatchesContent() {
       onConfirm: async () => {
         setConfirm(null);
         setBusyMatchId(match.id);
+        activeRooms.current.delete(match.id); // tự mình rời/hủy thì không cần báo "phòng đã bị hủy" nữa
         try {
           await fetchApi(`/matches/${match.id}/leave`, { method: "POST" });
           toastSuccess(isHost ? "Đã hủy phòng." : "Đã rời phòng.");
@@ -181,7 +197,11 @@ function MatchesContent() {
   );
   // Đề xuất của mô hình: chỉ những phòng đạt ngưỡng phù hợp do máy chủ quy định
   const suggested = useMemo(() => joinable.filter((m) => m.is_recommended), [joinable]);
-  const myMatches = useMemo(() => matches.filter(isMember), [matches, isMember]);
+  // Phòng của tôi: chỉ những phòng còn dùng được (đang tuyển hoặc đã đủ người); phòng đã hủy hay đã kết thúc không hiện nữa
+  const myMatches = useMemo(
+    () => matches.filter((m) => isMember(m) && (m.status === "OPEN" || m.status === "FULL")),
+    [matches, isMember],
+  );
 
   if (authLoading || !user) return null;
 
@@ -360,7 +380,7 @@ function MatchesContent() {
           <Empty
             title={
               activeTab === "my_matches"
-                ? "Bạn chưa tham gia phòng nào"
+                ? "Hiện bạn chưa ở trong phòng nào"
                 : activeTab === "suggested"
                 ? "Chưa có phòng nào thật sự hợp với bạn lúc này"
                 : "Hiện không có phòng nào đang tuyển người"

@@ -351,6 +351,13 @@ async function main() {
       await page.goto(`${WEB}/bookings?tab=cancelled`, { waitUntil: "networkidle2" });
       await waitForText(page, bookingCode);
       await waitForText(page, "Chờ hoàn");
+      // phòng của đơn vừa hủy cũng bị hủy: mục Phòng Của Tôi chỉ giữ những phòng còn dùng được
+      await page.goto(`${WEB}/matches?tab=my_matches`, { waitUntil: "networkidle2" });
+      await waitForText(page, "Phòng Của Tôi (");
+      await sleep(800);
+      for (const closed of ["Đã hủy", "Đã kết thúc"]) {
+        if (await hasText(page, closed)) throw new Error(`Mục Phòng Của Tôi vẫn hiện phòng "${closed}"`);
+      }
     });
   }
 
