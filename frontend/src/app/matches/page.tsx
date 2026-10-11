@@ -179,7 +179,6 @@ function MatchesContent() {
 
   if (authLoading || !user) return null;
 
-  const threshold = model?.recommend_threshold ?? null;
   // Đã chọn vị trí trên trang chủ thì không coi là thiếu vị trí, dù hồ sơ chưa lưu
   const missing = (model?.missing_profile_fields || []).filter((f) => f !== "location" || !getSavedLocation());
   const listed = activeTab === "suggested" ? suggested : activeTab === "open" ? joinable : myMatches;
@@ -204,9 +203,9 @@ function MatchesContent() {
                 className={`px-2.5 py-1 rounded-full text-xs font-bold ${
                   m.is_recommended ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 border border-zinc-200"
                 }`}
-                title="Xác suất phù hợp do mô hình ước lượng giữa bạn và các thành viên hiện có của phòng"
+                title="Độ phù hợp giữa bạn và các thành viên hiện có của phòng"
               >
-                {m.is_recommended ? "Mô hình đề xuất • " : "Phù hợp "}
+                {m.is_recommended ? "Rất hợp với bạn • " : "Độ phù hợp "}
                 {m.compatibility.toFixed(0)}%
               </span>
             )}
@@ -285,35 +284,19 @@ function MatchesContent() {
           </Link>
         </div>
 
-        {/* Mô hình đề xuất phòng như thế nào */}
-        {model && (
-          <div className="mb-4 p-3.5 rounded-2xl bg-white border border-zinc-200 text-[11px] sm:text-xs text-zinc-600 leading-relaxed space-y-1.5">
-            {model.available ? (
-              <p>
-                <strong className="text-zinc-900">Phòng đề xuất</strong> là các phòng đang tuyển người mà mô hình Random Forest ước lượng
-                độ phù hợp giữa bạn và các thành viên của phòng {threshold != null ? `từ ${threshold}% trở lên` : "ở mức cao"}, dựa trên
-                chênh lệch trình độ, khoảng cách tới sân, khung giờ rảnh, mục đích chơi và lối đánh.{" "}
-                {model.data_source === "survey"
-                  ? `Mô hình học từ ${model.n_samples} câu trả lời khảo sát của ${model.n_raters} người chơi.`
-                  : model.data_source === "simulated"
-                  ? `Mô hình học từ ${model.n_samples?.toLocaleString("vi-VN")} phiếu ghép cặp mô phỏng lưu trong hệ thống, chưa phải lựa chọn của người chơi thật.`
-                  : "Mô hình hiện học từ dữ liệu tổng hợp, chưa phải lựa chọn của người chơi thật."}{" "}
-                <Link href="/survey" className="font-semibold text-zinc-900 underline">
-                  Trả lời khảo sát để mô hình học từ bạn
-                </Link>
-              </p>
-            ) : (
-              <p>Mô hình ghép cặp chưa sẵn sàng nên chưa có phòng đề xuất; các phòng đang mở được liệt kê theo thời gian.</p>
-            )}
-            {missing.length > 0 && (
-              <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                Hồ sơ của bạn còn thiếu {missing.map((f) => PROFILE_FIELD_LABEL[f] || f).join(", ")}.{" "}
-                <Link href="/profile" className="font-semibold underline">
-                  Bổ sung hồ sơ
-                </Link>{" "}
-                để mô hình đề xuất chính xác hơn.
-              </p>
-            )}
+        {/* Nhắc hoàn thiện hồ sơ để gợi ý sát hơn */}
+        {missing.length > 0 && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-white border border-zinc-200">
+            <p className="text-xs sm:text-sm text-zinc-700">
+              Thêm <strong className="text-zinc-950">{missing.map((f) => PROFILE_FIELD_LABEL[f] || f).join(", ")}</strong> vào hồ sơ để
+              nhận gợi ý phòng sát với bạn hơn.
+            </p>
+            <Link
+              href="/profile"
+              className="px-3.5 py-1.5 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white text-xs font-bold shrink-0"
+            >
+              Cập nhật hồ sơ
+            </Link>
           </div>
         )}
 
@@ -335,6 +318,12 @@ function MatchesContent() {
           })}
         </div>
 
+        {!loading && activeTab === "suggested" && suggested.length > 0 && (
+          <p className="text-xs text-zinc-500 mb-3">
+            Những phòng hợp với bạn nhất, dựa trên trình độ, khu vực, lịch rảnh và phong cách chơi.
+          </p>
+        )}
+
         {loading ? (
           <div className="bg-white rounded-2xl p-5 border border-zinc-200 animate-pulse h-28" />
         ) : listed.length === 0 ? (
@@ -343,12 +332,12 @@ function MatchesContent() {
               activeTab === "my_matches"
                 ? "Bạn chưa tham gia phòng nào"
                 : activeTab === "suggested"
-                ? "Chưa có phòng nào mô hình đánh giá phù hợp cao với bạn"
+                ? "Chưa có phòng nào thật sự hợp với bạn lúc này"
                 : "Hiện không có phòng nào đang tuyển người"
             }
             hint={
               activeTab === "suggested"
-                ? "Xem tab “Tất Cả Phòng Mở” để thấy mọi phòng đang tuyển, hoặc đặt sân rồi mở phòng của bạn."
+                ? "Xem tab “Tất Cả Phòng Mở”, hoặc đặt sân rồi mở phòng của riêng bạn."
                 : "Bạn có thể đặt sân rồi mở phòng để tìm người chơi cùng."
             }
           />

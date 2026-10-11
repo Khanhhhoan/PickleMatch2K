@@ -199,7 +199,10 @@ python manage.py seed --feedback     # nạp phiếu mô phỏng vào bảng pai
 python manage.py train-model         # đọc bảng pair_feedback, đánh giá, ghi match_rf_model.pkl + model_meta.json
 ```
 
-Cổng quản trị (thẻ Tổng quan) hiển thị nguồn dữ liệu, số phiếu, cách đánh giá và bảng chỉ số của mô hình đang chạy.
+Cổng quản trị (thẻ Tổng quan) có khối "Mô hình ghép trận": thuật toán, số phiếu và nguồn dữ liệu huấn luyện, độ chính
+xác, bảng so sánh với các cách làm đơn giản hơn và các yếu tố ảnh hưởng tới đề xuất. Giao diện người chơi chỉ hiện độ
+phù hợp của từng phòng, không hiện chi tiết kỹ thuật. Bảng đánh giá đầy đủ (kèm mốc trần) in ra bằng
+`python manage.py train-model --report`.
 
 ### 5.3. Mô hình
 

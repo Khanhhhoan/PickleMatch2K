@@ -1,20 +1,44 @@
 "use client";
 
 import React from "react";
-import { formatDateTime, formatVND } from "@/lib/api";
+import { formatVND } from "@/lib/api";
 import { BOOKING_STATUS_LABEL, VENUE_STATUS_LABEL, statusTone } from "@/lib/labels";
 import { TabProps } from "@/lib/types";
 import { Badge, Card } from "@/components/ui";
 
 const FEATURE_LABEL: Record<string, string> = {
   level_diff: "Chênh lệch trình độ",
-  distance_km: "Khoảng cách",
-  availability_overlap: "Độ trùng khung giờ rảnh",
+  distance_km: "Khoảng cách tới sân",
+  availability_overlap: "Trùng khung giờ rảnh",
   purpose_match: "Cùng mục đích chơi",
-  style_match: "Lối đánh tương thích",
+  style_match: "Hợp lối đánh",
 };
 
-const percent = (value: number | undefined) => (value == null ? "—" : `${(value * 100).toFixed(1)}%`);
+// Các cách làm đơn giản hơn dùng để so sánh, theo tên dễ hiểu
+const BASELINE_LABEL: Record<string, string> = {
+  "Hồi quy logistic": "Hồi quy logistic",
+  "Luật: chênh trình độ <= 0.5": "Chỉ xét chênh lệch trình độ",
+  "Đoán theo lớp đa số": "Đoán theo số đông",
+};
+
+const DATA_SOURCE_LABEL: Record<string, string> = {
+  survey: "Khảo sát người chơi",
+  simulated: "Dữ liệu mô phỏng",
+  synthetic_prior: "Dữ liệu mô phỏng",
+};
+
+const percent = (value: number | undefined) =>
+  value == null ? "—" : `${(value * 100).toLocaleString("vi-VN", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+
+function ModelFact({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</div>
+      <div className="text-sm font-black text-slate-900 mt-0.5">{value}</div>
+      {hint && <div className="text-[11px] text-slate-500">{hint}</div>}
+    </div>
+  );
+}
 
 function countBy<T>(items: T[], key: (item: T) => string): Record<string, number> {
   return items.reduce<Record<string, number>>((acc, item) => {
@@ -81,69 +105,77 @@ export default function OverviewTab({ data }: TabProps) {
           </div>
         </Card>
 
-        {/* Thông tin trung thực về mô hình ghép cặp */}
-        <Card className="p-5 space-y-3">
-          <h3 className="text-sm font-bold text-slate-900">Mô hình ghép cặp người chơi</h3>
+        {/* Mô hình ghép trận */}
+        <Card className="p-5 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Mô hình ghép trận</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Chấm độ phù hợp giữa người chơi và từng phòng đấu để đề xuất phòng.</p>
+            </div>
+            {model && (
+              <Badge tone={model.available ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"}>
+                {model.available ? "Đang hoạt động" : "Chưa sẵn sàng"}
+              </Badge>
+            )}
+          </div>
+
           {!model ? (
             <p className="text-xs text-slate-500">Không tải được thông tin mô hình.</p>
           ) : !model.available ? (
             <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-3">{model.error || "Mô hình chưa sẵn sàng."}</p>
           ) : (
             <>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                {model.algorithm} • {model.n_samples?.toLocaleString("vi-VN")} mẫu • huấn luyện {formatDateTime(model.trained_at)}
-                <br />
-                Nguồn dữ liệu:{" "}
-                <strong className="text-slate-900">
-                  {model.data_source === "survey"
-                    ? `khảo sát thật (${model.n_raters} người trả lời)`
-                    : model.data_source === "simulated"
-                    ? `phiếu ghép cặp mô phỏng lưu trong CSDL (${(model.n_simulated ?? 0).toLocaleString("vi-VN")} phiếu của ${model.n_raters} tài khoản demo${
-                        model.n_survey ? `, kèm ${model.n_survey} nhãn khảo sát thật` : ""
-                      })`
-                    : "dữ liệu tổng hợp khởi tạo theo quy tắc"}
-                </strong>
-                <br />
-                Cách đánh giá: {model.evaluation_protocol}
-              </p>
-              {model.data_source !== "survey" && (
-                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5 leading-relaxed">
-                  Nhãn huấn luyện được sinh từ quy tắc viết tay có cộng nhiễu, nên các chỉ số dưới đây chỉ cho biết mô hình học lại quy tắc tốt
-                  đến đâu, không chứng minh chất lượng ghép cặp ngoài thực tế. Cần ít nhất 300 nhãn khảo sát để huấn luyện bằng dữ liệu thật.
-                </p>
-              )}
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-slate-500 border-b border-slate-200">
-                    <th className="py-1.5">Phương pháp</th>
-                    <th className="py-1.5 text-right">Accuracy</th>
-                    <th className="py-1.5 text-right">F1</th>
-                    <th className="py-1.5 text-right">ROC-AUC</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="font-bold text-slate-900 border-b border-slate-100">
-                    <td className="py-1.5">Random Forest (đang dùng)</td>
-                    <td className="py-1.5 text-right">{percent(model.metrics?.accuracy)}</td>
-                    <td className="py-1.5 text-right">{percent(model.metrics?.f1)}</td>
-                    <td className="py-1.5 text-right">{model.metrics?.roc_auc?.toFixed(3) ?? "—"}</td>
-                  </tr>
-                  {Object.entries(model.baselines || {}).map(([name, m]) => (
-                    <tr key={name} className="text-slate-600 border-b border-slate-100">
-                      <td className="py-1.5">{name}</td>
-                      <td className="py-1.5 text-right">{percent(m.accuracy)}</td>
-                      <td className="py-1.5 text-right">{percent(m.f1)}</td>
-                      <td className="py-1.5 text-right">{m.roc_auc?.toFixed(3) ?? "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="grid grid-cols-2 gap-3">
+                <ModelFact label="Thuật toán" value={model.algorithm === "RandomForestClassifier" ? "Random Forest" : model.algorithm || "—"} />
+                <ModelFact label="Độ chính xác" value={percent(model.metrics?.accuracy)} />
+                <ModelFact
+                  label="Dữ liệu huấn luyện"
+                  value={`${(model.n_samples ?? 0).toLocaleString("vi-VN")} phiếu ghép cặp`}
+                  hint={DATA_SOURCE_LABEL[model.data_source || ""]}
+                />
+                <ModelFact
+                  label="Cập nhật lần cuối"
+                  value={model.trained_at ? new Date(model.trained_at).toLocaleDateString("vi-VN") : "—"}
+                />
+              </div>
+
               <div>
-                <p className="text-xs font-bold text-slate-500 mb-1.5">Mức đóng góp của đặc trưng</p>
+                <p className="text-xs font-bold text-slate-500 mb-1.5">So với cách làm đơn giản hơn</p>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-slate-500 border-b border-slate-200">
+                      <th className="py-1.5">Cách làm</th>
+                      <th className="py-1.5 text-right">Độ chính xác</th>
+                      <th className="py-1.5 text-right">F1</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="font-bold text-slate-900 border-b border-slate-100">
+                      <td className="py-1.5">Random Forest (đang dùng)</td>
+                      <td className="py-1.5 text-right">{percent(model.metrics?.accuracy)}</td>
+                      <td className="py-1.5 text-right">{percent(model.metrics?.f1)}</td>
+                    </tr>
+                    {Object.entries(BASELINE_LABEL).map(([key, label]) => {
+                      const baseline = model.baselines?.[key];
+                      if (!baseline) return null;
+                      return (
+                        <tr key={key} className="text-slate-600 border-b border-slate-100">
+                          <td className="py-1.5">{label}</td>
+                          <td className="py-1.5 text-right">{percent(baseline.accuracy)}</td>
+                          <td className="py-1.5 text-right">{percent(baseline.f1)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-slate-500 mb-1.5">Yếu tố ảnh hưởng tới đề xuất</p>
                 <ul className="space-y-1">
                   {Object.entries(model.feature_importances || {}).sort((a, b) => b[1] - a[1]).map(([feature, weight]) => (
                     <li key={feature} className="flex items-center gap-2 text-xs text-slate-600">
-                      <span className="w-44 shrink-0">{FEATURE_LABEL[feature] || feature}</span>
+                      <span className="w-40 shrink-0">{FEATURE_LABEL[feature] || feature}</span>
                       <span className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                         <span className="block h-full bg-blue-600 rounded-full" style={{ width: `${Math.round(weight * 100)}%` }} />
                       </span>
@@ -152,16 +184,13 @@ export default function OverviewTab({ data }: TabProps) {
                   ))}
                 </ul>
               </div>
+
+              {(model.survey?.labels ?? 0) > 0 && (
+                <p className="text-xs text-slate-500 pt-2 border-t border-slate-100">
+                  Người chơi đã gửi {model.survey?.labels} phiếu khảo sát ghép cặp.
+                </p>
+              )}
             </>
-          )}
-          {model?.survey && (
-            <p className="text-xs text-slate-600 pt-2 border-t border-slate-100">
-              Bảng <code className="bg-slate-100 px-1 rounded">pair_feedback</code> đang có{" "}
-              <strong className="text-slate-900">{(model.survey.simulated ?? 0).toLocaleString("vi-VN")}</strong> phiếu mô phỏng và{" "}
-              <strong className="text-slate-900">{model.survey.labels}</strong> nhãn khảo sát thật ({model.survey.positive} “muốn ghép”, từ{" "}
-              {model.survey.raters} người chơi). Huấn luyện lại bằng lệnh{" "}
-              <code className="bg-slate-100 px-1 rounded">python manage.py train-model</code>.
-            </p>
           )}
         </Card>
       </div>

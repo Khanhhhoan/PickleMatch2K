@@ -69,8 +69,8 @@ const waitForText = (page, text, timeout = TIMEOUT) =>
 const hasText = (page, text) => page.evaluate((t) => document.body.innerText.toLowerCase().includes(t), text.toLowerCase());
 
 /**
- * Nhãn của mô hình trên thẻ phòng có tên thành viên cho trước: true = "Mô hình đề xuất", false = chỉ có "Phù hợp x%",
- * null = thẻ không có độ phù hợp.
+ * Nhãn độ phù hợp trên thẻ phòng có tên thành viên cho trước: true = "Rất hợp với bạn" (phòng được đề xuất),
+ * false = chỉ có "Độ phù hợp x%", null = thẻ không có độ phù hợp.
  */
 const roomIsRecommended = (page, memberName) =>
   page.evaluate((name) => {
@@ -80,8 +80,8 @@ const roomIsRecommended = (page, memberName) =>
     const card = cards[cards.length - 1]; // phần tử nhỏ nhất chứa cả tên thành viên lẫn nút tham gia = thẻ phòng
     if (!card) return null;
     const text = card.innerText.toLowerCase();
-    if (text.includes("mô hình đề xuất")) return true;
-    return text.includes("phù hợp ") ? false : null;
+    if (text.includes("rất hợp với bạn")) return true;
+    return text.includes("độ phù hợp ") ? false : null;
   }, memberName);
 
 /**
@@ -232,7 +232,10 @@ async function main() {
       await page.goto(`${WEB}/matches`, { waitUntil: "networkidle2" });
       await waitForText(page, "Phòng Đề Xuất");
       await waitForText(page, "Lê Hoàng Long");
-      await waitForText(page, "Mô hình đề xuất");
+      await waitForText(page, "Rất hợp với bạn");
+      for (const jargon of ["Random Forest", "mô phỏng", "70%"]) {
+        if (await hasText(page, jargon)) throw new Error(`Trang ghép trận còn chữ kỹ thuật: ${jargon}`);
+      }
     });
     await peer.context.close();
 
@@ -246,7 +249,7 @@ async function main() {
       if (await hasText(page, "Lê Hoàng Long")) throw new Error("Phòng lệch trình độ vẫn nằm trong mục đề xuất");
       await page.goto(`${WEB}/matches?tab=open`, { waitUntil: "networkidle2" });
       await waitForText(page, "Lê Hoàng Long");
-      if (await roomIsRecommended(page, "Lê Hoàng Long")) throw new Error("Phòng lệch trình độ được gắn nhãn mô hình đề xuất");
+      if (await roomIsRecommended(page, "Lê Hoàng Long")) throw new Error("Phòng lệch trình độ được gắn nhãn đề xuất");
     });
     await far.context.close();
 
@@ -258,12 +261,12 @@ async function main() {
       await page.goto(`${WEB}/matches?tab=open`, { waitUntil: "networkidle2" });
       await waitForText(page, "Lê Hoàng Long");
       const recommended = await roomIsRecommended(page, "Lê Hoàng Long");
-      if (recommended === null) throw new Error("Không hiển thị độ phù hợp từ mô hình");
+      if (recommended === null) throw new Error("Không hiển thị độ phù hợp trên thẻ phòng");
       // mục Phòng Đề Xuất phải khớp với nhãn trên thẻ phòng
       await page.goto(`${WEB}/matches?tab=suggested`, { waitUntil: "networkidle2" });
       await waitForText(page, "Tất Cả Phòng Mở (");
       await sleep(1000);
-      if ((await hasText(page, "Lê Hoàng Long")) !== recommended) throw new Error("Mục Phòng Đề Xuất không khớp với nhãn của mô hình");
+      if ((await hasText(page, "Lê Hoàng Long")) !== recommended) throw new Error("Mục Phòng Đề Xuất không khớp với nhãn trên thẻ phòng");
       await page.goto(`${WEB}/matches?tab=open`, { waitUntil: "networkidle2" });
       await waitForText(page, "Lê Hoàng Long");
       await clickText(page, "button", "Tham Gia Phòng", { within: "Lê Hoàng Long" });
@@ -385,11 +388,17 @@ async function main() {
   // ------------------------------------------------------------------ Quản trị viên
   console.log("\nQuản trị viên: cổng quản trị");
   const admin = await newSession("admin");
-  await step(admin, "tổng quan có số liệu và thông tin trung thực về mô hình", async (page) => {
+  await step(admin, "tổng quan có số liệu và thẻ mô hình ghép trận ghi đúng nguồn dữ liệu", async (page) => {
     await login(admin, ADMIN, "admin@example.com");
     await waitForText(page, "Thực thu toàn hệ thống");
-    await waitForText(page, "Mô hình ghép cặp người chơi");
+    await waitForText(page, "Mô hình ghép trận");
+    await waitForText(page, "Đang hoạt động");
     await waitForText(page, "Random Forest (đang dùng)");
+    await waitForText(page, "phiếu ghép cặp");
+    // dữ liệu huấn luyện là mô phỏng thì thẻ phải ghi rõ, không gọi là khảo sát người chơi
+    if (!(await hasText(page, "Dữ liệu mô phỏng")) && !(await hasText(page, "Khảo sát người chơi"))) {
+      throw new Error("Thẻ mô hình không ghi nguồn dữ liệu huấn luyện");
+    }
   });
   await step(admin, "khóa rồi mở khóa một tài khoản", async (page) => {
     await clickText(page, "nav button", "Tài khoản");

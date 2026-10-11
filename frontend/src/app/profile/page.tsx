@@ -285,7 +285,7 @@ function ProfileContent() {
                   <Stat label="Tuổi" value={profile?.age != null ? String(profile.age) : "—"} />
                 </div>
                 <p className="mt-3 text-[10px] text-zinc-400 leading-relaxed">
-                  Trình độ và số trận là thông tin bạn tự khai; mô hình ghép cặp dùng trình độ để đề xuất phòng đấu phù hợp.
+                  Trình độ và số trận là thông tin bạn tự khai, dùng để gợi ý phòng đấu phù hợp với bạn.
                 </p>
               </div>
 
@@ -294,12 +294,12 @@ function ProfileContent() {
                   <p className="font-semibold text-zinc-900">Hồ sơ ghép cặp</p>
                   {missingForMatching.length > 0 ? (
                     <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 leading-relaxed">
-                      Hồ sơ còn thiếu: {missingForMatching.map((f) => PROFILE_FIELD_LABEL[f]).join(", ")}. Bổ sung để mô hình
-                      đề xuất phòng đấu chính xác hơn.
+                      Hồ sơ còn thiếu: {missingForMatching.map((f) => PROFILE_FIELD_LABEL[f]).join(", ")}. Bổ sung để nhận
+                      gợi ý phòng đấu sát với bạn hơn.
                     </p>
                   ) : (
                     <p className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-2">
-                      Hồ sơ đã đủ thông tin để mô hình đề xuất phòng đấu.
+                      Hồ sơ đã đủ thông tin để gợi ý phòng đấu cho bạn.
                     </p>
                   )}
                   <Link href="/survey" className="block w-full py-1.5 text-center bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-lg font-medium transition">
