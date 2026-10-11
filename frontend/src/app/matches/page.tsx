@@ -89,6 +89,7 @@ function MatchesContent() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("suggested");
   const [busyMatchId, setBusyMatchId] = useState<number | null>(null);
+  const [expandedIds, setExpandedIds] = useState<number[]>([]); // phòng đang mở phần chi tiết
   const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   const { lastMessage } = useWebSocket("/api/v1/ws/live");
@@ -129,12 +130,17 @@ function MatchesContent() {
     [user],
   );
 
+  const toggleExpand = (id: number) =>
+    setExpandedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+
   const handleJoin = async (match: Match) => {
     setBusyMatchId(match.id);
     try {
       await fetchApi(`/matches/${match.id}/join`, { method: "POST" });
       toastSuccess("Đã tham gia phòng. Xem số điện thoại các thành viên trong mục “Phòng Của Tôi”.");
       await loadData();
+      // Mở sẵn phần chi tiết của phòng vừa vào để thấy ngay số điện thoại các thành viên
+      setExpandedIds((prev) => (prev.includes(match.id) ? prev : [...prev, match.id]));
       setActiveTab("my_matches");
     } catch (err: any) {
       toastError(err.message || "Không tham gia được phòng.");
@@ -187,6 +193,7 @@ function MatchesContent() {
     const member = isMember(m);
     const isHost = m.creator_id === user.id;
     const freeSeats = Math.max(0, m.num_players - m.participants.length);
+    const expanded = expandedIds.includes(m.id);
     return (
       <div key={m.id} className="bg-white rounded-2xl border border-zinc-200/90 shadow-xs p-5 space-y-3.5">
         <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -213,55 +220,78 @@ function MatchesContent() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-1.5 text-[11px] font-medium">
-          <Chip>{purposeLabel(m.purpose)}</Chip>
-          <Chip>{m.required_skill != null ? `Trình độ khoảng ${m.required_skill.toFixed(1)}` : "Mọi trình độ"}</Chip>
-          <Chip>
-            {m.participants.length}/{m.num_players} người{m.status === "OPEN" ? ` • còn ${freeSeats} chỗ` : ""}
-          </Chip>
-          {m.booking_code && <Chip>Đã có sân ({m.booking_code})</Chip>}
-        </div>
-
-        {m.notes && <p className="text-xs text-zinc-600 leading-relaxed">{m.notes}</p>}
-
-        <ul className="space-y-1">
-          {m.participants.map((p) => (
-            <li key={p.id} className="flex items-center justify-between gap-3 text-xs bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-1.5">
-              <span className="font-semibold text-zinc-900 truncate">
-                {p.user_name || `Người chơi #${p.user_id}`}
-                {p.user_id === m.creator_id && <span className="ml-1.5 text-[10px] font-bold text-amber-700">Chủ phòng</span>}
-              </span>
-              <span className="text-zinc-500 shrink-0">
-                {p.skill_level != null ? `${p.skill_level.toFixed(1)} • ` : ""}
-                {playStyleLabel(p.play_style, true)}
-                {p.phone ? ` • ${p.phone}` : ""}
-              </span>
-            </li>
-          ))}
-        </ul>
-
-        <div className="flex justify-end gap-2 pt-1">
-          {member && (m.status === "OPEN" || m.status === "FULL") && (
+        {/* Dòng tóm tắt luôn hiện; ghi chú, danh sách thành viên và các nhãn phụ nằm trong phần chi tiết */}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <div className="text-xs sm:text-sm text-zinc-600 flex-1 min-w-[15rem] space-y-0.5">
+            <p>
+              Chủ phòng <span className="font-semibold text-zinc-900">{m.creator_name || `Người chơi #${m.creator_id}`}</span>
+              {isHost ? " (bạn)" : ""}
+            </p>
+            <p>
+              {m.required_skill != null ? `Trình độ khoảng ${m.required_skill.toFixed(1)}` : "Mọi trình độ"} • {m.participants.length}/
+              {m.num_players} người{m.status === "OPEN" ? `, còn ${freeSeats} chỗ` : ""}
+            </p>
+          </div>
+          <div className="flex gap-2 ml-auto shrink-0">
             <button
               type="button"
-              disabled={busyMatchId === m.id}
-              onClick={() => handleLeave(m)}
-              className="px-3.5 py-2 rounded-xl border border-zinc-200 hover:border-rose-200 hover:bg-rose-50 text-zinc-600 hover:text-rose-600 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+              aria-expanded={expanded}
+              onClick={() => toggleExpand(m.id)}
+              className={`px-3.5 py-2 rounded-xl border text-xs font-semibold transition cursor-pointer ${
+                expanded ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200 hover:bg-zinc-100 text-zinc-700 bg-white"
+              }`}
             >
-              {isHost ? "Hủy Phòng" : "Rời Phòng"}
+              {expanded ? "Đóng" : "Chi tiết"}
             </button>
-          )}
-          {!member && m.status === "OPEN" && (
-            <button
-              type="button"
-              disabled={busyMatchId === m.id}
-              onClick={() => handleJoin(m)}
-              className="px-4 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white text-xs font-bold btn-press cursor-pointer shadow-xs transition disabled:opacity-50"
-            >
-              {busyMatchId === m.id ? "Đang xử lý..." : "Tham Gia Phòng"}
-            </button>
-          )}
+            {member && (m.status === "OPEN" || m.status === "FULL") && (
+              <button
+                type="button"
+                disabled={busyMatchId === m.id}
+                onClick={() => handleLeave(m)}
+                className="px-3.5 py-2 rounded-xl border border-zinc-200 hover:border-rose-200 hover:bg-rose-50 text-zinc-600 hover:text-rose-600 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+              >
+                {isHost ? "Hủy Phòng" : "Rời Phòng"}
+              </button>
+            )}
+            {!member && m.status === "OPEN" && (
+              <button
+                type="button"
+                disabled={busyMatchId === m.id}
+                onClick={() => handleJoin(m)}
+                className="px-4 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white text-xs font-bold btn-press cursor-pointer shadow-xs transition disabled:opacity-50"
+              >
+                {busyMatchId === m.id ? "Đang xử lý..." : "Tham Gia Phòng"}
+              </button>
+            )}
+          </div>
         </div>
+
+        {expanded && (
+          <div className="pt-3.5 border-t border-zinc-100 space-y-3 animate-in fade-in duration-150">
+            <div className="flex flex-wrap gap-1.5 text-[11px] font-medium">
+              <Chip>{purposeLabel(m.purpose)}</Chip>
+              {m.booking_code && <Chip>Đã có sân ({m.booking_code})</Chip>}
+            </div>
+
+            {m.notes && <p className="text-xs text-zinc-600 leading-relaxed">{m.notes}</p>}
+
+            <ul className="space-y-1">
+              {m.participants.map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-3 text-xs bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-1.5">
+                  <span className="font-semibold text-zinc-900 truncate">
+                    {p.user_name || `Người chơi #${p.user_id}`}
+                    {p.user_id === m.creator_id && <span className="ml-1.5 text-[10px] font-bold text-amber-700">Chủ phòng</span>}
+                  </span>
+                  <span className="text-zinc-500 shrink-0">
+                    {p.skill_level != null ? `${p.skill_level.toFixed(1)} • ` : ""}
+                    {playStyleLabel(p.play_style, true)}
+                    {p.phone ? ` • ${p.phone}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     );
   };

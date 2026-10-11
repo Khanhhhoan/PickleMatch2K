@@ -69,15 +69,15 @@ const waitForText = (page, text, timeout = TIMEOUT) =>
 const hasText = (page, text) => page.evaluate((t) => document.body.innerText.toLowerCase().includes(t), text.toLowerCase());
 
 /**
- * Nhãn độ phù hợp trên thẻ phòng có tên thành viên cho trước: true = "Rất hợp với bạn" (phòng được đề xuất),
+ * Nhãn độ phù hợp trên thẻ phòng có tên chủ phòng cho trước: true = "Rất hợp với bạn" (phòng được đề xuất),
  * false = chỉ có "Độ phù hợp x%", null = thẻ không có độ phù hợp.
  */
 const roomIsRecommended = (page, memberName) =>
   page.evaluate((name) => {
     const cards = [...document.querySelectorAll("div")].filter(
-      (el) => (el.innerText || "").includes(name) && (el.innerText || "").includes("Tham Gia Phòng"),
+      (el) => el.querySelector("h3") && (el.innerText || "").includes(name) && (el.innerText || "").includes("Tham Gia Phòng"),
     );
-    const card = cards[cards.length - 1]; // phần tử nhỏ nhất chứa cả tên thành viên lẫn nút tham gia = thẻ phòng
+    const card = cards[cards.length - 1]; // khối nhỏ nhất có tiêu đề cụm sân, tên chủ phòng và nút tham gia = thẻ phòng
     if (!card) return null;
     const text = card.innerText.toLowerCase();
     if (text.includes("rất hợp với bạn")) return true;
@@ -294,6 +294,10 @@ async function main() {
       for (const jargon of ["Random Forest", "mô phỏng", "70%"]) {
         if (await hasText(page, jargon)) throw new Error(`Trang ghép trận còn chữ kỹ thuật: ${jargon}`);
       }
+      // thẻ phòng gọn: mã đơn sân, ghi chú và danh sách thành viên chỉ hiện sau khi bấm Chi tiết
+      if (await hasText(page, "Đã có sân (")) throw new Error("Thẻ phòng chưa thu gọn: vẫn hiện phần chi tiết");
+      await clickText(page, "button", "Chi tiết", { within: "Lê Hoàng Long", exact: true });
+      await waitForText(page, `Đã có sân (${bookingCode})`);
     });
     await peer.context.close();
 
