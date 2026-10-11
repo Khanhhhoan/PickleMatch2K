@@ -197,7 +197,11 @@ def expire_stale_pending(db: Session, *, user_id: Optional[int] = None) -> List[
 
 
 def _expire_stale_pending_on_slots(db: Session, slots: Sequence[SlotRequest]) -> None:
-    """Trước khi ghi đơn mới: trả lại các slot đang bị đơn PENDING quá hạn chiếm (không chờ tác vụ nền)."""
+    """
+    Trước khi ghi đơn mới: trả lại các slot đang bị đơn PENDING quá hạn chiếm (không chờ tác vụ nền).
+    Đơn đang bị giao dịch khác khóa (ví dụ tiền cọc đến muộn đang được ghi nhận) thì bỏ qua: nếu đơn đó được
+    xác nhận, slot vẫn thuộc về nó và ràng buộc CSDL sẽ từ chối đơn mới.
+    """
     court_ids = {s.court_id for s in slots}
     dates = {s.date for s in slots}
     stale = (
@@ -210,6 +214,8 @@ def _expire_stale_pending_on_slots(db: Session, slots: Sequence[SlotRequest]) ->
             BookingDetail.court_id.in_(court_ids),
             BookingDetail.date.in_(dates),
         )
+        .populate_existing()
+        .with_for_update(of=Booking, skip_locked=True)
         .all()
     )
     for booking in {b.id: b for b in stale}.values():

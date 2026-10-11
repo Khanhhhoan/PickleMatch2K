@@ -16,7 +16,7 @@ from app.models.payment import PaymentTransaction
 from app.models.user import User
 from app.schemas.match import MatchCreate
 from app.schemas.payment import SepayWebhookPayload
-from app.services import booking_service, match_service, payment_service
+from app.services import booking_service, ledger, match_service, payment_service
 from app.services.booking_service import SlotRequest
 from helpers import TEST_BANK_ACCOUNT, auth, confirmed_booking, create_booking, make_user, slot
 from datetime import time
@@ -142,6 +142,44 @@ def test_simultaneous_partial_transfers_are_all_counted(client, db, world, clock
     assert (stored.status, stored.payment_status) == ("CONFIRMED", "DEPOSIT_PAID")
     assert db.query(PaymentTransaction).count() == 6
     assert len({code for (code,) in db.query(PaymentTransaction.transaction_code)}) == 6
+
+
+def test_a_new_booking_cannot_take_the_slot_while_a_late_deposit_is_being_recorded(client, db, world, clock):
+    """
+    Đơn vừa quá hạn cọc nhưng tác vụ nền chưa kịp chuyển sang EXPIRED. Đúng lúc tiền cọc của đơn đang được ghi nhận
+    (giao dịch đã khóa đơn, chưa commit) thì người khác đặt chính khung giờ đó: người đã trả tiền phải giữ được sân.
+    """
+    booking = create_booking(client, world.p1, world.court, clock.day(1), hours=(18,))
+    clock.advance(minutes=16)
+    rival = make_user(db).id
+    target = [SlotRequest(world.court.id, clock.day(1), time(18, 0), time(19, 0))]
+    outcome: List[object] = []
+
+    def rival_books() -> None:
+        try:
+            outcome.append(book(rival, target))
+        except Exception as exc:
+            outcome.append(exc)
+
+    with SessionLocal() as paying:
+        locked = booking_service.get_booking_or_404(paying, booking["id"], for_update=True)
+        ledger.record_transaction(paying, locked, amount=75000, kind="DEPOSIT", reference_number="FT-LATE")
+        assert booking_service.apply_payment(paying, locked, 75000) == "confirmed"
+
+        thread = threading.Thread(target=rival_books)
+        thread.start()
+        thread.join(timeout=3)  # bên đặt mới không được đứng chờ rồi ghi đè lên kết quả thanh toán
+        paying.commit()
+        thread.join(timeout=30)
+        assert not thread.is_alive(), "luồng đặt sân bị treo"
+
+    db.expire_all()
+    stored = db.get(Booking, booking["id"])
+    assert (stored.status, stored.paid_amount, stored.refund_status) == ("CONFIRMED", 75000, None)
+    assert all(d.is_active for d in stored.details)
+    assert isinstance(outcome[0], HTTPException) and outcome[0].status_code == 409, outcome
+    assert db.query(Booking).count() == 1
+    assert db.execute(OVERLAPPING_ACTIVE_SLOTS).scalar() == 0
 
 
 def test_only_one_player_gets_the_last_seat_in_a_match(client, db, world, clock):
