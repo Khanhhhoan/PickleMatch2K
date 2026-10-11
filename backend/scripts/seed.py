@@ -37,7 +37,7 @@ from sqlalchemy.orm import Session  # noqa: E402
 
 from app.core.config import settings  # noqa: E402
 from app.db.database import SessionLocal  # noqa: E402
-from app.ml.features import AVAILABILITY_SLOTS, FEATURE_NAMES, ProfileView, canonical_style, pair_features  # noqa: E402
+from app.ml.features import FEATURE_NAMES, ProfileView, canonical_style, pair_features  # noqa: E402
 from app.models.booking import Booking, BookingSource  # noqa: E402
 from app.models.match import Match, MatchParticipant  # noqa: E402
 from app.models.ml import SIMULATED_SOURCE, PairFeedback  # noqa: E402
@@ -159,18 +159,6 @@ VENUES = [
 ]
 VENUE_BY_KEY = {v.key: v for v in VENUES}
 
-WEEKDAYS = ["mon", "tue", "wed", "thu", "fri"]
-WEEKEND = ["sat", "sun"]
-
-
-def _avail(days: List[str], *periods: str) -> List[str]:
-    return [f"{d}_{p}" for d in days for p in periods]
-
-
-EVENINGS = _avail(WEEKDAYS, "evening")
-WEEKEND_ALL = _avail(WEEKEND, "morning", "afternoon", "evening")
-EARLY_BIRD = _avail(WEEKDAYS + WEEKEND, "morning")
-
 
 @dataclass(frozen=True)
 class PlayerSeed:
@@ -185,52 +173,51 @@ class PlayerSeed:
     matches_played: int
     matches_won: int
     purpose: str
-    availability: List[str]       # khung rảnh trong tuần
     amenities: List[str]          # tiện ích ưa thích (khóa trong AMENITIES)
     budget: int                   # ngân sách tối đa mỗi giờ (VNĐ)
 
 
 PLAYERS = [
     PlayerSeed("khanhhoan121209@gmail.com", "Nguyễn Hoàng Khánh", "0908888999", 3.5, "Dinking & Control", date(1998, 5, 15), 10.8322, 106.6863, 10, 6,
-     "recreational", EVENINGS + _avail(WEEKEND, "morning"), ["indoor", "parking"], 220000),
+     "recreational", ["indoor", "parking"], 220000),
     PlayerSeed("player@example.com", "Trần Minh Nam", "0912345678", 3.5, "All-Round", date(1996, 8, 20), 10.7769, 106.7009, 10, 6,
-     "recreational", EVENINGS, ["led", "canteen"], 250000),
+     "recreational", ["led", "canteen"], 250000),
     PlayerSeed("player01@gmail.com", "Lê Hoàng Long", "0901112233", 3.0, "Dinking & Control", date(1999, 3, 10), 10.7735, 106.6685, 10, 6,
-     "practice", _avail(["tue", "thu"], "evening") + WEEKEND_ALL, ["indoor", "shower"], 180000),
+     "practice", ["indoor", "shower"], 180000),
     PlayerSeed("player02@gmail.com", "Phạm Minh Tuấn", "0902223344", 4.0, "Offensive", date(1995, 11, 22), 10.7901, 106.7322, 10, 7,
-     "competitive", EVENINGS + _avail(WEEKEND, "afternoon"), ["coach", "led"], 260000),
+     "competitive", ["coach", "led"], 260000),
     PlayerSeed("player03@gmail.com", "Vũ Đức Cường", "0903334455", 4.5, "Serve & Volley", date(2001, 7, 4), 10.8225, 106.7198, 10, 8,
-     "competitive", _avail(["mon", "wed", "fri"], "evening") + _avail(WEEKEND, "morning"), ["coach"], 300000),
+     "competitive", ["coach"], 300000),
     PlayerSeed("player04@gmail.com", "Hoàng Gia Huy", "0904445566", 2.5, "Defensive", date(1990, 2, 18), 10.7958, 106.6908, 10, 5,
-     "recreational", EARLY_BIRD, ["rental", "parking"], 170000),
+     "recreational", ["rental", "parking"], 170000),
     PlayerSeed("player05@gmail.com", "Đỗ Bảo Nam", "0905556677", 3.5, "Offensive", date(1997, 12, 5), 10.8334, 106.6764, 10, 6,
-     "recreational", EVENINGS + _avail(WEEKEND, "morning", "afternoon"), ["indoor", "lounge"], 210000),
+     "recreational", ["indoor", "lounge"], 210000),
     PlayerSeed("player06@gmail.com", "Bùi Phương Thảo", "0906667788", 3.0, "All-Round", date(1988, 9, 14), 10.7485, 106.7262, 10, 4,
-     "recreational", WEEKEND_ALL, ["rental", "canteen", "parking"], 200000),
+     "recreational", ["rental", "canteen", "parking"], 200000),
     PlayerSeed("player07@gmail.com", "Ngô Quang Hải", "0907778899", 4.0, "Serve & Volley", date(2000, 1, 30), 10.7812, 106.6854, 10, 7,
-     "competitive", EVENINGS, ["led", "shower"], 260000),
+     "competitive", ["led", "shower"], 260000),
     PlayerSeed("player08@gmail.com", "Trịnh Thu Hà", "0908889900", 2.0, "Defensive", date(1994, 6, 25), 10.7995, 106.6562, 10, 3,
-     "practice", _avail(WEEKDAYS, "morning"), ["rental", "coach"], 160000),
+     "practice", ["rental", "coach"], 160000),
     PlayerSeed("player09@gmail.com", "Dương Tiến Đạt", "0909990011", 3.5, "Dinking & Control", date(1998, 10, 12), 10.7771, 106.7117, 12, 8,
-     "practice", EARLY_BIRD + _avail(["tue", "thu"], "evening"), ["parking", "canteen"], 230000),
+     "practice", ["parking", "canteen"], 230000),
     PlayerSeed("player10@gmail.com", "Mai Tuấn Kiên", "0911122233", 5.0, "Offensive", date(2002, 4, 19), 10.7745, 106.6912, 10, 6,
-     "competitive", EVENINGS + WEEKEND_ALL, ["coach", "led"], 320000),
+     "competitive", ["coach", "led"], 320000),
     PlayerSeed("player11@gmail.com", "Đặng Thùy Linh", "0912233344", 3.0, "All-Round", None, 10.8123, 106.7045, 12, 8,
-     "recreational", _avail(["sat", "sun"], "morning") + _avail(["wed"], "evening"), ["indoor", "canteen"], 190000),
+     "recreational", ["indoor", "canteen"], 190000),
     PlayerSeed("player12@gmail.com", "Phan Đình Trọng", "0913344455", 3.5, "Offensive", None, 10.8412, 106.6698, 12, 8,
-     "recreational", EVENINGS, ["indoor", "parking"], 210000),
+     "recreational", ["indoor", "parking"], 210000),
     PlayerSeed("player13@gmail.com", "Lâm Thảo My", "0914455566", 2.5, "Defensive", None, 10.7689, 106.6712, 12, 8,
-     "practice", _avail(["mon", "wed", "fri"], "afternoon") + _avail(WEEKEND, "morning"), ["rental"], 170000),
+     "practice", ["rental"], 170000),
     PlayerSeed("player14@gmail.com", "Huỳnh Tấn Tài", "0915566677", 4.0, "Serve & Volley", None, 10.7934, 106.7410, 12, 8,
-     "competitive", EVENINGS + _avail(WEEKEND, "afternoon"), ["coach", "shower"], 270000),
+     "competitive", ["coach", "shower"], 270000),
     PlayerSeed("player15@gmail.com", "Cao Minh Trí", "0916677788", 3.5, "Dinking & Control", None, 10.7350, 106.7180, 12, 8,
-     "practice", EARLY_BIRD, ["parking"], 220000),
+     "practice", ["parking"], 220000),
     PlayerSeed("player16@gmail.com", "Đoàn Ngọc Ánh", "0917788899", 3.0, "All-Round", None, 10.8050, 106.6500, 12, 8,
-     "recreational", _avail(["tue", "thu", "sat"], "evening"), ["indoor", "lounge"], 180000),
+     "recreational", ["indoor", "lounge"], 180000),
     PlayerSeed("player17@gmail.com", "Lương Gia Bảo", "0918899900", 4.5, "Offensive", None, 10.7980, 106.6850, 12, 8,
-     "competitive", EVENINGS, ["led"], 300000),
+     "competitive", ["led"], 300000),
     PlayerSeed("player18@gmail.com", "Hà Quốc Việt", "0919900011", 3.5, "All-Round", None, 10.7710, 106.6980, 12, 8,
-     "recreational", EVENINGS + _avail(WEEKEND, "evening"), ["canteen", "led"], 240000),
+     "recreational", ["canteen", "led"], 240000),
 ]
 
 
@@ -315,7 +302,7 @@ def seed_accounts_and_venues(db: Session, amenities: Dict[str, Amenity]) -> dict
 
 def apply_demo_preferences(db: Session) -> int:
     """
-    Điền mục đích chơi, khung rảnh, tiện ích ưa thích và ngân sách mẫu cho các tài khoản demo.
+    Điền mục đích chơi, tiện ích ưa thích và ngân sách mẫu cho các tài khoản demo.
     Chỉ điền vào trường đang trống, nên chạy lại nhiều lần hoặc chạy trên CSDL đang dùng đều an toàn.
     """
     amenity_ids = {key: row.id for key, name, _ in AMENITIES
@@ -329,8 +316,6 @@ def apply_demo_preferences(db: Session) -> int:
         changed = False
         if not profile.purpose:
             profile.purpose, changed = player.purpose, True
-        if not profile.availability:
-            profile.availability, changed = json.dumps(sorted(set(player.availability))), True
         if not profile.preferred_amenities:
             ids = [amenity_ids[key] for key in player.amenities if key in amenity_ids]
             profile.preferred_amenities, changed = json.dumps(ids), True
@@ -373,14 +358,9 @@ def seed_simulated_feedback(db: Session, per_player: int = SIMULATED_FEEDBACK_PE
         if user is None:
             continue
         rng = random.Random(SIMULATED_FEEDBACK_SEED + index)
-        me = ProfileView(
-            skill_level=player.skill_level,
-            availability=sorted(slot for slot in set(player.availability) if slot in AVAILABILITY_SLOTS),
-            purpose=player.purpose,
-            play_style=canonical_style(player.play_style),
-        )
+        me = ProfileView(skill_level=player.skill_level, purpose=player.purpose, play_style=canonical_style(player.play_style))
         for _ in range(per_player):
-            candidate, distance, _shared = ml_service.hypothetical_candidate(rng, me)
+            candidate, distance = ml_service.hypothetical_candidate(rng, me)
             rows.append({"rater_id": user.id, **pair_features(me, candidate, distance_km=distance)})
     if not rows:
         return 0
@@ -393,7 +373,6 @@ def seed_simulated_feedback(db: Session, per_player: int = SIMULATED_FEEDBACK_PE
             "source": SIMULATED_SOURCE,
             "level_diff": float(row["level_diff"]),
             "distance_km": float(row["distance_km"]),
-            "availability_overlap": float(row["availability_overlap"]),
             "purpose_match": int(row["purpose_match"]),
             "style_match": int(row["style_match"]),
             "label": int(label),
@@ -607,31 +586,31 @@ class _RefundInfo:
 MATCH_DEMO_GATEWAY = "Dữ liệu mẫu"  # nhãn trên giao dịch cọc của các đơn mẫu, để phân biệt với tiền thật
 
 MATCH_DEMO_PLAYERS = [
-    # email, họ tên, điện thoại, DUPR, phong cách, ngày sinh, vĩ độ, kinh độ, số trận, số thắng, mục đích, khung rảnh
+    # email, họ tên, điện thoại, DUPR, phong cách, ngày sinh, vĩ độ, kinh độ, số trận, số thắng, mục đích
     PlayerSeed("ghep01@example.com", "Trần Quốc Bảo", "0900000101", 3.5, "All-Round", None, 10.7850, 106.7200, 24, 13,
-     "recreational", EVENINGS, [], 0),
+     "recreational", [], 0),
     PlayerSeed("ghep02@example.com", "Nguyễn Thị Mai Anh", "0900000102", 3.5, "Dinking & Control", None, 10.8000, 106.7100, 18, 10,
-     "recreational", EVENINGS + _avail(WEEKEND, "morning"), [], 0),
+     "recreational", [], 0),
     PlayerSeed("ghep03@example.com", "Lê Minh Khôi", "0900000103", 4.0, "Offensive", None, 10.7760, 106.7000, 40, 26,
-     "competitive", EVENINGS, [], 0),
+     "competitive", [], 0),
     PlayerSeed("ghep04@example.com", "Phạm Gia Hân", "0900000104", 3.0, "Defensive", None, 10.8300, 106.6800, 12, 5,
-     "practice", WEEKEND_ALL + _avail(["wed"], "evening"), [], 0),
+     "practice", [], 0),
     PlayerSeed("ghep05@example.com", "Võ Thành Đạt", "0900000105", 4.5, "Serve & Volley", None, 10.7900, 106.6900, 60, 41,
-     "competitive", EVENINGS + _avail(WEEKEND, "afternoon"), [], 0),
+     "competitive", [], 0),
     PlayerSeed("ghep06@example.com", "Đinh Ngọc Lan", "0900000106", 2.5, "Defensive", None, 10.8000, 106.7250, 6, 2,
-     "recreational", EARLY_BIRD, [], 0),
+     "recreational", [], 0),
     PlayerSeed("ghep07@example.com", "Bùi Anh Tuấn", "0900000107", 3.0, "All-Round", None, 10.8250, 106.6850, 15, 7,
-     "recreational", _avail(["tue", "wed", "thu"], "evening") + WEEKEND_ALL, [], 0),
+     "recreational", [], 0),
     PlayerSeed("ghep08@example.com", "Hồ Thanh Tùng", "0900000108", 4.0, "Serve & Volley", None, 10.7830, 106.7150, 35, 21,
-     "competitive", EVENINGS + _avail(WEEKEND, "afternoon"), [], 0),
+     "competitive", [], 0),
     PlayerSeed("ghep09@example.com", "Trương Mỹ Duyên", "0900000109", 3.5, "Offensive", None, 10.7800, 106.7050, 20, 11,
-     "practice", EARLY_BIRD + _avail(["wed", "sat"], "evening"), [], 0),
+     "practice", [], 0),
     PlayerSeed("ghep10@example.com", "Lý Hoàng Phúc", "0900000110", 5.0, "Offensive", None, 10.8300, 106.6700, 80, 60,
-     "competitive", EVENINGS + WEEKEND_ALL, [], 0),
+     "competitive", [], 0),
     PlayerSeed("ghep11@example.com", "Đặng Khánh Vy", "0900000111", 3.0, "Dinking & Control", None, 10.8400, 106.6800, 10, 4,
-     "recreational", _avail(WEEKEND, "morning") + _avail(["wed"], "evening"), [], 0),
+     "recreational", [], 0),
     PlayerSeed("ghep12@example.com", "Châu Nhật Minh", "0900000112", 4.5, "Offensive", None, 10.7950, 106.7280, 55, 36,
-     "competitive", EVENINGS, [], 0),
+     "competitive", [], 0),
 ]
 
 
@@ -681,7 +660,6 @@ def _demo_player(db: Session, player: PlayerSeed) -> Tuple[User, bool]:
     profile.latitude, profile.longitude = player.lat, player.lng
     profile.matches_played, profile.matches_won = player.matches_played, player.matches_won
     profile.purpose = player.purpose
-    profile.availability = json.dumps(sorted(set(player.availability)))
     return user, True
 
 

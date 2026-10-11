@@ -18,7 +18,7 @@ Hai trọng tâm của hệ thống:
 - **Quy trình đặt sân**: giữ chỗ → đặt → cọc 50% qua VietQR → vé QR → check-in → thu phần còn lại, kèm hủy và hoàn tiền
   theo chính sách.
 - **Ghép trận bằng Random Forest**: mô hình ước lượng độ phù hợp giữa người chơi và từng phòng đấu đã mở, rồi đề xuất
-  những phòng có độ phù hợp cao (từ 70%) và diễn ra trong giờ rảnh người chơi đã khai.
+  những phòng có độ phù hợp cao (từ 70%).
 
 Thuật toán gợi ý cụm sân theo điểm đa tiêu chí vẫn có ở backend (`GET /api/v1/recommendations/venues`) nhưng giao diện
 không dùng; trang chủ liệt kê cụm sân từ gần đến xa. Đặc trưng, dữ liệu và kết quả đánh giá của mô hình: xem
@@ -49,7 +49,7 @@ KLTN/
 ├── .github/workflows/      Kiểm tra tự động (CI)
 ├── backend/                API FastAPI
 │   ├── app/                api, core, db, ml, models, schemas, services, utils
-│   ├── alembic/            Các phiên bản schema (0001 → 0004)
+│   ├── alembic/            Các phiên bản schema (0001 → 0005)
 │   ├── scripts/            Script quản trị CSDL (xem backend/scripts/README.md)
 │   ├── tests/              Bộ kiểm thử pytest (xem backend/tests/README.md)
 │   └── manage.py           Bộ lệnh quản trị
@@ -148,7 +148,7 @@ Sau `python manage.py seed`, mọi tài khoản dùng mật khẩu **`123456`** 
 | Chủ sân | `owner_djoy_thuthiem@pickleball.vn` | D-Joy Pickleball Thủ Thiêm (11 sân) |
 | Chủ sân | `owner_152nguyenoanh@pickleball.vn` | Pickleball 152 Nguyễn Oanh (4 sân) |
 | Nhân viên | `staff_rudal_1@pickleball.vn` | Mỗi cụm sân có 3 nhân viên |
-| Người chơi | `player@example.com`, `player01@gmail.com` … `player18@gmail.com` | 20 người chơi với trình độ, phong cách, khung rảnh khác nhau |
+| Người chơi | `player@example.com`, `player01@gmail.com` … `player18@gmail.com` | 20 người chơi với trình độ, phong cách, mục đích chơi khác nhau |
 
 Danh sách đầy đủ 33 tài khoản: [docs/DANH_SACH_TAI_KHOAN_TEST.md](docs/DANH_SACH_TAI_KHOAN_TEST.md).
 
@@ -191,7 +191,7 @@ python -m pytest                                  # từ thư mục gốc, kho�
 python -m pytest backend/tests/test_payments.py -q
 ```
 
-**Kiểm thử đầu-cuối qua trình duyệt** - 23 bước cho cả bốn vai trò. Script tạo và hủy đơn nên chỉ chạy trên
+**Kiểm thử đầu-cuối qua trình duyệt** - 22 bước cho cả bốn vai trò. Script tạo và hủy đơn nên chỉ chạy trên
 CSDL demo, với `SEPAY_SIMULATOR_ENABLED=true` và hai ứng dụng web đã build (`npm run build && npm start`):
 
 ```powershell
@@ -218,8 +218,12 @@ Lệnh in sẵn câu lệnh khôi phục. Muốn quay lại dữ liệu cũ: kh�
 python scripts/backup_db.py --restore-into pickleball_khoi_phuc --file ..\backups\<ten_file>.dump
 ```
 
-Sau khi nâng cấp, các tài khoản demo cũ chưa có mục đích chơi và khung rảnh; bổ sung giá trị mẫu bằng
-`python manage.py seed --preferences` (không đổi dữ liệu khác).
+Sau khi nâng cấp:
+
+- Các tài khoản demo cũ chưa có mục đích chơi; bổ sung giá trị mẫu bằng `python manage.py seed --preferences` (không đổi
+  dữ liệu khác).
+- Từ revision 0005, mô hình ghép cặp chỉ còn 4 đặc trưng (đã bỏ giờ rảnh). Bước nâng cấp này xóa các phiếu ghép cặp mô
+  phỏng cũ và giữ nguyên câu trả lời khảo sát thật; nạp bộ phiếu mô phỏng mới bằng `python manage.py seed --feedback`.
 
 ## 10. Giới hạn đã biết
 

@@ -3,7 +3,6 @@
   "features": [
     "level_diff",
     "distance_km",
-    "availability_overlap",
     "purpose_match",
     "style_match"
   ],
@@ -12,51 +11,50 @@
   "n_raters": 20,
   "n_survey": 0,
   "n_simulated": 3000,
-  "positive_rate": 0.4183,
+  "positive_rate": 0.397,
   "evaluation_protocol": "GroupKFold 5 phần theo người trả lời (20 người)",
   "metrics": {
-    "accuracy": 0.9313,
-    "precision": 0.9046,
-    "recall": 0.9343,
-    "f1": 0.9191,
-    "roc_auc": 0.9826,
-    "brier": 0.0512
+    "accuracy": 0.9297,
+    "precision": 0.8853,
+    "recall": 0.9445,
+    "f1": 0.9138,
+    "roc_auc": 0.9852,
+    "brier": 0.0484
   },
   "baselines": {
     "Đoán theo lớp đa số": {
-      "accuracy": 0.5817,
+      "accuracy": 0.603,
       "precision": 0.0,
       "recall": 0.0,
       "f1": 0.0
     },
     "Luật: chênh trình độ <= 0.5": {
-      "accuracy": 0.891,
-      "precision": 0.8772,
-      "recall": 0.8607,
-      "f1": 0.8684
+      "accuracy": 0.8967,
+      "precision": 0.8671,
+      "recall": 0.8736,
+      "f1": 0.8698
     },
     "Hồi quy logistic": {
-      "accuracy": 0.9254,
-      "precision": 0.9143,
-      "recall": 0.9067,
-      "f1": 0.9105,
-      "roc_auc": 0.9792,
-      "brier": 0.0552
+      "accuracy": 0.9297,
+      "precision": 0.9187,
+      "recall": 0.9032,
+      "f1": 0.9109,
+      "roc_auc": 0.9815,
+      "brier": 0.0522
     },
     "Quy tắc sinh nhãn (không nhiễu, mốc trần)": {
-      "accuracy": 0.938,
-      "precision": 0.9287,
-      "recall": 0.9223,
-      "f1": 0.9254
+      "accuracy": 0.934,
+      "precision": 0.9284,
+      "recall": 0.9042,
+      "f1": 0.9159
     }
   },
   "feature_importances": {
-    "level_diff": 0.7873,
-    "distance_km": 0.1166,
-    "availability_overlap": 0.0528,
-    "purpose_match": 0.028,
-    "style_match": 0.0153
+    "level_diff": 0.8069,
+    "distance_km": 0.1361,
+    "purpose_match": 0.036,
+    "style_match": 0.021
   },
   "sklearn_version": "1.9.0",
-  "trained_at": "2026-10-11T02:34:28+00:00"
+  "trained_at": "2026-10-11T18:33:39+00:00"
 }

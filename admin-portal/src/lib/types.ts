@@ -11,7 +11,6 @@ export interface User {
     skill_level?: number | null;
     play_style?: string | null;
     purpose?: string | null;
-    availability?: string[];
   } | null;
   owner_profile?: { full_name?: string | null; phone?: string | null; company_name?: string | null; bank_account?: string | null } | null;
   staff_profile?: { full_name?: string | null; phone?: string | null; venue_id?: number | null; venue_name?: string | null; owner_name?: string | null } | null;

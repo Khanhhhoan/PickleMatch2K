@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.api import deps
 from app.api.permissions import managed_venue_ids, require_venue_owner
 from app.core.security import get_password_hash, verify_password
-from app.ml.features import DAYS, PERIODS, PLAY_STYLES, PURPOSES
+from app.ml.features import PLAY_STYLES, PURPOSES
 from app.models.user import OwnerProfile, PlayerProfile, StaffProfile, User, UserRole
 from app.models.venue import Amenity, Court, OperatingHour, PriceRule, Venue
 from app.schemas.user import (
@@ -29,16 +29,14 @@ owner_or_admin = deps.RoleChecker([UserRole.OWNER.value, UserRole.ADMIN.value])
 
 PLAYER_FIELDS = {
     "full_name", "phone", "skill_level", "play_style", "matches_played", "matches_won",
-    "date_of_birth", "latitude", "longitude", "purpose", "availability", "preferred_amenity_ids", "budget_max",
+    "date_of_birth", "latitude", "longitude", "purpose", "preferred_amenity_ids", "budget_max",
 }
 OWNER_FIELDS = {"full_name", "phone", "company_name", "bank_account"}
 STAFF_FIELDS = {"full_name", "phone"}
 
 
 def _apply_player_preferences(db: Session, profile: PlayerProfile, changes: dict) -> None:
-    """Các trường dạng danh sách được lưu thành chuỗi JSON; ngân sách 0 nghĩa là không giới hạn."""
-    if "availability" in changes:
-        profile.availability = json.dumps(changes.pop("availability") or [])
+    """Danh sách tiện ích ưa thích được lưu thành chuỗi JSON; ngân sách 0 nghĩa là không giới hạn."""
     if "preferred_amenity_ids" in changes:
         wanted = set(changes.pop("preferred_amenity_ids") or [])
         known = [row.id for row in db.query(Amenity.id).filter(Amenity.id.in_(wanted)).order_by(Amenity.id)] if wanted else []
@@ -77,7 +75,7 @@ def _ensure_profile(db: Session, user: User):
 @router.get("/profile-options")
 def get_profile_options():
     """Các giá trị hợp lệ cho hồ sơ người chơi (dùng chung với mô hình ghép cặp)."""
-    return {"purposes": PURPOSES, "play_styles": PLAY_STYLES, "days": DAYS, "periods": PERIODS}
+    return {"purposes": PURPOSES, "play_styles": PLAY_STYLES}
 
 
 @router.get("/me", response_model=UserResponse)

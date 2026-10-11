@@ -10,7 +10,7 @@ và cách hệ thống được kiểm thử. Mọi con số ở mục 5 lấy t
 
 | Tác nhân | Chức năng đã cài đặt |
 | :--- | :--- |
-| **Người chơi** | Đăng ký, đăng nhập, hồ sơ (trình độ DUPR tự khai, phong cách, mục đích, khung rảnh, khu vực thường chơi); tìm sân theo vị trí; xem lịch trống theo thời gian thực; đặt sân và cọc 50% qua VietQR; vé QR; hủy đơn và yêu cầu hoàn tiền; đánh giá sân đã chơi; mở phòng đấu trên đơn đã cọc; tham gia phòng đấu do mô hình đề xuất |
+| **Người chơi** | Đăng ký, đăng nhập, hồ sơ (trình độ DUPR tự khai, phong cách, mục đích, khu vực thường chơi); tìm sân theo vị trí; xem lịch trống theo thời gian thực; đặt sân và cọc 50% qua VietQR; vé QR; hủy đơn và yêu cầu hoàn tiền; đánh giá sân đã chơi; mở phòng đấu trên đơn đã cọc; tham gia phòng đấu do mô hình đề xuất |
 | **Chủ sân** | Đăng ký cụm sân (chờ quản trị viên duyệt); sân con, bảng giá, giờ mở cửa, ảnh; tài khoản nhận tiền; nhân viên; quầy đặt sân; doanh thu |
 | **Nhân viên** | Quầy đặt sân của cụm sân được phân công: tạo đơn tại quầy, check-in bằng mã hoặc QR, thu tiền, dời lịch, hủy, xác nhận hoàn tiền |
 | **Quản trị viên** | Cổng riêng (cổng 3001): duyệt cụm sân, quản lý tài khoản, giám sát đơn đặt, sổ giao dịch, phòng đấu |
@@ -161,31 +161,34 @@ Cài đặt: `backend/app/ml/features.py` (đặc trưng), `backend/app/ml/train
 
 ### 5.1. Đặc trưng
 
-Mô hình nhận năm đặc trưng của **một cặp** người chơi, đều đối xứng giữa hai người:
+Mô hình nhận bốn đặc trưng của **một cặp** người chơi, đều đối xứng giữa hai người:
 
 | Đặc trưng | Định nghĩa |
 | :--- | :--- |
 | `level_diff` | $\lvert \text{DUPR}_A - \text{DUPR}_B \rvert$ |
 | `distance_km` | Khoảng cách Haversine giữa hai vị trí thường chơi, chặn trên 50 km. Thiếu vị trí của một bên thì dùng giá trị trung tính 10 km và báo hồ sơ còn thiếu |
-| `availability_overlap` | Chỉ số Jaccard giữa hai tập khung rảnh trong tuần (7 ngày × sáng, chiều, tối) |
 | `purpose_match` | 1 nếu cùng mục đích chơi (giao lưu, luyện tập, thi đấu), ngược lại 0 |
 | `style_match` | 1 nếu cùng phong cách hoặc một bên chơi toàn diện, ngược lại 0 |
 
 Cùng một module tạo đặc trưng cho huấn luyện, khảo sát và suy luận, nên dữ liệu huấn luyện và dữ liệu phục vụ luôn
 nhất quán. Thiếu trình độ của một trong hai người thì không dự đoán.
 
+Thời gian không phải là đặc trưng. Mỗi phòng đấu gắn với một đơn đặt sân nên đã có ngày giờ cố định ghi ngay trên thẻ
+phòng; người chơi tự chọn phòng theo giờ mình đi được, mô hình chỉ trả lời câu hỏi "những người trong phòng có hợp
+với mình không".
+
 ### 5.2. Dữ liệu huấn luyện
 
-Dữ liệu huấn luyện nằm trong bảng `pair_feedback` của CSDL. Mỗi dòng là một "phiếu ghép cặp": 5 đặc trưng của một cặp,
+Dữ liệu huấn luyện nằm trong bảng `pair_feedback` của CSDL. Mỗi dòng là một "phiếu ghép cặp": 4 đặc trưng của một cặp,
 người trả lời, nhãn muốn ghép (1) hay không (0), và cột `source` ghi nguồn. Lệnh huấn luyện chọn nguồn theo thứ tự:
 
 1. **Nhãn khảo sát thật** (`source = survey`): người chơi trả lời trên trang `/survey` về các hồ sơ ứng viên giả định xoay
    quanh hồ sơ của chính mình. Khi có từ 300 nhãn thật trở lên, mô hình chỉ học từ các nhãn này.
 2. **Phiếu ghép cặp mô phỏng** (`source = simulated`, **đang dùng**): 3.000 phiếu nạp bằng
    `python manage.py seed --feedback`. Mỗi tài khoản trong 20 tài khoản người chơi demo "trả lời" 150 phiếu. Hồ sơ ứng
-   viên được sinh bằng đúng hàm mà trang khảo sát dùng (trải các mức chênh trình độ, khoảng cách, độ trùng lịch); câu trả
-   lời được sinh từ một quy tắc viết tay (`synthetic_rule_score`: ưu tiên chênh lệch trình độ nhỏ, ở gần, trùng giờ
-   rảnh, cùng mục đích và phong cách) cộng nhiễu Gauss $\sigma = 0.08$. Hạt giống ngẫu nhiên cố định nên cài ở đâu
+   viên được sinh bằng đúng hàm mà trang khảo sát dùng (trải các mức chênh trình độ và khoảng cách); câu trả
+   lời được sinh từ một quy tắc viết tay (`synthetic_rule_score`: ưu tiên chênh lệch trình độ nhỏ, ở gần, cùng mục
+   đích và phong cách) cộng nhiễu Gauss $\sigma = 0.08$. Hạt giống ngẫu nhiên cố định nên cài ở đâu
    cũng ra cùng một bộ dữ liệu. Đây là dữ liệu mô phỏng để minh họa quy trình, **không phải** câu trả lời của người
    chơi thật.
 3. **Dữ liệu tổng hợp trong bộ nhớ**: 60.000 cặp sinh từ cùng quy tắc, chỉ dùng khi CSDL chưa có đủ 300 dòng.
@@ -213,25 +216,25 @@ ghi nguồn dữ liệu, cách đánh giá và các chỉ số.
 
 ### 5.4. Kết quả đánh giá hiện tại
 
-3.000 phiếu mô phỏng của 20 tài khoản demo, tỷ lệ nhãn "muốn ghép" 41,8%, GroupKFold 5 phần theo người trả lời (số
+3.000 phiếu mô phỏng của 20 tài khoản demo, tỷ lệ nhãn "muốn ghép" 39,7%, GroupKFold 5 phần theo người trả lời (số
 trong bảng là trung bình của 5 phần):
 
 | Mô hình | Accuracy | Precision | Recall | F1 | ROC-AUC |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| Đoán theo lớp đa số | 0.5817 | 0.0000 | 0.0000 | 0.0000 | - |
-| Luật một ngưỡng: chênh trình độ ≤ 0.5 | 0.8910 | 0.8772 | 0.8607 | 0.8684 | - |
-| Hồi quy logistic | 0.9254 | 0.9143 | 0.9067 | 0.9105 | 0.9792 |
-| **Random Forest** | **0.9313** | **0.9046** | **0.9343** | **0.9191** | **0.9826** |
-| Quy tắc sinh nhãn, không nhiễu (mốc trần) | 0.9380 | 0.9287 | 0.9223 | 0.9254 | - |
+| Đoán theo lớp đa số | 0.6030 | 0.0000 | 0.0000 | 0.0000 | - |
+| Luật một ngưỡng: chênh trình độ ≤ 0.5 | 0.8967 | 0.8671 | 0.8736 | 0.8698 | - |
+| Hồi quy logistic | 0.9297 | 0.9187 | 0.9032 | 0.9109 | 0.9815 |
+| **Random Forest** | **0.9297** | **0.8853** | **0.9445** | **0.9138** | **0.9852** |
+| Quy tắc sinh nhãn, không nhiễu (mốc trần) | 0.9340 | 0.9284 | 0.9042 | 0.9159 | - |
 
-Mức đóng góp của đặc trưng: `level_diff` 0.787, `distance_km` 0.117, `availability_overlap` 0.053, `purpose_match` 0.028,
-`style_match` 0.015.
+Mức đóng góp của đặc trưng: `level_diff` 0.807, `distance_km` 0.136, `purpose_match` 0.036, `style_match` 0.021.
 
 **Cách đọc các con số này.** Nhãn mô phỏng được sinh từ một quy tắc cộng nhiễu, nên:
 
-- Mốc trần 93,80% là độ chính xác của chính quy tắc sinh nhãn; không mô hình nào vượt được vì phần còn lại là nhiễu.
-- Random Forest đạt 93,13%, tức gần như học lại trọn quy tắc và cao hơn luật một ngưỡng (89,10%) cùng hồi quy logistic
-  (92,54%).
+- Mốc trần 93,40% là độ chính xác của chính quy tắc sinh nhãn; không mô hình nào vượt được vì phần còn lại là nhiễu.
+- Random Forest đạt 92,97%, tức gần như học lại trọn quy tắc và cao hơn luật một ngưỡng (89,67%).
+- Về accuracy, Random Forest ngang hồi quy logistic (92,97%); nó nhỉnh hơn ở recall, F1 và ROC-AUC (0,9852 so với
+  0,9815). Với bốn đặc trưng và một quy tắc sinh nhãn dạng cộng điểm, hai mô hình cho kết quả gần nhau là điều dễ hiểu.
 - Các con số cho thấy quy trình dữ liệu → huấn luyện → đánh giá → phục vụ hoạt động đúng. Chúng **không** nói lên mức
   độ mô hình dự đoán đúng mong muốn của người chơi thật; kết luận đó cần nhãn khảo sát thật.
 
@@ -241,28 +244,17 @@ Giao diện dùng mô hình để **đề xuất những phòng đấu đã đư
 
 ```text
 Người xem A ──▶ các phòng đang tuyển người
-            ──▶ với mỗi phòng: tạo 5 đặc trưng cho từng cặp (A, thành viên của phòng);
+            ──▶ với mỗi phòng: tạo 4 đặc trưng cho từng cặp (A, thành viên của phòng);
                 khoảng cách tính từ vị trí của A tới sân của phòng
             ──▶ model.predict_proba cho từng cặp
             ──▶ độ phù hợp của phòng = trung bình các xác suất (0-100%)
-            ──▶ giờ chơi của phòng có nằm trọn trong các buổi A đã khai là rảnh không
-            ──▶ phòng đạt từ 70% trở lên và không nằm ngoài giờ rảnh của A được gắn nhãn "mô hình đề xuất", xếp trước
+            ──▶ phòng đạt từ 70% trở lên được gắn nhãn "mô hình đề xuất" và xếp trước
 ```
 
-Hai điều kiện đề xuất nằm ở `backend/app/core/matching_policy.py`:
-
-- **Ngưỡng 70%**: bộ phân loại tách hai lớp ở 50%, ngưỡng cao hơn chỉ giữ lại những phòng mô hình đánh giá rõ ràng là
-  phù hợp.
-- **Giờ rảnh của người xem**: đặc trưng `availability_overlap` chỉ so lịch rảnh của hai người với nhau, không biết phòng
-  đấu diễn ra lúc nào. Vì vậy hệ thống đối chiếu thêm giờ chơi của phòng với lưới khung rảnh trong hồ sơ (sáng trước
-  12:00, chiều 12:00 - 17:00, tối từ 17:00): phòng chỉ được đề xuất khi mọi buổi mà giờ chơi chạm tới đều là buổi người
-  xem đã khai rảnh. Người chưa khai khung rảnh nào thì chỉ xét độ phù hợp. Đây là quy tắc nghiệp vụ đặt sau mô hình;
-  điểm phù hợp hiển thị vẫn là con số của mô hình, không bị cộng trừ.
-
-`GET /api/v1/matches` trả `compatibility`, `fits_free_time` và `is_recommended` cho từng phòng; trang Ghép trận có ba
-mục: Phòng đề xuất, Tất cả phòng mở, Phòng của tôi. Phòng nằm ngoài giờ rảnh vẫn hiện ở mục Tất cả phòng mở kèm ghi chú
-"ngoài giờ rảnh của bạn". `GET /api/v1/ml/model-info` cho biết ngưỡng đang dùng và các mục hồ sơ người xem còn thiếu để
-giao diện nhắc bổ sung.
+Ngưỡng 70% nằm ở `backend/app/core/matching_policy.py`: bộ phân loại tách hai lớp ở 50%, ngưỡng cao hơn chỉ giữ lại
+những phòng mô hình đánh giá rõ ràng là phù hợp. `GET /api/v1/matches` trả `compatibility` và `is_recommended` cho từng
+phòng; trang Ghép trận có ba mục: Phòng đề xuất, Tất cả phòng mở, Phòng của tôi. `GET /api/v1/ml/model-info` cho biết
+ngưỡng đang dùng và các mục hồ sơ người xem còn thiếu để giao diện nhắc bổ sung.
 
 API xếp hạng từng người chơi (`GET /api/v1/ml/recommend-partners`: lọc ứng viên có trình độ trong khoảng ±1.5, sắp theo
 xác suất giảm dần) vẫn có ở backend nhưng giao diện không hiển thị danh sách này. Khi chưa có file mô hình, các API trả
@@ -275,7 +267,7 @@ kết quả rỗng kèm lý do, không tự đặt ra điểm số.
 | **Kiểm thử tự động backend** | pytest trên một CSDL PostgreSQL riêng, schema dựng bằng chính các migration. Bao phủ bảo mật và phân quyền (mọi API không công khai đều đòi đăng nhập), vòng đời đơn, hủy và hoàn tiền, đơn tại quầy, webhook thanh toán, phòng đấu, gợi ý sân, mô hình ghép cặp |
 | **Kiểm thử đồng thời** | Nhiều luồng thật cùng tranh một khung giờ, cùng gửi một giao dịch, cùng vào chỗ cuối của một phòng đấu; kiểm tra chỉ một luồng thành công và dữ liệu không sai lệch |
 | **Kiểm thử phụ thuộc thời gian** | Đồng hồ nghiệp vụ được điều khiển trong test để kiểm tra hạn cọc 15 phút và các mốc hủy 12 giờ, 6 giờ |
-| **Kiểm thử đầu-cuối qua trình duyệt** | `scripts/e2e_smoke.js`: 23 bước cho cả bốn vai trò, từ đặt sân, giả lập cọc, vé QR, phòng đấu do mô hình đề xuất (kể cả việc phòng ngoài giờ rảnh không được đề xuất), hủy và hoàn tiền tới quầy của nhân viên và cổng quản trị |
+| **Kiểm thử đầu-cuối qua trình duyệt** | `scripts/e2e_smoke.js`: 22 bước cho cả bốn vai trò, từ đặt sân, giả lập cọc, vé QR, phòng đấu do mô hình đề xuất, hủy và hoàn tiền tới quầy của nhân viên và cổng quản trị |
 | **Đánh giá mô hình** | So sánh Random Forest với các mốc so sánh ở mục 5.4 |
 
 Lệnh chạy và cách tổ chức: [README gốc](../README.md) và [backend/tests/README.md](../backend/tests/README.md).

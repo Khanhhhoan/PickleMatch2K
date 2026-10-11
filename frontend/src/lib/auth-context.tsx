@@ -18,7 +18,6 @@ export interface PlayerProfile {
   longitude?: number | null;
   // Dữ liệu phục vụ gợi ý sân và ghép người chơi
   purpose?: string | null;
-  availability?: string[];
   preferred_amenity_ids?: number[];
   budget_max?: number | null;
 }

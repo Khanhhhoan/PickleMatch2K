@@ -14,8 +14,6 @@ interface SurveyPair {
   candidate: {
     skill_level: number;
     distance_km: number;
-    shared_slots: number;
-    availability: string[];
     purpose: string;
     play_style: string;
   };
@@ -126,7 +124,7 @@ export default function MatchingSurveyPage() {
                         Người chơi {index + 1}: trình độ {c.skill_level.toFixed(1)} • {playStyleLabel(c.play_style, true)}
                       </p>
                       <p>
-                        Cách bạn khoảng {c.distance_km} km • Trùng {c.shared_slots} khung giờ rảnh • {purposeLabel(c.purpose)}
+                        Cách bạn khoảng {c.distance_km} km • {purposeLabel(c.purpose)}
                       </p>
                     </div>
                     <div className="flex gap-2 shrink-0">

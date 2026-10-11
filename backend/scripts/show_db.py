@@ -49,8 +49,8 @@ def show_db_stats() -> None:
         collected = money.get(PaymentKind.DEPOSIT.value, 0) + money.get(PaymentKind.BALANCE.value, 0)
         refunded = money.get(PaymentKind.REFUND.value, 0)
         print(f"Sổ giao dịch: đã thu {collected:,.0f}đ  |  đã hoàn {refunded:,.0f}đ  |  thực thu {collected - refunded:,.0f}đ")
-        filled = db.query(PlayerProfile).filter(PlayerProfile.purpose.isnot(None), PlayerProfile.availability.isnot(None)).count()
-        print(f"Hồ sơ người chơi đã khai mục đích + khung rảnh: {filled}/{db.query(PlayerProfile).count()}  |  "
+        filled = db.query(PlayerProfile).filter(PlayerProfile.purpose.isnot(None)).count()
+        print(f"Hồ sơ người chơi đã khai mục đích chơi: {filled}/{db.query(PlayerProfile).count()}  |  "
               f"Nhãn khảo sát ghép cặp: {db.query(PairFeedback).count()}")
 
         print(f"\n{'ID':<4} {'Cụm sân':<34} {'Trạng thái':<12} {'Sân':<4} {'Chủ sân':<34}")

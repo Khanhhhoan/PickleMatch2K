@@ -1,11 +1,10 @@
-import json
 import re
 from datetime import date
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
-from app.ml.features import AVAILABILITY_SLOTS, PURPOSES
+from app.ml.features import PURPOSES
 from app.models.user import UserRole
 
 _PHONE_RE = re.compile(r"^\+?\d{9,12}$")
@@ -47,7 +46,6 @@ class PlayerProfileBase(BaseModel):
     longitude: Optional[float] = None
     # Dữ liệu phục vụ gợi ý sân và ghép người chơi
     purpose: Optional[str] = None
-    availability: List[str] = []           # Khung rảnh trong tuần, ví dụ "mon_evening"
     preferred_amenity_ids: List[int] = []
     budget_max: Optional[float] = None     # VNĐ/giờ
 
@@ -56,17 +54,6 @@ class PlayerProfileResponse(PlayerProfileBase):
     user_id: int
 
     model_config = ConfigDict(from_attributes=True)
-
-    @field_validator("availability", mode="before")
-    @classmethod
-    def _decode_availability(cls, value):
-        """Cột availability lưu chuỗi JSON; API luôn trả về danh sách."""
-        if isinstance(value, str):
-            try:
-                value = json.loads(value)
-            except ValueError:
-                return []
-        return [str(v) for v in value] if isinstance(value, list) else []
 
 
 class OwnerProfileBase(BaseModel):
@@ -142,7 +129,6 @@ class ProfileUpdateRequest(BaseModel):
     latitude: Optional[float] = Field(default=None, ge=-90, le=90)
     longitude: Optional[float] = Field(default=None, ge=-180, le=180)
     purpose: Optional[str] = None
-    availability: Optional[List[str]] = Field(default=None, max_length=len(AVAILABILITY_SLOTS))
     preferred_amenity_ids: Optional[List[int]] = Field(default=None, max_length=50)
     budget_max: Optional[float] = Field(default=None, ge=0, le=100_000_000)
     # Chủ sân
@@ -162,17 +148,6 @@ class ProfileUpdateRequest(BaseModel):
         if value is not None and value not in PURPOSES:
             raise ValueError(f"Mục đích chơi phải là một trong: {', '.join(PURPOSES)}.")
         return value
-
-    @field_validator("availability")
-    @classmethod
-    def _known_slots(cls, value: Optional[List[str]]) -> Optional[List[str]]:
-        if value is None:
-            return None
-        unknown = sorted(set(value) - set(AVAILABILITY_SLOTS))
-        if unknown:
-            raise ValueError(f"Khung giờ rảnh không hợp lệ: {', '.join(unknown)}.")
-        chosen = set(value)
-        return [slot for slot in AVAILABILITY_SLOTS if slot in chosen]
 
     @field_validator("date_of_birth")
     @classmethod

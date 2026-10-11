@@ -25,25 +25,23 @@ def test_player_updates_matching_profile(client, db):
     response = update_profile(
         client, player, full_name="  Nguyễn An ", phone="0901 234 567", skill_level=3.5, play_style="Offensive",
         latitude=10.78, longitude=106.7, purpose="practice", budget_max=200000,
-        availability=["sat_morning", "mon_evening", "mon_evening"], preferred_amenity_ids=[roof.id, 9999, led.id],
+        preferred_amenity_ids=[roof.id, 9999, led.id],
         company_name="Không áp dụng cho người chơi",
     )
     assert response.status_code == 200, response.text
     profile = response.json()["player_profile"]
     assert (profile["full_name"], profile["phone"], profile["skill_level"]) == ("Nguyễn An", "0901234567", 3.5)
     assert (profile["purpose"], profile["budget_max"]) == ("practice", 200000)
-    assert profile["availability"] == ["mon_evening", "sat_morning"]           # bỏ trùng, xếp theo thứ tự trong tuần
     assert profile["preferred_amenity_ids"] == [led.id, roof.id]              # bỏ id tiện ích không tồn tại
     assert response.json()["owner_profile"] is None
 
     # Chỉ trường được gửi mới thay đổi; ngân sách 0 nghĩa là không giới hạn
-    cleared = update_profile(client, player, budget_max=0, availability=[]).json()["player_profile"]
-    assert (cleared["budget_max"], cleared["availability"], cleared["purpose"], cleared["skill_level"]) == (None, [], "practice", 3.5)
+    cleared = update_profile(client, player, budget_max=0).json()["player_profile"]
+    assert (cleared["budget_max"], cleared["purpose"], cleared["skill_level"]) == (None, "practice", 3.5)
 
 
 @pytest.mark.parametrize("fields", [
     {"purpose": "gambling"},
-    {"availability": ["mon_midnight"]},
     {"skill_level": 0.5}, {"skill_level": 9},
     {"latitude": 91}, {"longitude": -181},
     {"budget_max": -1},
@@ -77,8 +75,8 @@ def test_profile_fields_depend_on_role(client, world):
 
 def test_profile_options_are_shared_with_the_matching_model(client):
     options = client.get(f"{USERS}/profile-options").json()
+    assert set(options) == {"purposes", "play_styles"}
     assert options["purposes"] == ["recreational", "practice", "competitive"]
-    assert options["days"][0] == "mon" and options["periods"] == ["morning", "afternoon", "evening"]
     assert "All-Round" in options["play_styles"]
 
 

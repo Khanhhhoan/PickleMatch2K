@@ -11,8 +11,6 @@ import Footer from "@/components/Footer";
 import LocationPickerModal from "@/components/LocationPickerModal";
 import { UserLocation, getCurrentGpsPosition, reverseGeocode, saveLocation } from "@/lib/location";
 import {
-  AVAILABILITY_DAYS,
-  AVAILABILITY_PERIODS,
   PLAY_STYLES,
   PROFILE_FIELD_LABEL,
   PURPOSES,
@@ -45,7 +43,6 @@ interface ProfileForm {
   matches_played: string;
   matches_won: string;
   purpose: string;
-  availability: string[];
   latitude: number | null;
   longitude: number | null;
 }
@@ -59,7 +56,6 @@ const EMPTY_FORM: ProfileForm = {
   matches_played: "",
   matches_won: "",
   purpose: "",
-  availability: [],
   latitude: null,
   longitude: null,
 };
@@ -114,7 +110,6 @@ function ProfileContent() {
       matches_played: profile.matches_played != null ? String(profile.matches_played) : "",
       matches_won: profile.matches_won != null ? String(profile.matches_won) : "",
       purpose: profile.purpose || "",
-      availability: profile.availability || [],
       latitude: profile.latitude ?? null,
       longitude: profile.longitude ?? null,
     });
@@ -136,12 +131,6 @@ function ProfileContent() {
   useEffect(() => {
     if (user && activeTab === "payments") loadTransactions();
   }, [user, activeTab, loadTransactions]);
-
-  const toggleAvailability = (slot: string) =>
-    setForm((prev) => ({
-      ...prev,
-      availability: prev.availability.includes(slot) ? prev.availability.filter((s) => s !== slot) : [...prev.availability, slot],
-    }));
 
   const applyLocation = (lat: number, lng: number, name: string) => {
     setForm((prev) => ({ ...prev, latitude: lat, longitude: lng }));
@@ -186,7 +175,6 @@ function ProfileContent() {
           matches_played: played,
           matches_won: won,
           purpose: form.purpose || null,
-          availability: form.availability,
           latitude: form.latitude,
           longitude: form.longitude,
         }),
@@ -232,7 +220,6 @@ function ProfileContent() {
   const missingForMatching = [
     !form.skill_level && "skill_level",
     form.latitude == null && "location",
-    form.availability.length === 0 && "availability",
     !form.purpose && "purpose",
     !form.play_style && "play_style",
   ].filter(Boolean) as string[];
@@ -383,52 +370,6 @@ function ProfileContent() {
                       <input type="number" min={0} className={INPUT} value={form.matches_won}
                         onChange={(e) => setForm({ ...form, matches_won: e.target.value })} />
                     </Field>
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-semibold text-zinc-800 mb-1.5">Khung giờ thường rảnh trong tuần</p>
-                    <div className="overflow-x-auto">
-                      <table className="text-[11px] border-separate border-spacing-1">
-                        <thead>
-                          <tr>
-                            <th />
-                            {AVAILABILITY_DAYS.map((day) => (
-                              <th key={day.value} className="font-semibold text-zinc-500 w-10">{day.label}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {AVAILABILITY_PERIODS.map((period) => (
-                            <tr key={period.value}>
-                              <td className="pr-2 font-semibold text-zinc-600">{period.label}</td>
-                              {AVAILABILITY_DAYS.map((day) => {
-                                const slot = `${day.value}_${period.value}`;
-                                const checked = form.availability.includes(slot);
-                                return (
-                                  <td key={slot}>
-                                    <button
-                                      type="button"
-                                      aria-pressed={checked}
-                                      aria-label={`${day.label} ${period.label}`}
-                                      onClick={() => toggleAvailability(slot)}
-                                      className={`w-10 h-7 rounded-md border transition cursor-pointer ${
-                                        checked ? "bg-zinc-900 border-zinc-900 text-white" : "bg-white border-zinc-200 hover:border-zinc-400 text-transparent"
-                                      }`}
-                                    >
-                                      ✓
-                                    </button>
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <p className="text-[11px] text-zinc-500 mt-1.5 leading-relaxed">
-                      {AVAILABILITY_PERIODS.map((period) => `${period.label}: ${period.hours}`).join(" • ")}. Phòng đấu chỉ được đề xuất cho
-                      bạn khi diễn ra trong những buổi bạn chọn.
-                    </p>
                   </div>
 
                   <div>

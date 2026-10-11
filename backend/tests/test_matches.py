@@ -1,6 +1,5 @@
-"""Phòng đấu: gắn với đơn đặt sân, tham gia/rời, tự cập nhật theo đơn và theo thời gian, quyền riêng tư, đề xuất."""
+"""Phòng đấu: gắn với đơn đặt sân, tham gia/rời, tự cập nhật theo đơn và theo thời gian, quyền riêng tư."""
 import json
-from datetime import date, time, timedelta
 
 from app.models.match import Match
 from app.services import booking_service, match_service
@@ -245,59 +244,6 @@ def test_only_rooms_the_model_rates_highly_are_recommended(client, db, world, cl
 
     [mine] = client.get(MATCHES, headers=auth(world.p1)).json()            # phòng chỉ có mình: không có ai để so
     assert mine["compatibility"] is None and mine["is_recommended"] is False
-
-
-def test_room_hours_map_onto_the_free_time_grid_of_the_profile():
-    from app.core.matching_policy import PERIOD_HOURS, fits_free_time, slots_of_window
-    from app.ml.features import AVAILABILITY_SLOTS, PERIODS
-
-    assert [period for period, _, _ in PERIOD_HOURS] == PERIODS                            # cùng ba buổi với lưới khung rảnh của hồ sơ
-    monday = date(2026, 10, 12)
-    assert slots_of_window(monday, time(5, 0), time(6, 0)) == ["mon_morning"]
-    assert slots_of_window(monday, time(11, 0), time(12, 0)) == ["mon_morning"]           # kết thúc đúng 12:00 vẫn là buổi sáng
-    assert slots_of_window(monday, time(12, 0), time(13, 0)) == ["mon_afternoon"]
-    assert slots_of_window(monday, time(11, 30), time(12, 30)) == ["mon_morning", "mon_afternoon"]
-    assert slots_of_window(monday, time(16, 0), time(18, 0)) == ["mon_afternoon", "mon_evening"]
-    assert slots_of_window(monday, time(17, 0), time(19, 0)) == ["mon_evening"]
-    assert slots_of_window(date(2026, 10, 18), time(22, 0), time(23, 0)) == ["sun_evening"]
-    every_hour = {slot for offset in range(7) for hour in range(23)
-                  for slot in slots_of_window(monday + timedelta(days=offset), time(hour, 0), time(hour + 1, 0))}
-    assert every_hour == set(AVAILABILITY_SLOTS)                                           # giờ nào trong tuần cũng rơi vào một ô của lưới
-
-    assert fits_free_time([], monday, time(18, 0), time(19, 0)) is None                    # chưa khai khung rảnh nào
-    assert fits_free_time(["mon_evening"], monday, time(18, 0), time(19, 0)) is True
-    assert fits_free_time(["mon_evening"], monday, time(16, 0), time(18, 0)) is False      # lấn sang buổi chiều
-    assert fits_free_time(["tue_evening", "mon_morning"], monday, time(18, 0), time(19, 0)) is False
-
-
-def test_a_room_outside_the_viewers_free_time_is_not_recommended(client, db, world, clock):
-    """Phòng đủ điểm phù hợp chỉ được đề xuất khi giờ chơi nằm trọn trong khung rảnh người xem đã khai."""
-    from app.core.matching_policy import RECOMMEND_MIN_COMPATIBILITY
-    from app.ml.features import DAYS
-
-    day = clock.day(1)
-    weekday, next_weekday = DAYS[day.weekday()], DAYS[(day.weekday() + 1) % 7]
-    evening = open_match(client, world.p1, confirmed_booking(client, world.p1, world.court, day, hours=(18,)))                 # 18:00 - 19:00
-    across = open_match(client, world.p3, confirmed_booking(client, world.p3, world.venue_a.courts[1], day, hours=(16, 17)))  # 16:00 - 18:00
-
-    def viewer(*slots):
-        return make_user(db, "PLAYER", skill_level=3.5, latitude=10.78, longitude=106.70, availability=json.dumps(list(slots)))
-
-    def seen(user):
-        """Với từng phòng: (nằm trong giờ rảnh?, được đề xuất?, đủ điểm phù hợp?)."""
-        return {m["id"]: (m["fits_free_time"], m["is_recommended"], m["compatibility"] >= RECOMMEND_MIN_COMPATIBILITY)
-                for m in client.get(MATCHES, headers=auth(user)).json()}
-
-    # Rảnh buổi tối hôm đó: phòng 18:00 nằm trọn trong giờ rảnh, phòng 16:00 - 18:00 lấn sang buổi chiều thì không
-    assert seen(viewer(f"{weekday}_evening")) == {evening["id"]: (True, True, True), across["id"]: (False, False, True)}
-    # Rảnh cả chiều lẫn tối: cả hai phòng đều được đề xuất
-    assert set(seen(viewer(f"{weekday}_afternoon", f"{weekday}_evening")).values()) == {(True, True, True)}
-    # Chỉ rảnh buổi sáng, hoặc rảnh buổi tối của ngày khác: đủ điểm phù hợp nhưng không được đề xuất
-    for slots in ((f"{weekday}_morning",), (f"{next_weekday}_evening",)):
-        assert set(seen(viewer(*slots)).values()) == {(False, False, True)}
-    # Chưa khai khung rảnh nào: không có căn cứ để loại phòng, chỉ xét độ phù hợp
-    assert set(seen(world.p2).values()) == {(None, True, True)}
-    assert {m["fits_free_time"] for m in client.get(MATCHES).json()} == {None}             # chưa đăng nhập
 
 
 # ---------------------------------------------------------------------------

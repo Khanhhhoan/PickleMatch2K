@@ -60,7 +60,6 @@ class PlayerProfile(Base):
     longitude = Column(Float, nullable=True)
     # Dữ liệu phục vụ gợi ý sân và ghép người chơi
     purpose = Column(String, nullable=True)            # recreational | practice | competitive
-    availability = Column(String, nullable=True)       # JSON: danh sách khung rảnh, ví dụ ["mon_evening", "sat_morning"]
     preferred_amenities = Column(String, nullable=True)  # JSON: danh sách id tiện ích ưa thích
     budget_max = Column(Float, nullable=True)          # Ngân sách tối đa mỗi giờ thuê sân (VNĐ)
 
@@ -80,10 +79,6 @@ class PlayerProfile(Base):
         today = date.today()
         dob = self.date_of_birth
         return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-
-    @property
-    def availability_slots(self) -> List[str]:
-        return [str(s) for s in _load_json_list(self.availability)]
 
     @property
     def preferred_amenity_ids(self) -> List[int]:

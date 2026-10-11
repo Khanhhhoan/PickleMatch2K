@@ -1,6 +1,6 @@
 /**
  * Các giá trị hồ sơ người chơi dùng cho gợi ý sân và mô hình ghép cặp.
- * Phải khớp với backend (app/ml/features.py): PLAY_STYLES, PURPOSES, DAYS x PERIODS.
+ * Phải khớp với backend (app/ml/features.py): PLAY_STYLES, PURPOSES.
  */
 
 export const PLAY_STYLES: { value: string; label: string; short: string }[] = [
@@ -15,23 +15,6 @@ export const PURPOSES: { value: string; label: string }[] = [
   { value: "recreational", label: "Giao lưu vui vẻ" },
   { value: "practice", label: "Luyện tập kỹ thuật" },
   { value: "competitive", label: "Thi đấu tính điểm" },
-];
-
-export const AVAILABILITY_DAYS: { value: string; label: string }[] = [
-  { value: "mon", label: "T2" },
-  { value: "tue", label: "T3" },
-  { value: "wed", label: "T4" },
-  { value: "thu", label: "T5" },
-  { value: "fri", label: "T6" },
-  { value: "sat", label: "T7" },
-  { value: "sun", label: "CN" },
-];
-
-// Mốc giờ của từng buổi phải khớp với backend (app/core/matching_policy.py: PERIOD_HOURS)
-export const AVAILABILITY_PERIODS: { value: string; label: string; hours: string }[] = [
-  { value: "morning", label: "Sáng", hours: "trước 12 giờ" },
-  { value: "afternoon", label: "Chiều", hours: "12 - 17 giờ" },
-  { value: "evening", label: "Tối", hours: "từ 17 giờ" },
 ];
 
 export const SKILL_LEVELS: { value: string; label: string }[] = [
@@ -49,7 +32,6 @@ export const SKILL_LEVELS: { value: string; label: string }[] = [
 export const PROFILE_FIELD_LABEL: Record<string, string> = {
   skill_level: "trình độ",
   location: "vị trí",
-  availability: "khung giờ rảnh",
   purpose: "mục đích chơi",
   play_style: "lối đánh",
 };

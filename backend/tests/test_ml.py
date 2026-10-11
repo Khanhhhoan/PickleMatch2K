@@ -25,26 +25,23 @@ def view(**kwargs) -> ProfileView:
 # ---------------------------------------------------------------------------
 # Đặc trưng
 # ---------------------------------------------------------------------------
-def test_pair_features_are_symmetric_and_use_the_five_documented_features():
-    a = view(latitude=10.78, longitude=106.70, availability=["mon_evening", "sat_morning"],
-             purpose="practice", play_style="Offensive")
-    b = view(skill_level=4.0, latitude=10.80, longitude=106.72, availability=["mon_evening"],
-             purpose="practice", play_style="All-Round")
+def test_pair_features_are_symmetric_and_use_the_four_documented_features():
+    a = view(latitude=10.78, longitude=106.70, purpose="practice", play_style="Offensive")
+    b = view(skill_level=4.0, latitude=10.80, longitude=106.72, purpose="practice", play_style="All-Round")
     ab, ba = pair_features(a, b), pair_features(b, a)
-    assert ab == ba and list(ab) == FEATURE_NAMES
-    assert ab == {"level_diff": 0.5, "distance_km": pytest.approx(3.11, abs=0.05),
-                  "availability_overlap": 0.5, "purpose_match": 1, "style_match": 1}
+    assert ab == ba and list(ab) == FEATURE_NAMES == ["level_diff", "distance_km", "purpose_match", "style_match"]
+    assert ab == {"level_diff": 0.5, "distance_km": pytest.approx(3.11, abs=0.05), "purpose_match": 1, "style_match": 1}
 
 
 def test_missing_data_handling():
     assert pair_features(ProfileView(), view()) is None                     # chưa khai trình độ thì không ước lượng
     unknown = pair_features(view(), view())
     assert unknown["distance_km"] == F.UNKNOWN_DISTANCE_KM
-    assert (unknown["availability_overlap"], unknown["purpose_match"], unknown["style_match"]) == (0.0, 0, 0)
+    assert (unknown["purpose_match"], unknown["style_match"]) == (0, 0)
     far = pair_features(view(latitude=10.78, longitude=106.70), view(latitude=21.03, longitude=105.85))
     assert far["distance_km"] == F.MAX_DISTANCE_KM
     assert pair_features(view(), view(), distance_km=7.25)["distance_km"] == 7.25
-    assert view().missing_fields() == ["location", "availability", "purpose", "play_style"]
+    assert view().missing_fields() == ["location", "purpose", "play_style"]
 
 
 @pytest.mark.parametrize("raw, canonical", [
@@ -57,10 +54,9 @@ def test_legacy_play_style_labels_are_canonicalised(raw, canonical):
 
 
 def test_profile_view_ignores_unknown_values(db):
-    user = make_user(db, skill_level=3.0, purpose="hacking", availability='["mon_evening", "someday"]',
-                     play_style="Tấn công")
+    user = make_user(db, skill_level=3.0, purpose="hacking", play_style="Tấn công")
     profile = ProfileView.from_profile(user.player_profile)
-    assert profile.purpose is None and profile.availability == ["mon_evening"] and profile.play_style == "Offensive"
+    assert profile.purpose is None and profile.play_style == "Offensive"
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +66,7 @@ def test_synthetic_prior_is_reproducible_and_balanced():
     first, second = train_model.generate_synthetic_pairs(2000, seed=7), train_model.generate_synthetic_pairs(2000, seed=7)
     assert first.equals(second) and list(first.columns) == FEATURE_NAMES + ["label"]
     assert 0.35 < first["label"].mean() < 0.65
-    assert first["distance_km"].between(0, F.MAX_DISTANCE_KM).all() and first["availability_overlap"].between(0, 1).all()
+    assert first["distance_km"].between(0, F.MAX_DISTANCE_KM).all()
 
 
 def test_evaluation_reports_baselines_next_to_the_forest():
@@ -91,8 +87,7 @@ def test_training_prefers_real_survey_labels_and_evaluates_by_rater(db, monkeypa
     pairs = train_model.generate_synthetic_pairs(360, seed=3)
     db.add_all([
         PairFeedback(rater_id=raters[i % 6], label=int(row.label), level_diff=float(row.level_diff),
-                     distance_km=float(row.distance_km), availability_overlap=float(row.availability_overlap),
-                     purpose_match=int(row.purpose_match), style_match=int(row.style_match))
+                     distance_km=float(row.distance_km), purpose_match=int(row.purpose_match), style_match=int(row.style_match))
         for i, row in enumerate(pairs.itertuples())
     ])
     db.commit()
@@ -109,8 +104,7 @@ def test_training_prefers_real_survey_labels_and_evaluates_by_rater(db, monkeypa
 
 def test_too_few_survey_labels_fall_back_to_the_synthetic_prior(db, monkeypatch):
     rater = make_user(db, skill_level=3.5)
-    db.add(PairFeedback(rater_id=rater.id, label=1, level_diff=0, distance_km=1, availability_overlap=0.5,
-                        purpose_match=1, style_match=1))
+    db.add(PairFeedback(rater_id=rater.id, label=1, level_diff=0, distance_km=1, purpose_match=1, style_match=1))
     db.commit()
     monkeypatch.setattr(train_model, "SYNTHETIC_SAMPLES", 3000)
     data, source, groups = train_model.choose_dataset(force_synthetic=False)
@@ -133,10 +127,10 @@ def test_simulated_feedback_is_stored_in_the_database_and_marked_as_simulated(db
     rows = db.query(PairFeedback).all()
     assert {r.source for r in rows} == {"simulated"} and {r.rater_id for r in rows} == {u.id for u in raters}
     assert {r.label for r in rows} == {0, 1}
-    assert all(0 <= r.availability_overlap <= 1 and r.distance_km > 0 and r.level_diff >= 0 for r in rows)
-    # cả năm đặc trưng đều biến thiên, không đặc trưng nào bị đứng yên
+    assert all(r.distance_km > 0 and r.level_diff >= 0 for r in rows)
+    # cả bốn đặc trưng đều biến thiên, không đặc trưng nào bị đứng yên
     assert {r.purpose_match for r in rows} == {0, 1} == {r.style_match for r in rows}
-    assert len({r.level_diff for r in rows}) >= 4 and len({round(r.availability_overlap, 1) for r in rows}) >= 4
+    assert len({r.level_diff for r in rows}) >= 4 and len({round(r.distance_km) for r in rows}) >= 4
 
     assert seed.seed_simulated_feedback(db, per_player=120) == 0                     # chạy lại không nạp trùng
     assert db.query(PairFeedback).count() == 360
@@ -146,14 +140,14 @@ def test_simulated_feedback_is_stored_in_the_database_and_marked_as_simulated(db
 
 def test_simulated_feedback_is_the_same_on_every_installation(db):
     _load_simulated_feedback(db)
-    first = [(r.rater_id, r.level_diff, r.distance_km, r.availability_overlap, r.purpose_match, r.style_match, r.label)
+    first = [(r.rater_id, r.level_diff, r.distance_km, r.purpose_match, r.style_match, r.label)
              for r in db.query(PairFeedback).order_by(PairFeedback.id)]
     db.query(PairFeedback).delete()
     db.commit()
     from scripts import seed
 
     seed.seed_simulated_feedback(db, per_player=120)
-    second = [(r.rater_id, r.level_diff, r.distance_km, r.availability_overlap, r.purpose_match, r.style_match, r.label)
+    second = [(r.rater_id, r.level_diff, r.distance_km, r.purpose_match, r.style_match, r.label)
               for r in db.query(PairFeedback).order_by(PairFeedback.id)]
     assert first == second
 
@@ -174,8 +168,7 @@ def test_real_survey_answers_replace_simulated_ones_once_there_are_enough(db):
     real = train_model.generate_synthetic_pairs(300, seed=5)
     db.add_all([
         PairFeedback(rater_id=raters[i % 3].id, label=int(row.label), level_diff=float(row.level_diff),
-                     distance_km=float(row.distance_km), availability_overlap=float(row.availability_overlap),
-                     purpose_match=int(row.purpose_match), style_match=int(row.style_match))
+                     distance_km=float(row.distance_km), purpose_match=int(row.purpose_match), style_match=int(row.style_match))
         for i, row in enumerate(real.itertuples())
     ])
     db.commit()
@@ -184,12 +177,6 @@ def test_real_survey_answers_replace_simulated_ones_once_there_are_enough(db):
     assert (source, len(data)) == ("survey", 300)
     assert (data.attrs["n_survey"], data.attrs["n_simulated"]) == (300, 0)
     assert ml_service.feedback_summary(db)["labels"] == 300 and ml_service.feedback_summary(db)["simulated"] == 360
-
-
-def test_survey_pairs_can_be_generated_for_a_player_who_is_free_all_week(db):
-    busy_free = make_user(db, "PLAYER", skill_level=3.5, availability=json.dumps(F.AVAILABILITY_SLOTS))
-    pairs, _ = ml_service.generate_survey_pairs(busy_free, count=30)
-    assert len(pairs) == 30 and all(0 <= p["features"]["availability_overlap"] <= 1 for p in pairs)
 
 
 # ---------------------------------------------------------------------------
@@ -205,9 +192,9 @@ def test_shipped_model_matches_the_feature_module_and_its_metadata():
 
 def test_batch_prediction_equals_one_by_one_and_follows_common_sense():
     rows = [
-        {"level_diff": 0.0, "distance_km": 2.0, "availability_overlap": 0.6, "purpose_match": 1, "style_match": 1},
-        {"level_diff": 0.5, "distance_km": 12.0, "availability_overlap": 0.1, "purpose_match": 0, "style_match": 0},
-        {"level_diff": 2.5, "distance_km": 30.0, "availability_overlap": 0.0, "purpose_match": 0, "style_match": 0},
+        {"level_diff": 0.0, "distance_km": 2.0, "purpose_match": 1, "style_match": 1},
+        {"level_diff": 0.5, "distance_km": 12.0, "purpose_match": 0, "style_match": 0},
+        {"level_diff": 2.5, "distance_km": 30.0, "purpose_match": 0, "style_match": 0},
     ]
     batch = match_predictor.predict_proba(rows)
     assert batch == pytest.approx([match_predictor.predict_proba([row])[0] for row in rows])
@@ -244,7 +231,7 @@ def test_a_model_trained_on_other_features_is_reported_unavailable_without_a_fak
 # API gợi ý người chơi
 # ---------------------------------------------------------------------------
 def test_recommend_partners_ranks_real_candidates_without_contact_details(client, db):
-    common = dict(latitude=10.78, longitude=106.70, purpose="recreational", availability='["mon_evening", "sat_morning"]')
+    common = dict(latitude=10.78, longitude=106.70, purpose="recreational")
     me = make_user(db, skill_level=3.5, play_style="Offensive", **common)
     twin = make_user(db, full_name="Bạn Hợp", phone="0900111222", skill_level=3.5, play_style="Offensive", **common)
     weaker = make_user(db, full_name="Bạn Lệch", skill_level=2.5, play_style="Defensive", latitude=10.95, longitude=106.90)
@@ -260,8 +247,8 @@ def test_recommend_partners_ranks_real_candidates_without_contact_details(client
     assert [item["full_name"] for item in body["items"]] == ["Bạn Hợp", "Bạn Lệch"]
     best, worst = body["items"]
     assert best["user_id"] == twin.id and best["probability"] > worst["probability"]
-    assert best["shared_slots"] == 2 and best["distance_km"] == 0 and list(best["features"]) == FEATURE_NAMES
-    assert worst["user_id"] == weaker.id and worst["shared_slots"] == 0
+    assert best["distance_km"] == 0 and list(best["features"]) == FEATURE_NAMES
+    assert worst["user_id"] == weaker.id
     dump = json.dumps(body["items"])
     assert "@" not in dump and "0900111222" not in dump
 
@@ -275,7 +262,7 @@ def test_incomplete_profile_is_told_what_is_missing(client, db):
     blank = make_user(db)
     body = client.get(f"{ML}/recommend-partners", headers=auth(blank)).json()
     assert body["items"] == []
-    assert body["missing_profile_fields"] == ["skill_level", "location", "availability", "purpose", "play_style"]
+    assert body["missing_profile_fields"] == ["skill_level", "location", "purpose", "play_style"]
 
 
 def test_predict_match_uses_the_callers_own_profile(client, db):
@@ -293,10 +280,11 @@ def test_predict_match_uses_the_callers_own_profile(client, db):
 # Khảo sát thu nhãn
 # ---------------------------------------------------------------------------
 def test_survey_answers_are_stored_only_when_untampered(client, db):
-    me = make_user(db, skill_level=3.5, purpose="practice", play_style="Offensive", availability='["mon_evening"]')
+    me = make_user(db, skill_level=3.5, purpose="practice", play_style="Offensive")
     survey = client.get(f"{ML}/survey/pairs", headers=auth(me), params={"count": 4}).json()
     pairs = survey["pairs"]
     assert len(pairs) == 4 and all(list(p["features"]) == FEATURE_NAMES for p in pairs)
+    assert all(set(p["candidate"]) == {"skill_level", "distance_km", "purpose", "play_style"} for p in pairs)
 
     forged = {**pairs[2]["features"], "level_diff": 0.0, "distance_km": 0.1}
     answers = [
@@ -322,8 +310,7 @@ def test_survey_needs_a_skill_level(client, db):
 
 def test_model_info_shows_survey_progress_to_admin_only(client, db):
     player, admin = make_user(db, skill_level=3.5), make_user(db, "ADMIN")
-    db.add(PairFeedback(rater_id=player.id, label=1, level_diff=0, distance_km=1, availability_overlap=0.5,
-                        purpose_match=1, style_match=1))
+    db.add(PairFeedback(rater_id=player.id, label=1, level_diff=0, distance_km=1, purpose_match=1, style_match=1))
     db.commit()
     assert client.get(f"{ML}/model-info").status_code == 401
     assert "survey" not in client.get(f"{ML}/model-info", headers=auth(player)).json()
@@ -334,10 +321,10 @@ def test_model_info_shows_survey_progress_to_admin_only(client, db):
 def test_model_info_gives_the_recommendation_threshold_and_what_a_player_still_has_to_fill_in(client, db):
     from app.core.matching_policy import RECOMMEND_MIN_COMPATIBILITY
 
-    player = make_user(db, "PLAYER", skill_level=3.5)      # chưa khai vị trí, khung rảnh, mục đích, lối đánh
+    player = make_user(db, "PLAYER", skill_level=3.5)      # chưa khai vị trí, mục đích, lối đánh
     info = client.get(f"{ML}/model-info", headers=auth(player)).json()
     assert info["recommend_threshold"] == RECOMMEND_MIN_COMPATIBILITY == 70
-    assert info["missing_profile_fields"] == ["location", "availability", "purpose", "play_style"]
+    assert info["missing_profile_fields"] == ["location", "purpose", "play_style"]
 
     admin = make_user(db, "ADMIN")
     assert "missing_profile_fields" not in client.get(f"{ML}/model-info", headers=auth(admin)).json()

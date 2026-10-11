@@ -193,7 +193,7 @@ def test_demo_seed_builds_a_consistent_dataset(client, db):
     """)).all()
     assert fake_reviews == [] and db.query(Review).count() == 6
     assert dict(db.execute(text("SELECT status, count(*) FROM matches GROUP BY status")).all()) == {"OPEN": 2, "FULL": 1}
-    assert db.execute(text("SELECT count(*) FROM player_profiles WHERE purpose IS NULL OR availability IS NULL")).scalar() == 0
+    assert db.execute(text("SELECT count(*) FROM player_profiles WHERE purpose IS NULL")).scalar() == 0
 
     for email in ("admin@example.com", "owner_rudal@pickleball.vn", "staff_152no_3@pickleball.vn", "player18@gmail.com"):
         login = client.post("/api/v1/auth/login", data={"username": email, "password": seed.DEMO_PASSWORD})
@@ -214,7 +214,7 @@ def test_match_demo_adds_rooms_to_a_database_in_use_without_touching_what_is_the
     seed.seed_database()
     fingerprint = text("""
         SELECT md5(string_agg(concat_ws('|', u.id, u.email, u.is_active, p.skill_level, p.play_style, p.purpose,
-                                        p.availability, p.latitude, p.longitude, p.phone), ';' ORDER BY u.id))
+                                        p.latitude, p.longitude, p.phone), ';' ORDER BY u.id))
         FROM users u LEFT JOIN player_profiles p ON p.user_id = u.id WHERE u.email NOT LIKE 'ghep%@example.com'
     """)
     existing_accounts = db.execute(fingerprint).scalar()
@@ -440,6 +440,45 @@ def test_migrate_check_only_reports_and_the_api_refuses_to_start_on_an_old_schem
     require_current_schema()
     manage.migrate(check_only=True)                       # đã mới nhất: không còn mã thoát 3
     _assert_migrated_with_data_intact()
+
+
+def test_dropping_free_time_keeps_real_survey_answers_and_clears_only_the_simulated_sheets(db):
+    """Migration 0005: hai cột giờ rảnh bị bỏ; phiếu mô phỏng cũ bị xóa để nạp lại, câu trả lời khảo sát thật còn nguyên."""
+    from alembic import command
+
+    from app.db.migrations import alembic_config, run_migrations
+
+    def columns(table):
+        with engine.connect() as conn:
+            return {row[0] for row in conn.execute(text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = :t"), {"t": table})}
+
+    db.rollback()
+    _rebuild_schema("0004")
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO users (email, password_hash, role, is_active) VALUES ('old@example.com', 'x', 'PLAYER', true)"))
+            conn.execute(text("INSERT INTO player_profiles (user_id, skill_level, purpose, availability) "
+                              "VALUES (1, 3.5, 'practice', '[\"mon_evening\"]')"))
+            conn.execute(text(
+                "INSERT INTO pair_feedback (rater_id, source, level_diff, distance_km, availability_overlap, purpose_match, style_match, label) "
+                "VALUES (1, 'survey', 0.5, 3, 0.4, 1, 0, 1), (1, 'simulated', 1.5, 9, 0.1, 0, 0, 0)"))
+
+        run_migrations()
+
+        _assert_migrated_with_data_intact()
+        assert "availability" not in columns("player_profiles") and "availability_overlap" not in columns("pair_feedback")
+        with engine.connect() as conn:
+            assert [tuple(row) for row in conn.execute(text(
+                "SELECT source, level_diff, distance_km, purpose_match, style_match, label FROM pair_feedback"))] == [("survey", 0.5, 3.0, 1, 0, 1)]
+            assert tuple(conn.execute(text("SELECT skill_level, purpose FROM player_profiles")).one()) == (3.5, "practice")
+
+        command.downgrade(alembic_config(), "0004")          # quay lại được: cột có lại, dữ liệu còn lại không mất
+        assert "availability" in columns("player_profiles") and "availability_overlap" in columns("pair_feedback")
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT count(*), max(availability_overlap) FROM pair_feedback")).one() == (1, 0.0)
+    finally:
+        _rebuild_schema()   # các test sau cần schema mới nhất
 
 
 def test_a_database_newer_than_the_code_is_reported_instead_of_migrated(db):

@@ -47,16 +47,13 @@ def read_open_matches(
 ):
     """
     Phòng đang mở (công khai) và các phòng của người đang đăng nhập. Với người đã đăng nhập,
-    mỗi phòng kèm `compatibility`: độ phù hợp do mô hình Random Forest ước lượng, và `fits_free_time`: giờ chơi
-    có nằm trong khung rảnh người xem đã khai hay không. Phòng đạt ngưỡng phù hợp và không nằm ngoài khung rảnh
-    thì có `is_recommended`.
+    mỗi phòng kèm `compatibility`: độ phù hợp do mô hình Random Forest ước lượng.
     Truyền latitude/longitude hiện tại để tính khoảng cách tới sân chính xác hơn vị trí trong hồ sơ.
     """
     matches = match_service.get_visible_matches(db, current_user.id if current_user else None)
     scores = ml_service.match_compatibility(current_user, matches, latitude, longitude) if current_user else {}
-    free_slots = ml_service.declared_free_slots(current_user) if current_user else []
     viewer_id = current_user.id if current_user else None
-    return [match_service.serialize_match(m, viewer_id, scores.get(m.id), free_slots) for m in matches]
+    return [match_service.serialize_match(m, viewer_id, scores.get(m.id)) for m in matches]
 
 
 @router.post("/{match_id}/join", response_model=MatchResponse)

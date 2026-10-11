@@ -1,7 +1,7 @@
 """
 Phục vụ mô hình ghép cặp người chơi (Random Forest).
 
-Mô hình nhận 5 đặc trưng định nghĩa trong app.ml.features. Nếu không nạp được file mô hình hoặc
+Mô hình nhận 4 đặc trưng định nghĩa trong app.ml.features. Nếu không nạp được file mô hình hoặc
 mô hình được huấn luyện với bộ đặc trưng khác, dịch vụ báo "chưa sẵn sàng" và KHÔNG tự thay bằng
 công thức ước lượng nào khác, để con số hiển thị luôn đúng là của mô hình.
 """
@@ -20,7 +20,6 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.config import settings
 from app.core.matching_policy import RECOMMEND_MIN_COMPATIBILITY
 from app.ml.features import (
-    AVAILABILITY_SLOTS,
     FEATURE_NAMES,
     PLAY_STYLES,
     PURPOSES,
@@ -165,7 +164,6 @@ def recommend_partners(
             "play_style": other.play_style,
             "purpose": other.purpose,
             "distance_km": features["distance_km"] if has_distance else None,
-            "shared_slots": len(set(me.availability) & set(other.availability)),
             "probability": round(probability * 100, 1),
             "features": features,
         })
@@ -217,11 +215,6 @@ def missing_profile_fields(user: User) -> List[str]:
     return ProfileView.from_profile(user.player_profile).missing_fields()
 
 
-def declared_free_slots(user: User) -> List[str]:
-    """Các khung rảnh trong tuần (thứ_buổi) mà người chơi đã khai trong hồ sơ."""
-    return ProfileView.from_profile(user.player_profile).availability
-
-
 def predict_pair(user_a: User, user_b: User) -> dict:
     features = pair_features(ProfileView.from_profile(user_a.player_profile), ProfileView.from_profile(user_b.player_profile))
     if features is None or not match_predictor.available:
@@ -242,48 +235,36 @@ def _sign(features: Dict[str, float]) -> str:
     return hmac.new(settings.SECRET_KEY.encode(), canonical.encode(), hashlib.sha256).hexdigest()
 
 
-def hypothetical_candidate(rng: random.Random, viewer: ProfileView) -> Tuple[ProfileView, float, int]:
+def hypothetical_candidate(rng: random.Random, viewer: ProfileView) -> Tuple[ProfileView, float]:
     """
-    Một hồ sơ ứng viên GIẢ ĐỊNH xoay quanh hồ sơ `viewer`, trải các mức chênh trình độ, khoảng cách và độ trùng lịch.
-    Dùng chung cho khảo sát thu nhãn và cho bộ phiếu mô phỏng. Trả về (ứng viên, khoảng cách km, số khung rảnh trùng).
+    Một hồ sơ ứng viên GIẢ ĐỊNH xoay quanh hồ sơ `viewer`, trải các mức chênh trình độ và khoảng cách.
+    Dùng chung cho khảo sát thu nhãn và cho bộ phiếu mô phỏng. Trả về (ứng viên, khoảng cách km).
     """
-    my_slots = list(viewer.availability)
-    others = [s for s in AVAILABILITY_SLOTS if s not in my_slots]
     level = min(8.0, max(1.0, viewer.skill_level + rng.choice([-2.0, -1.5, -1.0, -0.5, 0.0, 0.0, 0.5, 1.0, 1.5, 2.0])))
-    shared = rng.sample(my_slots, rng.randint(0, len(my_slots)))
-    extra = rng.sample(others, rng.randint(0, min(5, len(others))))
-    candidate = ProfileView(
-        skill_level=level,
-        availability=shared + extra,
-        purpose=rng.choice(PURPOSES),
-        play_style=rng.choice(PLAY_STYLES),
-    )
+    candidate = ProfileView(skill_level=level, purpose=rng.choice(PURPOSES), play_style=rng.choice(PLAY_STYLES))
     distance = round(rng.choice([1, 2, 3, 5, 8, 12, 18, 25, 35]) * rng.uniform(0.8, 1.2), 1)
-    return candidate, distance, len(shared)
+    return candidate, distance
 
 
 def generate_survey_pairs(user: User, count: int = 10) -> Tuple[List[dict], List[str]]:
     """
     Sinh các hồ sơ ứng viên GIẢ ĐỊNH xoay quanh hồ sơ thật của người trả lời, trải đều các mức
-    chênh trình độ, khoảng cách và độ trùng lịch, để người chơi trả lời có muốn ghép hay không.
+    chênh trình độ và khoảng cách, để người chơi trả lời có muốn ghép hay không.
     """
     me = ProfileView.from_profile(user.player_profile)
     if me.skill_level is None:
         return [], me.missing_fields()
 
     rng = random.Random()
-    my_slots = me.availability or rng.sample(AVAILABILITY_SLOTS, 6)
-    viewer = ProfileView(me.skill_level, None, None, my_slots, me.purpose, me.play_style)
+    viewer = ProfileView(skill_level=me.skill_level, purpose=me.purpose, play_style=me.play_style)
     pairs = []
     for _ in range(count):
-        candidate, distance, shared_slots = hypothetical_candidate(rng, viewer)
+        candidate, distance = hypothetical_candidate(rng, viewer)
         features = pair_features(viewer, candidate, distance_km=distance)
         pairs.append({
             "candidate": {
                 "skill_level": candidate.skill_level,
                 "distance_km": distance,
-                "shared_slots": shared_slots,
-                "availability": candidate.availability,
                 "purpose": candidate.purpose,
                 "play_style": candidate.play_style,
             },
@@ -305,7 +286,6 @@ def save_survey_answers(db: Session, user: User, answers: Sequence) -> int:
             label=int(bool(answer.label)),
             level_diff=float(features["level_diff"]),
             distance_km=float(features["distance_km"]),
-            availability_overlap=float(features["availability_overlap"]),
             purpose_match=int(features["purpose_match"]),
             style_match=int(features["style_match"]),
         ))

@@ -63,7 +63,6 @@ def synthetic_rule_score(df: pd.DataFrame) -> np.ndarray:
     score = np.full(len(df), 0.50)
     score += np.select([level <= 0.25, level <= 0.5, level <= 1.0], [0.30, 0.18, -0.10], default=-0.38)
     score += np.select([dist <= 3, dist <= 8, dist <= 15], [0.10, 0.04, -0.06], default=-0.18)
-    score += 0.25 * (df["availability_overlap"].to_numpy() - 0.3)
     score += np.where(df["purpose_match"].to_numpy() == 1, 0.08, -0.06)
     score += np.where(df["style_match"].to_numpy() == 1, 0.05, -0.03)
     return score
@@ -79,12 +78,9 @@ def generate_synthetic_pairs(n: int = SYNTHETIC_SAMPLES, seed: int = RANDOM_STAT
     rng = np.random.default_rng(seed)
     level_a = np.clip(np.round(rng.normal(3.5, 0.8, n) * 2) / 2, 2.0, 5.5)
     level_b = np.clip(np.round(rng.normal(3.5, 0.8, n) * 2) / 2, 2.0, 5.5)
-    overlap = rng.beta(1.2, 2.5, n)
-    overlap[rng.random(n) < 0.2] = 0.0
     df = pd.DataFrame({
         "level_diff": np.abs(level_a - level_b),
         "distance_km": np.clip(rng.exponential(8.0, n), 0.2, MAX_DISTANCE_KM).round(2),
-        "availability_overlap": overlap.round(3),
         "purpose_match": (rng.random(n) < 0.40).astype(int),
         "style_match": (rng.random(n) < 0.45).astype(int),
     })
@@ -98,7 +94,7 @@ def load_real_feedback() -> pd.DataFrame:
     try:
         from app.db.database import engine
 
-        return pd.read_sql(f"SELECT {', '.join(columns)} FROM pair_feedback", engine)
+        return pd.read_sql(f"SELECT {', '.join(columns)} FROM pair_feedback ORDER BY id", engine)
     except Exception as exc:
         print(f"(Không đọc được dữ liệu khảo sát: {exc.__class__.__name__})")
         return pd.DataFrame(columns=columns)
