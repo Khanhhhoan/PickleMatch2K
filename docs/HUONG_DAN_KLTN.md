@@ -13,7 +13,7 @@ và cách hệ thống được kiểm thử. Mọi con số ở mục 5 lấy t
 | **Người chơi** | Đăng ký, đăng nhập, hồ sơ (trình độ DUPR tự khai, phong cách, mục đích, khung rảnh, khu vực thường chơi); tìm sân theo vị trí; xem lịch trống theo thời gian thực; đặt sân và cọc 50% qua VietQR; vé QR; hủy đơn và yêu cầu hoàn tiền; đánh giá sân đã chơi; mở phòng đấu trên đơn đã cọc; tham gia phòng đấu do mô hình đề xuất |
 | **Chủ sân** | Đăng ký cụm sân (chờ quản trị viên duyệt); sân con, bảng giá, giờ mở cửa, ảnh; tài khoản nhận tiền; nhân viên; quầy đặt sân; doanh thu |
 | **Nhân viên** | Quầy đặt sân của cụm sân được phân công: tạo đơn tại quầy, check-in bằng mã hoặc QR, thu tiền, dời lịch, hủy, xác nhận hoàn tiền |
-| **Quản trị viên** | Cổng riêng (cổng 3001): duyệt cụm sân, quản lý tài khoản, giám sát đơn đặt, sổ giao dịch, phòng đấu, thông tin mô hình |
+| **Quản trị viên** | Cổng riêng (cổng 3001): duyệt cụm sân, quản lý tài khoản, giám sát đơn đặt, sổ giao dịch, phòng đấu |
 
 Hai trọng tâm của hệ thống:
 
@@ -199,10 +199,10 @@ python manage.py seed --feedback     # nạp phiếu mô phỏng vào bảng pai
 python manage.py train-model         # đọc bảng pair_feedback, đánh giá, ghi match_rf_model.pkl + model_meta.json
 ```
 
-Cổng quản trị (thẻ Tổng quan) có khối "Mô hình ghép trận": thuật toán, số phiếu và nguồn dữ liệu huấn luyện, độ chính
-xác, bảng so sánh với các cách làm đơn giản hơn và các yếu tố ảnh hưởng tới đề xuất. Giao diện người chơi chỉ hiện độ
-phù hợp của từng phòng, không hiện chi tiết kỹ thuật. Bảng đánh giá đầy đủ (kèm mốc trần) in ra bằng
-`python manage.py train-model --report`.
+Giao diện (cổng người chơi lẫn cổng quản trị) chỉ hiện kết quả: độ phù hợp của từng phòng và mục Phòng Đề Xuất, không
+hiện chi tiết kỹ thuật. Thông tin về mô hình đang chạy (nguồn dữ liệu, số phiếu, cách đánh giá, các chỉ số) xem ở
+`GET /api/v1/ml/model-info` (qua trang `/docs`, cần đăng nhập) hoặc file `backend/app/ml/model_meta.json`; bảng đánh giá
+đầy đủ in ra bằng `python manage.py train-model --report`.
 
 ### 5.3. Mô hình
 

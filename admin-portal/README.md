@@ -18,7 +18,7 @@ npx tsc --noEmit
 
 | Thẻ | Nội dung | API chính |
 | :--- | :--- | :--- |
-| Tổng quan | Số liệu toàn hệ thống, thông tin mô hình ghép cặp (nguồn dữ liệu, chỉ số đánh giá) | `/bookings/owner/stats`, `/ml/model-info` |
+| Tổng quan | Số liệu toàn hệ thống và phân bố trạng thái của đơn đặt, cụm sân, phòng đấu | `/bookings/owner/stats` |
 | Cụm sân | Duyệt / từ chối cụm sân chờ duyệt, đổi trạng thái, tạo, sửa, xóa | `/venues/admin/*` |
 | Tài khoản | Tạo, sửa, khóa / mở khóa, xóa (tài khoản đã có lịch sử thì chỉ bị khóa) | `/users/admin/users` |
 | Đơn đặt sân | Tra cứu toàn bộ đơn và tình trạng hoàn tiền, đổi trạng thái, xóa đơn | `/bookings/admin/all` |

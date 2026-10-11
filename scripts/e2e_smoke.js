@@ -388,16 +388,12 @@ async function main() {
   // ------------------------------------------------------------------ Quản trị viên
   console.log("\nQuản trị viên: cổng quản trị");
   const admin = await newSession("admin");
-  await step(admin, "tổng quan có số liệu và thẻ mô hình ghép trận ghi đúng nguồn dữ liệu", async (page) => {
+  await step(admin, "tổng quan chỉ có số liệu vận hành, không hiển thị chi tiết kỹ thuật của mô hình", async (page) => {
     await login(admin, ADMIN, "admin@example.com");
     await waitForText(page, "Thực thu toàn hệ thống");
-    await waitForText(page, "Mô hình ghép trận");
-    await waitForText(page, "Đang hoạt động");
-    await waitForText(page, "Random Forest (đang dùng)");
-    await waitForText(page, "phiếu ghép cặp");
-    // dữ liệu huấn luyện là mô phỏng thì thẻ phải ghi rõ, không gọi là khảo sát người chơi
-    if (!(await hasText(page, "Dữ liệu mô phỏng")) && !(await hasText(page, "Khảo sát người chơi"))) {
-      throw new Error("Thẻ mô hình không ghi nguồn dữ liệu huấn luyện");
+    await waitForText(page, "Phân bố trạng thái");
+    for (const jargon of ["Random Forest", "Độ chính xác", "phiếu ghép cặp"]) {
+      if (await hasText(page, jargon)) throw new Error(`Trang tổng quan còn nội dung kỹ thuật: ${jargon}`);
     }
   });
   await step(admin, "khóa rồi mở khóa một tài khoản", async (page) => {

@@ -117,24 +117,6 @@ export interface Stats {
   total_courts: number;
 }
 
-export interface ModelInfo {
-  available: boolean;
-  error?: string | null;
-  algorithm?: string;
-  features?: string[];
-  data_source?: string | null;
-  n_samples?: number | null;
-  n_raters?: number | null;
-  n_survey?: number | null; // số nhãn khảo sát thật trong dữ liệu huấn luyện
-  n_simulated?: number | null; // số phiếu mô phỏng trong dữ liệu huấn luyện
-  evaluation_protocol?: string | null;
-  metrics?: Record<string, number> | null;
-  baselines?: Record<string, Record<string, number>> | null;
-  feature_importances?: Record<string, number> | null;
-  trained_at?: string | null;
-  survey?: { labels: number; positive: number; raters: number; simulated?: number };
-}
-
 export interface AdminData {
   users: User[];
   venues: Venue[];
@@ -142,7 +124,6 @@ export interface AdminData {
   matches: Match[];
   transactions: Transaction[];
   stats: Stats | null;
-  model: ModelInfo | null;
 }
 
 export interface TabProps {

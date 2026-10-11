@@ -10,7 +10,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "PickleMatch2K - Cổng Quản Trị Hệ Thống (Admin Portal)",
-  description: "Bảng điều khiển quản trị trung tâm, giám sát sân, người dùng, doanh thu & mô hình AI.",
+  description: "Bảng điều khiển quản trị: cụm sân, tài khoản, đơn đặt sân, giao dịch và phòng đấu.",
 };
 
 export const viewport: Viewport = {

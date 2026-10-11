@@ -24,7 +24,7 @@ const TAB_TITLE: Record<Tab, string> = {
   matches: "Phòng đấu",
 };
 
-const EMPTY: AdminData = { users: [], venues: [], bookings: [], matches: [], transactions: [], stats: null, model: null };
+const EMPTY: AdminData = { users: [], venues: [], bookings: [], matches: [], transactions: [], stats: null };
 const LIVE_EVENTS = ["PAYMENT_CONFIRMED", "SLOT_BOOKED", "SLOT_RELEASED", "BOOKING_STATUS_CHANGED", "BOOKING_RESCHEDULED", "MATCH_CREATED", "MATCH_UPDATED"];
 
 export default function AdminDashboard() {
@@ -57,16 +57,15 @@ export default function AdminDashboard() {
         return fallback;
       }
     };
-    const [users, venues, bookings, matches, transactions, stats, model] = await Promise.all([
+    const [users, venues, bookings, matches, transactions, stats] = await Promise.all([
       load("tài khoản", "/users/admin/users", EMPTY.users),
       load("cụm sân", "/venues/admin/all", EMPTY.venues),
       load("đơn đặt", "/bookings/admin/all", EMPTY.bookings),
       load("phòng đấu", "/matches/admin/all", EMPTY.matches),
       load("giao dịch", "/payments/transactions", EMPTY.transactions),
       load("thống kê", "/bookings/owner/stats", EMPTY.stats),
-      load("mô hình", "/ml/model-info", EMPTY.model),
     ]);
-    setData({ users, venues, bookings, matches, transactions, stats, model });
+    setData({ users, venues, bookings, matches, transactions, stats });
     setLoading(false);
     if (failed.length > 0) notify(`Không tải được: ${failed.join(", ")}.`, "error");
   }, [notify]);

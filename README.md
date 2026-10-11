@@ -11,7 +11,7 @@ PickleMatch2K gồm một API và hai ứng dụng web phục vụ bốn vai tr�
 | **Người chơi** | `http://localhost:3000` | Tìm sân theo vị trí, xem lịch trống theo thời gian thực, đặt sân và cọc 50% qua VietQR, nhận vé QR, hủy/hoàn tiền theo chính sách, mở phòng đấu trên đơn đã cọc, tham gia các phòng đấu do mô hình đề xuất |
 | **Chủ sân** | `http://localhost:3000/owner` | Thông tin cụm sân, sân con, bảng giá theo khung giờ, giờ mở cửa, nhân viên, quầy đặt sân, doanh thu |
 | **Nhân viên** | `http://localhost:3000/staff` | Quầy đặt sân của cụm sân được phân công: tạo đơn tại quầy, tra mã/quét QR, check-in, thu tiền, dời lịch, xác nhận hoàn tiền |
-| **Quản trị viên** | `http://localhost:3001` | Duyệt cụm sân, khóa/mở tài khoản, giám sát đơn đặt, giao dịch, phòng đấu và mô hình ghép cặp |
+| **Quản trị viên** | `http://localhost:3001` | Duyệt cụm sân, khóa/mở tài khoản, giám sát đơn đặt, giao dịch và phòng đấu |
 
 Hai trọng tâm của hệ thống:
 
