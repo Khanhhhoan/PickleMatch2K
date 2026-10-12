@@ -21,8 +21,12 @@ Hai trọng tâm của hệ thống:
   những phòng có độ phù hợp cao (từ 70%).
 
 Thuật toán gợi ý cụm sân theo điểm đa tiêu chí vẫn có ở backend (`GET /api/v1/recommendations/venues`) nhưng giao diện
-không dùng; trang chủ liệt kê cụm sân từ gần đến xa. Đặc trưng, dữ liệu và kết quả đánh giá của mô hình: xem
-[docs/HUONG_DAN_KLTN.md](docs/HUONG_DAN_KLTN.md).
+không dùng; trang chủ liệt kê cụm sân từ gần đến xa.
+
+Mô hình ghép trận dùng 5 đặc trưng của một cặp người chơi: chênh lệch trình độ, khoảng cách tới sân, cùng mục đích
+chơi, hợp phong cách và chênh lệch tuổi. Đặc trưng nằm ở `backend/app/ml/features.py`, quy tắc sinh phiếu mô phỏng và
+cấu hình rừng ở `backend/app/ml/train_model.py`, kết quả đánh giá ở `backend/app/ml/model_meta.json` (in lại bằng
+`python manage.py train-model --report`).
 
 ## 2. Công nghệ
 
@@ -56,7 +60,6 @@ KLTN/
 ├── frontend/               Cổng người chơi, chủ sân, nhân viên (cổng 3000)
 ├── admin-portal/           Cổng quản trị (cổng 3001)
 ├── scripts/e2e_smoke.js    Kiểm thử đầu-cuối qua trình duyệt
-├── docs/                   Tài liệu thiết kế, tài khoản demo, mẫu Excel
 └── backups/                Bản sao lưu CSDL (không commit)
 ```
 
@@ -150,7 +153,7 @@ Sau `python manage.py seed`, mọi tài khoản dùng mật khẩu **`123456`** 
 | Nhân viên | `staff_rudal_1@pickleball.vn` | Mỗi cụm sân có 3 nhân viên |
 | Người chơi | `player@example.com`, `player01@gmail.com` … `player18@gmail.com` | 20 người chơi với trình độ, phong cách, mục đích chơi khác nhau |
 
-Danh sách đầy đủ 33 tài khoản: [docs/DANH_SACH_TAI_KHOAN_TEST.md](docs/DANH_SACH_TAI_KHOAN_TEST.md).
+Danh sách đầy đủ 33 tài khoản nằm trong `backend/scripts/seed.py` (các bảng `VENUES` và `PLAYERS`).
 
 ## 7. Thanh toán khi demo
 
@@ -179,7 +182,7 @@ Chạy trong `backend/` với môi trường ảo đã kích hoạt:
 | `python manage.py show` | Báo cáo tổng quan dữ liệu (chỉ đọc) |
 | `python manage.py seed` | Nạp dữ liệu demo vào CSDL trống (`--reset` xóa rồi nạp lại, có hỏi xác nhận; `--feedback` chỉ nạp phiếu ghép cặp mô phỏng cho mô hình, thêm `--regenerate` để thay các phiếu đó bằng bộ sinh theo quy tắc hiện tại; `--matches` nạp thêm người chơi và phòng đấu mẫu để thử ghép trận, dùng được trên CSDL đang có dữ liệu; `--activity` nạp thêm nhân viên, đơn đặt, giao dịch, phòng đấu và đánh giá mẫu cho cụm sân mới chưa có đơn nào) |
 | `python manage.py reset` | Xóa sạch, chỉ giữ danh mục tiện ích và một tài khoản quản trị (có hỏi xác nhận) |
-| `python manage.py import-excel --file x.xlsx` | Nhập cụm sân từ Excel theo mẫu trong `docs/` (`--dry-run` để kiểm tra trước) |
+| `python manage.py import-excel --file x.xlsx` | Nhập cụm sân từ file Excel; các cột cần có ghi trong `backend/scripts/README.md` (`--dry-run` để kiểm tra trước) |
 | `python manage.py backup` | Sao lưu CSDL vào `backups/` |
 | `python manage.py train-model` | Huấn luyện mô hình ghép cặp từ bảng `pair_feedback` (`--report` chỉ in bảng đánh giá) |
 | `python manage.py test` | Chạy bộ kiểm thử |
@@ -243,8 +246,7 @@ Sau khi nâng cấp:
 - Mô hình ghép cặp được huấn luyện trên **10.000 phiếu ghép cặp mô phỏng** lưu trong bảng `pair_feedback`
   (nạp bằng `python manage.py seed --feedback`), không phải khảo sát người chơi thật. Thu thập câu trả lời thật qua
   trang khảo sát (`/survey`) là hướng phát triển: các câu trả lời được lưu riêng, và khi đủ 300 nhãn thật thì lệnh
-  `python manage.py train-model` tự chuyển sang huấn luyện bằng nhãn thật. Xem phần đánh giá trong
-  `docs/HUONG_DAN_KLTN.md`.
+  `python manage.py train-model` tự chuyển sang huấn luyện bằng nhãn thật.
 - Tài liệu Swagger (`/docs`) đang mở công khai; nên tắt hoặc chặn khi triển khai thật.
 
 ## 11. Tài liệu khác
@@ -252,5 +254,3 @@ Sau khi nâng cấp:
 - [backend/README.md](backend/README.md) - cấu trúc backend, biến cấu hình, nhóm API, quy tắc nghiệp vụ
 - [backend/scripts/README.md](backend/scripts/README.md) - script quản trị, sao lưu, nhập Excel
 - [backend/tests/README.md](backend/tests/README.md) - cách tổ chức bộ kiểm thử
-- [docs/DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md) - thiết kế CSDL và các ràng buộc
-- [docs/HUONG_DAN_KLTN.md](docs/HUONG_DAN_KLTN.md) - nghiệp vụ đặt sân, mô hình ghép cặp và cách đề xuất phòng đấu

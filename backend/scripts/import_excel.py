@@ -1,7 +1,8 @@
 """
-Nhập cụm sân từ file Excel theo mẫu docs/Mau_Nhap_Du_Lieu_Pickleball.xlsx. Chỉ BỔ SUNG, không xóa dữ liệu.
+Nhập cụm sân từ một file Excel (các cột cần có: xem COLUMN_KEYWORDS bên dưới và scripts/README.md).
+Chỉ BỔ SUNG, không xóa dữ liệu.
 
-    python scripts/import_excel.py [duong_dan.xlsx] [--dry-run] [--password MAT_KHAU]
+    python scripts/import_excel.py duong_dan.xlsx [--dry-run] [--password MAT_KHAU]
 
 Mỗi dòng tạo (hoặc cập nhật theo email + tên cụm sân) tài khoản chủ sân, cụm sân, sân con,
 giờ mở cửa cả tuần và bảng giá. Dòng thiếu ô bắt buộc bị bỏ qua và được báo lại; script không tự
@@ -32,8 +33,6 @@ from app.db.database import SessionLocal  # noqa: E402
 from app.models.user import UserRole  # noqa: E402
 from app.models.venue import Amenity, Court, OperatingHour, PriceRule, Venue  # noqa: E402
 from app.services.user_service import create_user, get_user_by_email  # noqa: E402
-
-DEFAULT_TEMPLATE = BACKEND_DIR.parent / "docs" / "Mau_Nhap_Du_Lieu_Pickleball.xlsx"
 
 # từ khóa trong tên cột (chữ thường) -> tên trường
 COLUMN_KEYWORDS = [
@@ -258,7 +257,7 @@ def import_from_excel(excel_path, dry_run: bool = False, password: Optional[str]
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Nhập cụm sân từ file Excel")
-    parser.add_argument("file", nargs="?", default=str(DEFAULT_TEMPLATE), help="Đường dẫn file .xlsx")
+    parser.add_argument("file", help="Đường dẫn file .xlsx")
     parser.add_argument("--dry-run", action="store_true", help="Chỉ kiểm tra, không ghi vào CSDL")
     parser.add_argument("--password", default=None, help="Mật khẩu cho tài khoản chủ sân mới (mặc định: ngẫu nhiên)")
     args = parser.parse_args()

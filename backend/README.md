@@ -108,8 +108,8 @@ thanh toán (`UNPAID`, `PARTIALLY_PAID`, `DEPOSIT_PAID`, `FULLY_PAID`) được 
 tổng tiền. Doanh thu trên các bảng tổng quan được cộng từ sổ giao dịch.
 
 Chống đặt trùng được bảo đảm ở ba lớp: giữ chỗ tạm (Redis hoặc bộ nhớ), kiểm tra trong giao dịch, và ràng buộc của
-PostgreSQL (chỉ mục duy nhất theo khung giờ còn hiệu lực cùng ràng buộc loại trừ khoảng thời gian giao nhau) -
-xem [docs/DATABASE_DESIGN.md](../docs/DATABASE_DESIGN.md).
+PostgreSQL (chỉ mục duy nhất theo khung giờ còn hiệu lực cùng ràng buộc loại trừ khoảng thời gian giao nhau), khai báo
+trong `app/models/booking.py` và các migration ở `alembic/versions/`.
 
 Webhook SePay ghi nhận mỗi mã tham chiếu đúng một lần, kể cả khi SePay gửi lặp hoặc gửi đồng thời.
 
@@ -129,8 +129,8 @@ python manage.py train-model --report           # chỉ in bảng đánh giá, k
 
 File `.pkl` phụ thuộc đúng phiên bản scikit-learn ghim trong `requirements.txt`; đổi phiên bản thì huấn luyện lại.
 Khi thiếu hoặc không nạp được mô hình, API ghép cặp trả kết quả rỗng kèm lý do, không tự đặt ra điểm số.
-Chi tiết đặc trưng và đánh giá:
-[docs/HUONG_DAN_KLTN.md](../docs/HUONG_DAN_KLTN.md).
+Đặc trưng: `app/ml/features.py`; quy tắc sinh phiếu mô phỏng và cấu hình rừng: `app/ml/train_model.py`; kết quả đánh
+giá của mô hình đang dùng: `app/ml/model_meta.json`.
 
 ## Kiểm thử và kiểm tra mã
 

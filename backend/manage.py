@@ -150,9 +150,11 @@ def main() -> None:
 
         reset_database(assume_yes=args.yes)
     elif args.action == "import-excel":
-        from scripts.import_excel import DEFAULT_TEMPLATE, import_from_excel
+        from scripts.import_excel import import_from_excel
 
-        import_from_excel(args.file or DEFAULT_TEMPLATE, dry_run=args.dry_run)
+        if not args.file:
+            raise SystemExit("import-excel cần đường dẫn file Excel: python manage.py import-excel --file duong_dan.xlsx")
+        import_from_excel(args.file, dry_run=args.dry_run)
     elif args.action == "backup":
         from scripts.backup_db import backup
 

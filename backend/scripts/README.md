@@ -35,7 +35,7 @@ Trước khi chạy chúng trên CSDL đang dùng, hãy sao lưu: `python manage
 
 ## Dữ liệu demo (`scripts/seed.py`)
 
-- 8 tiện ích, 3 cụm sân, 33 tài khoản đúng theo `docs/DANH_SACH_TAI_KHOAN_TEST.md`, mật khẩu chung `123456`
+- 8 tiện ích, 3 cụm sân, 33 tài khoản (khai báo trong `VENUES` và `PLAYERS` của `scripts/seed.py`), mật khẩu chung `123456`
   (chỉ dành cho môi trường phát triển/bảo vệ đồ án).
 - Đơn đặt sân, giao dịch, hủy/hoàn tiền, phòng đấu và đánh giá mẫu được tạo bằng chính các hàm nghiệp vụ của
   ứng dụng, nên luôn thỏa các ràng buộc hiện hành (không đặt trùng, tiền đã trả khớp sổ giao dịch, chỉ người
@@ -71,9 +71,24 @@ Lệnh khôi phục không bao giờ ghi đè CSDL đang cấu hình, và từ c
 
 ## Nhập Excel (`scripts/import_excel.py`)
 
-Dùng mẫu `docs/Mau_Nhap_Du_Lieu_Pickleball.xlsx`. Dòng thiếu ô bắt buộc (tên, địa chỉ, sân con, email chủ sân,
-giá thường, giờ mở/đóng cửa) bị bỏ qua và được báo lại; script không tự điền dữ liệu thay thế. Tài khoản chủ sân
-mới nhận mật khẩu ngẫu nhiên, in ra một lần khi chạy xong.
+`python manage.py import-excel --file duong_dan.xlsx`. File Excel có mỗi dòng một cụm sân; cột được nhận theo từ khóa
+trong tên cột, không phân biệt hoa thường:
+
+| Tên cột chứa | Nội dung | Bắt buộc |
+| :--- | :--- | :---: |
+| `Tên cụm` | Tên cụm sân | Có |
+| `Địa chỉ` | Địa chỉ chi tiết | Có |
+| `Sân con` | Tên các sân, cách nhau bằng dấu phẩy | Có |
+| `Giá thường` | Giá mỗi giờ (VNĐ) | Có |
+| `Cao điểm`, `Cuối tuần` | Giá giờ cao điểm, giá cuối tuần; để trống thì dùng giá thường | |
+| `Mở cửa`, `Đóng cửa` | Giờ hoạt động, dạng `06:00` hoặc `5h30` | Có |
+| `Email` | Email đăng nhập của chủ sân | Có |
+| `Họ tên chủ`, `Điện thoại`, `Ngân hàng` | Thông tin chủ sân | |
+| `Tiện ích`, `Mô tả`, `Ảnh` | Tiện ích có sẵn (cách nhau bằng dấu phẩy), mô tả, link ảnh | |
+| `Maps` | Link Google Maps; toạ độ chỉ lấy được khi link có dạng `...?q=<vĩ độ>,<kinh độ>` | |
+
+Dòng thiếu ô bắt buộc bị bỏ qua và được báo lại; script không tự điền dữ liệu thay thế. Tài khoản chủ sân mới nhận
+mật khẩu ngẫu nhiên, in ra một lần khi chạy xong.
 
 ## Webhook SePay trên máy cá nhân (`scripts/sepay_tunnel.py`)
 

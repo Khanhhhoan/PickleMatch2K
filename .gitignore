@@ -57,6 +57,10 @@ pnpm-debug.log*
 # Test Results & Artifacts
 test-results/
 
+# Thesis report and Word lock files: not part of the source repository
+docs/*.docx
+~$*
+
 # Database backups & uploaded media
 backups/
 backend/uploads/**

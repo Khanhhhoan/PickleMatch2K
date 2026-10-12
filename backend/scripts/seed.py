@@ -10,7 +10,7 @@ Nạp bộ dữ liệu demo của đồ án PickleMatch2K.
     python scripts/seed.py --matches     # nạp THÊM người chơi và phòng đấu mẫu để thử chức năng ghép trận
     python scripts/seed.py --activity    # nạp THÊM hoạt động mẫu cho cụm sân mới chưa có đơn nào (--venue ID: chỉ một cụm sân)
 
-Nội dung: 8 tiện ích, 3 cụm sân, 33 tài khoản đúng như docs/DANH_SACH_TAI_KHOAN_TEST.md
+Nội dung: 8 tiện ích, 3 cụm sân, 33 tài khoản khai báo ngay trong file này (VENUES, PLAYERS)
 (1 admin, 3 chủ sân, 9 nhân viên, 20 người chơi) cùng đơn đặt sân, giao dịch, phòng đấu và đánh giá mẫu,
 và 10.000 phiếu ghép cặp mô phỏng (ghi rõ nguồn "simulated") làm dữ liệu huấn luyện mô hình.
 
@@ -1149,7 +1149,7 @@ def seed_database(if_empty: bool = False, reset: bool = False, assume_yes: bool 
               f"{db.query(Court).count()} sân | {db.query(Booking).count()} đơn đặt | "
               f"{db.query(PaymentTransaction).count()} giao dịch | {db.query(Match).count()} phòng đấu | "
               f"{db.query(Review).count()} đánh giá | {simulated:,} phiếu ghép cặp mô phỏng")
-        print(f"Mật khẩu demo dùng chung: {DEMO_PASSWORD}  (xem docs/DANH_SACH_TAI_KHOAN_TEST.md)")
+        print(f"Mật khẩu demo dùng chung: {DEMO_PASSWORD}  (các tài khoản chính: README.md, mục Tài khoản demo)")
         print("=" * 72)
         return True
     finally:
