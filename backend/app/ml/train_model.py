@@ -13,7 +13,10 @@ Nguồn dữ liệu:
 3. "synthetic_prior": dữ liệu tổng hợp sinh trong bộ nhớ từ cùng quy tắc đó, dùng khi CSDL chưa có đủ dòng.
 Dữ liệu lấy từ CSDL (1 và 2) được đánh giá bằng GroupKFold theo người trả lời, để phiếu của cùng một người không
 nằm ở cả hai phía. Với nguồn 1 và 3, độ chính xác chỉ cho biết mô hình học lại quy tắc tốt đến đâu, KHÔNG chứng
-minh chất lượng ghép cặp ngoài thực tế; quy tắc gốc (không nhiễu) luôn được in ra làm mốc trần so sánh.
+minh chất lượng ghép cặp ngoài thực tế; tỉ lệ phiếu bị nhiễu đổi nhãn được in kèm để biết độ chính xác tối đa có thể
+đạt trên dữ liệu đó.
+
+Random Forest là mô hình duy nhất của dự án: lệnh này không huấn luyện và không so sánh với mô hình nào khác.
 """
 import argparse
 import json
@@ -26,9 +29,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import sklearn
-from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, brier_score_loss, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.model_selection import GroupKFold, train_test_split
 
@@ -136,36 +137,30 @@ def build_model() -> RandomForestClassifier:
     )
 
 
-def evaluate_split(X_train, y_train, X_test, y_test, include_rule: bool) -> Dict[str, Dict[str, float]]:
-    """So sánh Random Forest với các mốc: đoán theo lớp đa số, luật ngưỡng trình độ, hồi quy logistic."""
-    report = {}
-    majority = DummyClassifier(strategy="most_frequent").fit(X_train, y_train)
-    report["Đoán theo lớp đa số"] = metrics(y_test, majority.predict(X_test))
-    report["Luật: chênh trình độ <= 0.5"] = metrics(y_test, (X_test["level_diff"] <= 0.5).astype(int))
-    logistic = LogisticRegression(max_iter=1000).fit(X_train, y_train)
-    report["Hồi quy logistic"] = metrics(y_test, logistic.predict(X_test), logistic.predict_proba(X_test)[:, 1])
+def evaluate_split(X_train, y_train, X_test, y_test) -> Dict[str, float]:
+    """Huấn luyện Random Forest trên phần huấn luyện rồi đo trên phần kiểm tra."""
     forest = build_model().fit(X_train, y_train)
-    report["Random Forest"] = metrics(y_test, forest.predict(X_test), forest.predict_proba(X_test)[:, 1])
-    if include_rule:
-        rule = (synthetic_rule_score(X_test) >= 0.5).astype(int)
-        report["Quy tắc sinh nhãn (không nhiễu, mốc trần)"] = metrics(y_test, rule)
-    return report
+    return metrics(y_test, forest.predict(X_test), forest.predict_proba(X_test)[:, 1])
 
 
-def average_reports(reports) -> Dict[str, Dict[str, float]]:
-    merged: Dict[str, Dict[str, float]] = {}
-    for name in reports[0]:
-        keys = reports[0][name].keys()
-        merged[name] = {k: round(float(np.mean([r[name][k] for r in reports if k in r[name]])), 4) for k in keys}
-    return merged
+def average_metrics(folds) -> Dict[str, float]:
+    return {key: round(float(np.mean([fold[key] for fold in folds if key in fold])), 4) for key in folds[0]}
 
 
-def print_report(report: Dict[str, Dict[str, float]]) -> None:
-    print(f"{'Phương pháp':<44}{'Accuracy':>9}{'Precision':>10}{'Recall':>8}{'F1':>8}{'ROC-AUC':>9}")
-    print("-" * 88)
-    for name, m in report.items():
-        auc = f"{m['roc_auc']:.4f}" if "roc_auc" in m else "   -"
-        print(f"{name:<44}{m['accuracy']:>9.4f}{m['precision']:>10.4f}{m['recall']:>8.4f}{m['f1']:>8.4f}{auc:>9}")
+def label_noise_rate(X: pd.DataFrame, y) -> float:
+    """
+    Tỉ lệ phiếu mô phỏng có nhãn khác với quy tắc sinh nhãn khi chưa cộng nhiễu. Đây là đặc điểm của DỮ LIỆU: phần
+    dao động ngẫu nhiên này không học được, nên độ chính xác tối đa có thể đạt trên dữ liệu đó là 1 - tỉ lệ này.
+    """
+    return round(float(np.mean((synthetic_rule_score(X) >= 0.5).astype(int) != np.asarray(y, dtype=int))), 4)
+
+
+def print_report(result: Dict[str, float]) -> None:
+    columns = [("Accuracy", "accuracy"), ("Precision", "precision"), ("Recall", "recall"), ("F1", "f1"),
+               ("ROC-AUC", "roc_auc"), ("Brier", "brier")]
+    print(f"{'Mô hình':<16}" + "".join(f"{title:>10}" for title, _ in columns))
+    print("-" * 76)
+    print(f"{'Random Forest':<16}" + "".join(f"{result[key]:>10.4f}" if key in result else f"{'-':>10}" for _, key in columns))
 
 
 # ---------------------------------------------------------------------------
@@ -216,18 +211,21 @@ def train(report_only: bool = False, force_synthetic: bool = False) -> dict:
         folds = GroupKFold(n_splits=min(5, n_groups)) if n_groups >= 2 else None
         if folds is None:
             raise SystemExit("Cần nhãn từ ít nhất 2 người trả lời để đánh giá theo nhóm.")
-        report = average_reports([
-            evaluate_split(X.iloc[tr], y.iloc[tr], X.iloc[te], y.iloc[te], include_rule=source == "simulated")
-            for tr, te in folds.split(X, y, groups)
+        result = average_metrics([
+            evaluate_split(X.iloc[tr], y.iloc[tr], X.iloc[te], y.iloc[te]) for tr, te in folds.split(X, y, groups)
         ])
         protocol = f"GroupKFold {folds.n_splits} phần theo người trả lời ({n_groups} người)"
     else:
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=RANDOM_STATE, stratify=y)
-        report = evaluate_split(X_train, y_train, X_test, y_test, include_rule=True)
+        result = evaluate_split(X_train, y_train, X_test, y_test)
         protocol = "Tách ngẫu nhiên 80/20 có phân tầng"
 
     print(f"Cách đánh giá: {protocol}\n")
-    print_report(report)
+    print_report(result)
+    noise = label_noise_rate(X, y) if source != "survey" else None   # nhãn thật không có quy tắc nào để đối chiếu
+    if noise is not None:
+        print(f"\nNhiễu của dữ liệu: {noise:.1%} số phiếu có câu trả lời khác với quy tắc sinh nhãn, "
+              f"nên độ chính xác tối đa có thể đạt trên dữ liệu này là {1 - noise:.1%}.")
 
     model = build_model().fit(X, y)
     importances = {f: round(float(v), 4) for f, v in zip(FEATURE_NAMES, model.feature_importances_)}
@@ -243,8 +241,8 @@ def train(report_only: bool = False, force_synthetic: bool = False) -> dict:
         "n_simulated": int(data.attrs.get("n_simulated", 0)),
         "positive_rate": round(float(y.mean()), 4),
         "evaluation_protocol": protocol,
-        "metrics": report["Random Forest"],
-        "baselines": {k: v for k, v in report.items() if k != "Random Forest"},
+        "metrics": result,
+        "label_noise_rate": noise,
         "feature_importances": importances,
         "sklearn_version": sklearn.__version__,
         "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),

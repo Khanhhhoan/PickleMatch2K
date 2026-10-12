@@ -21,34 +21,7 @@
     "roc_auc": 0.9555,
     "brier": 0.0827
   },
-  "baselines": {
-    "Đoán theo lớp đa số": {
-      "accuracy": 0.609,
-      "precision": 0.0,
-      "recall": 0.0,
-      "f1": 0.0
-    },
-    "Luật: chênh trình độ <= 0.5": {
-      "accuracy": 0.8613,
-      "precision": 0.8154,
-      "recall": 0.8338,
-      "f1": 0.824
-    },
-    "Hồi quy logistic": {
-      "accuracy": 0.8783,
-      "precision": 0.8509,
-      "recall": 0.8344,
-      "f1": 0.8424,
-      "roc_auc": 0.9505,
-      "brier": 0.0862
-    },
-    "Quy tắc sinh nhãn (không nhiễu, mốc trần)": {
-      "accuracy": 0.8827,
-      "precision": 0.8537,
-      "recall": 0.844,
-      "f1": 0.8486
-    }
-  },
+  "label_noise_rate": 0.1173,
   "feature_importances": {
     "level_diff": 0.8251,
     "distance_km": 0.1303,
@@ -56,5 +29,5 @@
     "style_match": 0.0136
   },
   "sklearn_version": "1.9.0",
-  "trained_at": "2026-10-12T05:03:29+00:00"
+  "trained_at": "2026-10-12T05:24:40+00:00"
 }

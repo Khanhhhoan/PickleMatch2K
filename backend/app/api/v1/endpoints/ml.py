@@ -14,8 +14,8 @@ router = APIRouter()
 @router.get("/model-info")
 def model_info(db: Session = Depends(deps.get_db), current_user: User = Depends(deps.get_current_active_user)):
     """
-    Trạng thái mô hình ghép cặp: thuật toán, đặc trưng, nguồn dữ liệu huấn luyện (khảo sát thật hay
-    dữ liệu tổng hợp khởi tạo), cách đánh giá, các chỉ số kèm mốc so sánh và ngưỡng đề xuất phòng đấu.
+    Trạng thái mô hình ghép cặp (Random Forest): đặc trưng, nguồn dữ liệu huấn luyện (phiếu mô phỏng, khảo sát thật
+    hay dữ liệu tổng hợp khởi tạo), cách đánh giá, các chỉ số và ngưỡng đề xuất phòng đấu.
     Người chơi nhận thêm danh sách mục hồ sơ còn thiếu để mô hình chấm điểm chính xác.
     """
     info = ml_service.match_predictor.info()

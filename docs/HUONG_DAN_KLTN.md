@@ -221,29 +221,41 @@ Xác suất của mô hình được hiện cho người chơi dưới dạng đ
 (cân lại làm xác suất lệch khỏi tỉ lệ "muốn ghép" có thật trong dữ liệu). Mô hình được lưu thành `match_rf_model.pkl`,
 kèm `model_meta.json` ghi nguồn dữ liệu, cách đánh giá và các chỉ số.
 
+Cách mô hình tính độ phù hợp của một cặp:
+
+1. Mỗi cây trong 200 cây được dựng từ một mẫu ngẫu nhiên (lấy có hoàn lại) của các phiếu, và ở mỗi nút chỉ xét ngẫu
+   nhiên một phần đặc trưng, nên các cây khác nhau.
+2. Một cây là chuỗi câu hỏi dạng ngưỡng trên 4 đặc trưng (ví dụ "chênh trình độ ≤ 0.75?", "sân cách ≤ 8.25 km?"). Đi hết
+   các câu hỏi, cặp đang xét rơi vào một lá; lá ghi tỉ lệ phiếu "muốn ghép" trong nhóm phiếu huấn luyện giống cặp đó.
+3. Rừng lấy trung bình tỉ lệ của 200 lá (`predict_proba`). Trung bình đó nhân 100 là độ phù hợp của cặp.
+
+Rừng đang dùng: mỗi cây có 35 đến 50 lá (trung bình 42), sâu tối đa 8 tầng, mỗi nút xét 2 trong 4 đặc trưng. Câu hỏi
+đầu tiên của 110 cây là về chênh lệch trình độ, của 65 cây về khoảng cách, của 25 cây về mục đích chơi.
+
+Random Forest là mô hình duy nhất của dự án: hệ thống không huấn luyện, không phục vụ và không so sánh với mô hình nào
+khác; khi thiếu file mô hình, API trả kết quả rỗng chứ không thay bằng công thức khác.
+
 ### 5.4. Kết quả đánh giá hiện tại
 
-3.000 phiếu mô phỏng của 20 tài khoản demo, tỷ lệ nhãn "muốn ghép" 39,1%, GroupKFold 5 phần theo người trả lời (số
-trong bảng là trung bình của 5 phần):
+3.000 phiếu mô phỏng của 20 tài khoản demo, tỷ lệ nhãn "muốn ghép" 39,1%. Random Forest được đánh giá bằng GroupKFold
+5 phần theo người trả lời: mỗi lượt học từ phiếu của 16 người và đo trên phiếu của 4 người còn lại (số trong bảng là
+trung bình của 5 lượt):
 
-| Mô hình | Accuracy | Precision | Recall | F1 | ROC-AUC |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| Đoán theo lớp đa số | 0.6090 | 0.0000 | 0.0000 | 0.0000 | - |
-| Luật một ngưỡng: chênh trình độ ≤ 0.5 | 0.8613 | 0.8154 | 0.8338 | 0.8240 | - |
-| Hồi quy logistic | 0.8783 | 0.8509 | 0.8344 | 0.8424 | 0.9505 |
-| **Random Forest** | **0.8796** | **0.8410** | **0.8534** | **0.8467** | **0.9555** |
-| Quy tắc sinh nhãn, không nhiễu (mốc trần) | 0.8827 | 0.8537 | 0.8440 | 0.8486 | - |
+| Chỉ số | Random Forest | Ý nghĩa |
+| :--- | :---: | :--- |
+| Accuracy | 0.8796 | Tỉ lệ phiếu mô hình đoán đúng câu trả lời |
+| Precision | 0.8410 | Trong các cặp mô hình cho là hợp, tỉ lệ cặp được trả lời "muốn ghép" |
+| Recall | 0.8534 | Trong các cặp được trả lời "muốn ghép", tỉ lệ cặp mô hình nhận ra |
+| F1 | 0.8467 | Trung bình điều hòa của precision và recall |
+| ROC-AUC | 0.9555 | Khả năng xếp cặp hợp lên trên cặp không hợp (1.0 là xếp đúng hoàn toàn) |
 
 Mức đóng góp của đặc trưng: `level_diff` 0.825, `distance_km` 0.130, `purpose_match` 0.031, `style_match` 0.014.
 
-**Cách đọc các con số này.** Nhãn mô phỏng được sinh từ một quy tắc cộng nhiễu, nên:
+**Cách đọc các con số này.**
 
-- Mốc trần 88,27% là độ chính xác của chính quy tắc sinh nhãn; phần còn lại là dao động giữa những người trả lời mô
-  phỏng, không mô hình nào học được.
-- Random Forest đạt 87,96%, tức gần như học lại trọn quy tắc và cao hơn luật một ngưỡng (86,13%).
-- Random Forest nhỉnh hơn hồi quy logistic ở accuracy (87,96% so với 87,83%), recall, F1 và ROC-AUC (0,9555 so với
-  0,9505), còn precision thấp hơn một chút. Với bốn đặc trưng và một quy tắc sinh nhãn dạng cộng điểm, hai mô hình cho
-  kết quả gần nhau là điều dễ hiểu.
+- Câu trả lời mô phỏng có dao động ngẫu nhiên: 11,7% số phiếu có nhãn khác với quy tắc sinh nhãn. Phần dao động này
+  không học được, nên độ chính xác tối đa có thể đạt trên bộ dữ liệu này là 88,3%. Random Forest đạt 87,96%, tức gần
+  như học lại trọn quy tắc.
 - Các con số cho thấy quy trình dữ liệu → huấn luyện → đánh giá → phục vụ hoạt động đúng. Chúng **không** nói lên mức
   độ mô hình dự đoán đúng mong muốn của người chơi thật; kết luận đó cần nhãn khảo sát thật.
 
@@ -290,14 +302,14 @@ kết quả rỗng kèm lý do, không tự đặt ra điểm số.
 | **Kiểm thử đồng thời** | Nhiều luồng thật cùng tranh một khung giờ, cùng gửi một giao dịch, cùng vào chỗ cuối của một phòng đấu; kiểm tra chỉ một luồng thành công và dữ liệu không sai lệch |
 | **Kiểm thử phụ thuộc thời gian** | Đồng hồ nghiệp vụ được điều khiển trong test để kiểm tra hạn cọc 15 phút và các mốc hủy 12 giờ, 6 giờ |
 | **Kiểm thử đầu-cuối qua trình duyệt** | `scripts/e2e_smoke.js`: 22 bước cho cả bốn vai trò, từ đặt sân, giả lập cọc, vé QR, phòng đấu do mô hình đề xuất, hủy và hoàn tiền tới quầy của nhân viên và cổng quản trị |
-| **Đánh giá mô hình** | So sánh Random Forest với các mốc so sánh ở mục 5.4 |
+| **Đánh giá mô hình** | Random Forest được đánh giá bằng GroupKFold theo người trả lời; kết quả ở mục 5.4 |
 
 Lệnh chạy và cách tổ chức: [README gốc](../README.md) và [backend/tests/README.md](../backend/tests/README.md).
 
 ## 7. Giới hạn và hướng phát triển
 
-- Thu thập câu trả lời của người chơi thật (trang `/survey` đã sẵn sàng) rồi huấn luyện và đánh giá lại mô hình ghép cặp
-  trên dữ liệu đó; khi ấy mới so sánh được với luật đơn giản một cách có ý nghĩa.
+- Thu thập câu trả lời của người chơi thật (trang `/survey` đã sẵn sàng) rồi huấn luyện và đánh giá lại Random Forest
+  trên dữ liệu đó.
 - Ngưỡng đề xuất phòng (70%) đang cố định; có thể hiệu chỉnh khi có nhãn thật.
 - Trình độ DUPR do người chơi tự khai, chưa được xác thực.
 - Triển khai nhiều tiến trình cần chuyển kênh WebSocket và tác vụ nền sang hạ tầng dùng chung (ví dụ Redis pub/sub).

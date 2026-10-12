@@ -83,7 +83,7 @@ class MatchPredictor:
             "n_simulated": self.meta.get("n_simulated"),
             "evaluation_protocol": self.meta.get("evaluation_protocol"),
             "metrics": self.meta.get("metrics"),
-            "baselines": self.meta.get("baselines"),
+            "label_noise_rate": self.meta.get("label_noise_rate"),
             "feature_importances": self.meta.get("feature_importances"),
             "trained_at": self.meta.get("trained_at"),
             "recommend_threshold": RECOMMEND_MIN_COMPATIBILITY,

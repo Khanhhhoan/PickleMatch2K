@@ -16,7 +16,6 @@ from app.services.ml_service import match_predictor
 from helpers import auth, make_user
 
 ML = "/api/v1/ml"
-RULE_CEILING = "Quy tắc sinh nhãn (không nhiễu, mốc trần)"
 
 
 def view(**kwargs) -> ProfileView:
@@ -82,17 +81,34 @@ def test_simulated_respondents_find_a_good_pair_likely_but_not_certain():
     assert 0.90 < same_level < 0.97 and 0.70 < half_level_apart < 0.90 and far_apart < 0.01
 
 
-def test_evaluation_reports_baselines_next_to_the_forest():
+def test_evaluation_measures_the_random_forest_against_what_the_data_allows():
     data = train_model.generate_synthetic_pairs(6000, seed=1)
     train, test = data.iloc[:4800], data.iloc[4800:]
-    report = train_model.evaluate_split(
-        train[FEATURE_NAMES], train["label"], test[FEATURE_NAMES], test["label"], include_rule=True)
+    result = train_model.evaluate_split(train[FEATURE_NAMES], train["label"], test[FEATURE_NAMES], test["label"])
+    assert set(result) == {"accuracy", "precision", "recall", "f1", "roc_auc", "brier"}
 
-    forest = report["Random Forest"]["accuracy"]
-    assert forest > report["Đoán theo lớp đa số"]["accuracy"] + 0.2
-    assert forest >= report["Luật: chênh trình độ <= 0.5"]["accuracy"]
-    assert forest <= report[RULE_CEILING]["accuracy"] + 0.02   # mô hình không thể giỏi hơn chính quy tắc sinh ra nhãn
-    assert {"roc_auc", "brier"} <= set(report["Random Forest"])
+    noise = train_model.label_noise_rate(test[FEATURE_NAMES], test["label"])   # phần câu trả lời bị nhiễu làm đổi
+    assert 0.05 < noise < 0.25
+    assert 1 - noise - 0.05 < result["accuracy"] <= 1 - noise + 0.02           # sát mức tối đa của dữ liệu, không vượt
+    one_answer_for_all = max(test["label"].mean(), 1 - test["label"].mean())
+    assert result["accuracy"] > one_answer_for_all + 0.2                       # hơn hẳn việc trả lời một đáp án cho mọi cặp
+
+
+def test_random_forest_is_the_only_model_the_project_trains_or_serves():
+    """Dự án chỉ áp dụng Random Forest: backend không nạp bộ ước lượng scikit-learn nào khác."""
+    import re
+    from pathlib import Path
+
+    backend = Path(train_model.__file__).resolve().parents[2]
+    modules, from_ensemble = set(), set()
+    for path in [*(backend / "app").rglob("*.py"), *(backend / "scripts").rglob("*.py"), backend / "manage.py"]:
+        source = path.read_text(encoding="utf-8")
+        modules |= set(re.findall(r"^\s*(?:from|import) (sklearn[\w.]*)", source, flags=re.M))
+        from_ensemble |= set(re.findall(r"^\s*from sklearn\.ensemble import (.+)$", source, flags=re.M))
+    # sklearn.metrics và sklearn.model_selection chỉ đo lường và chia dữ liệu, không phải mô hình
+    assert modules == {"sklearn", "sklearn.ensemble", "sklearn.metrics", "sklearn.model_selection"}
+    assert from_ensemble == {"RandomForestClassifier"}
+    assert type(match_predictor.model).__name__ == "RandomForestClassifier"
 
 
 def test_training_prefers_real_survey_labels_and_evaluates_by_rater(db, monkeypatch):
@@ -107,12 +123,13 @@ def test_training_prefers_real_survey_labels_and_evaluates_by_rater(db, monkeypa
 
     meta = train_model.train(report_only=True)
     assert (meta["data_source"], meta["n_samples"], meta["n_raters"]) == ("survey", 360, 6)
-    assert "GroupKFold" in meta["evaluation_protocol"] and RULE_CEILING not in meta["baselines"]
+    assert "GroupKFold" in meta["evaluation_protocol"]
+    assert meta["label_noise_rate"] is None and "baselines" not in meta     # nhãn thật: không có quy tắc để đối chiếu
 
     monkeypatch.setattr(train_model, "SYNTHETIC_SAMPLES", 4000)
     forced = train_model.train(report_only=True, force_synthetic=True)
     assert (forced["data_source"], forced["n_samples"], forced["n_raters"]) == ("synthetic_prior", 4000, 0)
-    assert RULE_CEILING in forced["baselines"]
+    assert 0 < forced["label_noise_rate"] < 0.3
 
 
 def test_too_few_survey_labels_fall_back_to_the_synthetic_prior(db, monkeypatch):
@@ -173,7 +190,8 @@ def test_training_reads_simulated_feedback_from_the_database_and_says_so(db):
     meta = train_model.train(report_only=True)
     assert (meta["data_source"], meta["n_samples"], meta["n_raters"]) == ("simulated", 360, 3)
     assert (meta["n_simulated"], meta["n_survey"]) == (360, 0)
-    assert "GroupKFold" in meta["evaluation_protocol"] and RULE_CEILING in meta["baselines"]
+    assert "GroupKFold" in meta["evaluation_protocol"] and 0 < meta["label_noise_rate"] < 0.3
+    assert set(meta["metrics"]) == {"accuracy", "precision", "recall", "f1", "roc_auc", "brier"} and "baselines" not in meta
 
 
 def test_a_few_survey_answers_are_kept_apart_until_there_are_enough_of_them(db):
@@ -241,7 +259,8 @@ def test_shipped_model_matches_the_feature_module_and_its_metadata():
     info = match_predictor.info()
     assert info["features"] == FEATURE_NAMES and list(match_predictor.model.feature_names_in_) == FEATURE_NAMES
     assert info["data_source"] in ("synthetic_prior", "simulated", "survey")
-    assert info["metrics"]["accuracy"] > 0.8 and info["baselines"]
+    assert info["algorithm"] == "RandomForestClassifier" and info["metrics"]["accuracy"] > 0.8
+    assert "baselines" not in info and 0 < info["label_noise_rate"] < 0.3
 
 
 def test_shipped_model_never_scores_a_pair_as_certain():
