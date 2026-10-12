@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet } from "@/lib/api";
 import { useAdminAuth } from "@/lib/auth-context";
@@ -42,10 +42,19 @@ export default function AdminDashboard() {
     if (!authLoading && !isAdmin) router.replace("/login");
   }, [authLoading, isAdmin, router]);
 
+  // Mỗi thông báo có hẹn giờ riêng: thông báo mới hủy hẹn giờ của thông báo trước, nếu không nó sẽ bị tắt sớm
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notify = useCallback((message: string, type: "success" | "error" = "success") => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
+    toastTimer.current = setTimeout(() => setToast(null), type === "error" ? 7000 : 4000);
   }, []);
+  useEffect(
+    () => () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    },
+    [],
+  );
 
   /** Tải mọi dữ liệu quản trị; phần nào lỗi thì báo rõ thay vì âm thầm hiển thị danh sách rỗng. */
   const loadData = useCallback(async () => {
