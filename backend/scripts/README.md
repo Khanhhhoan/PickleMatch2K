@@ -13,6 +13,7 @@ trong file `.env`; schema luôn được tạo/cập nhật bằng migration Ale
 | `python manage.py seed --feedback` | Chỉ nạp 3.000 phiếu ghép cặp **mô phỏng** vào bảng `pair_feedback` (nguồn `simulated`) để huấn luyện mô hình từ CSDL; bỏ qua nếu đã có | Không |
 | `python manage.py seed --preferences` | Chỉ bổ sung mục đích chơi mẫu cho tài khoản demo đang để trống | Không |
 | `python manage.py seed --matches` | Nạp **thêm** 12 người chơi mẫu và 10 phòng đấu cho 6 ngày tới để thử chức năng ghép trận; chạy lại được, không sửa dữ liệu đã có | Không |
+| `python manage.py seed --activity` | Nạp **thêm** hoạt động mẫu (nhân viên, đơn đặt, giao dịch, phòng đấu, đánh giá) cho cụm sân mới chưa có đơn nào; `--venue ID` để chỉ nạp một cụm sân; không sửa dữ liệu đã có | Không |
 | `python manage.py seed --reset` | Xóa toàn bộ rồi nạp lại dữ liệu demo | **Có** |
 | `python manage.py reset` | Xóa toàn bộ, chỉ giữ danh mục tiện ích và một tài khoản Admin | **Có** |
 | `python manage.py import-excel --file x.xlsx` | Nhập thêm cụm sân từ Excel (thêm `--dry-run` để kiểm tra trước) | Không |
@@ -47,6 +48,14 @@ Trước khi chạy chúng trên CSDL đang dùng, hãy sao lưu: `python manage
   người, phòng 2 người, phòng 6 người, hai phòng trùng giờ). Mỗi phòng gắn với một đơn đã cọc của chủ phòng; khoản
   cọc ghi sổ với nhãn "Dữ liệu mẫu" và mã tham chiếu `DEMO-PK2K…` để phân biệt với tiền thật. Lệnh không đụng tới
   tài khoản hay đơn có sẵn. Phòng nào đã nạp thì bỏ qua, nên có thể chạy lại khi các phòng cũ đã qua ngày.
+- `seed --activity` dành cho cụm sân vừa thêm vào CSDL đang dùng (ví dụ bằng `import-excel`), khi cụm sân đó chưa có
+  đơn nào: tạo hai tài khoản nhân viên `staff_<tên>_1@pickleball.vn`, `staff_<tên>_2@pickleball.vn` (`<tên>` lấy từ
+  email chủ sân `owner_<tên>@…`, mật khẩu `123456`) nếu cụm sân chưa có nhân viên, rồi dựng 14 đơn của các tài khoản
+  người chơi demo có sẵn: 6 đơn đã chơi xong trong tuần qua (5 đơn kèm đánh giá, 1 khách vãng lai trả tiền mặt), 1 đơn
+  không đến, 1 đơn hủy đã hoàn cọc, 1 đơn tối nay để thử nhận sân, 2 đơn có mở phòng đấu, 1 đơn giữ sân qua điện
+  thoại, 1 đơn hủy đang chờ hoàn cọc và 1 đơn đã cọc. Tiền cọc chuyển khoản ghi sổ với nhãn "Dữ liệu mẫu" và mã
+  `DEMO-PK2K…`; các dòng thu tại quầy và hoàn tiền có ghi chú "(dữ liệu mẫu)". Cả lượt nạp nằm trong một giao dịch
+  CSDL: có lỗi giữa chừng thì không ghi gì. Cụm sân đã có đơn thì bỏ qua, nên chạy lại không nạp trùng.
 
 ## Sao lưu và khôi phục (`scripts/backup_db.py`)
 

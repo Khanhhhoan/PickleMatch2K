@@ -7,6 +7,7 @@ Nạp bộ dữ liệu demo của đồ án PickleMatch2K.
     python scripts/seed.py --preferences # chỉ bổ sung mục đích chơi mẫu cho các tài khoản demo đang để trống
     python scripts/seed.py --feedback    # chỉ nạp phiếu ghép cặp MÔ PHỎNG để huấn luyện mô hình từ CSDL
     python scripts/seed.py --matches     # nạp THÊM người chơi và phòng đấu mẫu để thử chức năng ghép trận
+    python scripts/seed.py --activity    # nạp THÊM hoạt động mẫu cho cụm sân mới chưa có đơn nào (--venue ID: chỉ một cụm sân)
 
 Nội dung: 8 tiện ích, 3 cụm sân, 33 tài khoản đúng như docs/DANH_SACH_TAI_KHOAN_TEST.md
 (1 admin, 3 chủ sân, 9 nhân viên, 20 người chơi) cùng đơn đặt sân, giao dịch, phòng đấu và đánh giá mẫu,
@@ -36,13 +37,13 @@ from fastapi import HTTPException  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.core.config import settings  # noqa: E402
-from app.db.database import SessionLocal  # noqa: E402
+from app.db.database import SessionLocal, engine  # noqa: E402
 from app.ml.features import FEATURE_NAMES, ProfileView, canonical_style, pair_features  # noqa: E402
-from app.models.booking import Booking, BookingSource  # noqa: E402
+from app.models.booking import Booking, BookingDetail, BookingSource  # noqa: E402
 from app.models.match import Match, MatchParticipant  # noqa: E402
 from app.models.ml import SIMULATED_SOURCE, PairFeedback  # noqa: E402
 from app.models.payment import PaymentKind, PaymentMethod, PaymentTransaction  # noqa: E402
-from app.models.user import User, UserRole  # noqa: E402
+from app.models.user import StaffProfile, User, UserRole  # noqa: E402
 from app.models.venue import Amenity, Court, OperatingHour, PriceRule, Review, Venue  # noqa: E402
 from app.schemas.match import MatchCreate  # noqa: E402
 from app.services import booking_service, ledger, match_service, ml_service  # noqa: E402
@@ -761,6 +762,339 @@ def report_match_demo(result: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Hoạt động mẫu cho một cụm sân mới (python manage.py seed --activity [--venue ID])
+# ---------------------------------------------------------------------------
+# Cụm sân nhập thêm (ví dụ bằng import-excel) chưa có nhân viên, đơn đặt, giao dịch, phòng đấu hay đánh giá nào.
+# Lệnh này nạp THÊM một bộ hoạt động mẫu cho cụm sân đó bằng chính các hàm nghiệp vụ của ứng dụng, dùng các tài
+# khoản người chơi demo đang có. Cụm sân đã có đơn thì bỏ qua, nên chạy lại không nạp trùng. Tiền cọc chuyển khoản
+# mang nhãn "Dữ liệu mẫu", các dòng sổ còn lại được ghi chú "(dữ liệu mẫu)", để phân biệt với tiền thật.
+DEMO_NOTE = "(dữ liệu mẫu)"
+DEMO_STAFF_NAMES = ("Trương Minh Khoa", "Lý Thanh Tâm")
+
+
+@dataclass(frozen=True)
+class VisitSeed:
+    player: str                    # email người chơi demo; để trống với khách đặt tại quầy
+    days: int                      # ngày chơi so với hôm nay (âm = đã qua)
+    hour: int                      # khung đầu tiên trên lưới của cụm sân không sớm hơn giờ này
+    hours: int = 1                 # số khung 60 phút liên tiếp
+    rating: Optional[float] = None
+    comment: str = ""
+
+
+@dataclass(frozen=True)
+class VenueRoomSeed:
+    visit: VisitSeed               # đơn đặt sân của chủ phòng
+    players: int
+    purpose: str
+    notes: str
+    joiners: Tuple[str, ...] = ()
+
+
+# Mỗi lượt dùng một khoảng giờ riêng trong ngày, nên cụm sân chỉ có một sân cũng không trùng lịch. Người chơi và ngày
+# mở phòng được chọn để không đụng phòng đấu của bộ dữ liệu demo gốc (một người không thể ở hai phòng trùng giờ).
+VENUE_PAST_VISITS = [
+    VisitSeed("player04@gmail.com", -6, 6, 1, 5.0, "Buổi sáng sân thoáng, dễ đặt khung sớm, mặt sân bám tốt."),
+    VisitSeed("player11@gmail.com", -5, 18, 2, 4.0, "Đánh buổi tối ổn, sân đủ sáng. Giờ cao điểm hơi đông."),
+    VisitSeed("player16@gmail.com", -4, 17, 1, 5.0, "Giá hợp lý so với khu vực, đặt sân trên ứng dụng nhanh."),
+    VisitSeed("player06@gmail.com", -3, 15, 1, 4.0, "Nhân viên hướng dẫn nhiệt tình, nhận sân đúng giờ."),
+    VisitSeed("player18@gmail.com", -2, 18, 2, 5.0, "Nhận sân nhanh, nhóm mình sẽ quay lại."),
+]
+VENUE_NO_SHOW = VisitSeed("player08@gmail.com", -2, 20)
+VENUE_REFUNDED = VisitSeed("player15@gmail.com", -1, 18)
+VENUE_WALK_IN = VisitSeed("", -1, 9)
+VENUE_TONIGHT = VisitSeed("player07@gmail.com", 0, 20)
+VENUE_PHONE_HOLD = VisitSeed("", 1, 10)
+VENUE_ROOMS = [
+    VenueRoomSeed(VisitSeed("player13@gmail.com", 1, 6), 2, "practice",
+                  "Tập cơ bản buổi sáng: dink và trả giao bóng, cần một bạn tập cùng."),
+    VenueRoomSeed(VisitSeed("player12@gmail.com", 2, 18, 2), 4, "recreational",
+                  "Giao lưu sau giờ làm, chia đều tiền sân.", ("player05@gmail.com",)),
+]
+VENUE_REFUND_PENDING = VisitSeed("player17@gmail.com", 2, 20)
+VENUE_CONFIRMED = VisitSeed("player14@gmail.com", 3, 19)
+
+
+class _VenueActivity:
+    """Kịch bản hoạt động mẫu của MỘT cụm sân; phần đã qua được dựng với đồng hồ nghiệp vụ tua lùi."""
+
+    def __init__(self, db: Session, venue: Venue):
+        self.db, self.venue, self.today = db, venue, today_vn()
+        self.courts = sorted((c for c in venue.courts if c.status == "ACTIVE"), key=lambda c: c.id)
+        self.bookings: List[Booking] = []
+        self.summary: dict = {"venue": venue.name, "owner": venue.owner.email if venue.owner else None,
+                              "staff": [], "rooms": 0, "reviews": 0, "skipped": []}
+        self._moment: Optional[datetime] = None
+
+    # -- đồng hồ nghiệp vụ ---------------------------------------------------
+    def at(self, moment: datetime) -> None:
+        self._moment = moment
+        timeutils.set_clock(lambda: self._moment)
+
+    def now(self) -> None:
+        self._moment = None
+        timeutils.set_clock(None)
+
+    def _stamp(self, booking: Booking) -> None:
+        """Ghi thời điểm mô phỏng vào created_at của đơn và các dòng sổ (CSDL mặc định ghi giờ thật lúc chạy lệnh)."""
+        if self._moment is None:
+            return
+        if booking.created_at is None or booking.created_at > self._moment:
+            booking.created_at = self._moment
+        for txn in self.db.query(PaymentTransaction).filter(PaymentTransaction.booking_id == booking.id):
+            if txn.created_at is None or txn.created_at > self._moment:
+                txn.created_at = txn.transaction_date = self._moment
+        self.db.commit()
+
+    # -- tiện ích --------------------------------------------------------------
+    def _book(self, court: int, visit: VisitSeed, *, booked_days_before: int = 1, **desk) -> Optional[Booking]:
+        """Tạo đơn cho một lượt chơi; không tạo được thì ghi lý do vào báo cáo và trả về None."""
+        day = self.today + timedelta(days=visit.days)
+        label = f"đơn ngày {day:%d/%m} lúc {visit.hour}h"
+        options = _court_slot_options(self.venue, day, visit.hour, visit.hours)
+        if not options:
+            self.summary["skipped"].append(f"{label}: cụm sân không mở cửa khung giờ này.")
+            return None
+        slots = options[court % len(options)]
+        user = desk.pop("user", None) or self.db.query(User).filter(User.email == visit.player).first()
+        if user is None:
+            self.summary["skipped"].append(f"{label}: chưa có tài khoản {visit.player}.")
+            return None
+        if visit.days < 0:   # khách tại quầy đến trước giờ chơi 10 phút, khách online đặt từ (các) hôm trước
+            start = vn_datetime(day, slots[0].start_time)
+            self.at(start - timedelta(minutes=10) if desk else vn_datetime(day - timedelta(days=booked_days_before), time(9, 0)))
+        try:
+            booking = booking_service.create_booking(self.db, user=user, slots=slots, **desk)
+        except HTTPException as exc:
+            self.db.rollback()
+            self.summary["skipped"].append(f"{label}: {exc.detail}")
+            return None
+        self._stamp(booking)
+        self.bookings.append(booking)
+        return booking
+
+    def _pay_deposit(self, booking: Booking) -> Booking:
+        """Ghi sổ khoản cọc chuyển khoản của đơn, mang nhãn dữ liệu mẫu."""
+        if self._moment is not None:
+            self.at(self._moment + timedelta(minutes=5))
+        deposit = float(booking.deposit_amount)
+        ledger.record_transaction(
+            self.db, booking, amount=deposit, kind=PaymentKind.DEPOSIT.value, method=PaymentMethod.BANK_TRANSFER.value,
+            gateway=MATCH_DEMO_GATEWAY, reference_number=f"DEMO-{booking.booking_code}",
+            content=f"{booking.booking_code} tien coc (du lieu mau)",
+        )
+        booking_service.apply_payment(self.db, booking, deposit)
+        self.db.commit()
+        self.db.refresh(booking)
+        self._stamp(booking)
+        return booking
+
+    def _finish(self, booking: Booking) -> None:
+        """Tua tới 5 phút sau giờ chơi rồi cho tác vụ nền chốt đơn: COMPLETED nếu đã nhận sân, NO_SHOW nếu không đến."""
+        self.at(booking_service.last_slot_end(booking) + timedelta(minutes=5))
+        booking_service.finalize_past_bookings(self.db)
+        self.db.refresh(booking)
+
+    def _review(self, booking: Booking, visit: VisitSeed) -> None:
+        reviewed = self.db.query(Review.id).filter(Review.user_id == booking.user_id, Review.venue_id == self.venue.id).first()
+        if booking.status != "COMPLETED" or visit.rating is None or reviewed:
+            return
+        self.db.add(Review(user_id=booking.user_id, venue_id=self.venue.id, rating=visit.rating, comment=visit.comment,
+                           created_at=booking_service.last_slot_end(booking) + timedelta(hours=1)))
+        self.db.commit()
+        self.summary["reviews"] += 1
+
+    def _staff(self) -> List[User]:
+        """Nhân viên của cụm sân; cụm sân chưa có ai thì tạo hai tài khoản nhân viên mẫu."""
+        staff = (self.db.query(User).join(StaffProfile, StaffProfile.user_id == User.id)
+                 .filter(StaffProfile.venue_id == self.venue.id, User.is_active.is_(True)).order_by(User.id).all())
+        if staff:
+            return staff
+        local = (self.venue.owner.email if self.venue.owner else "").partition("@")[0]
+        slug = local[len("owner_"):] if local.startswith("owner_") and len(local) > len("owner_") else f"venue{self.venue.id}"
+        for number, name in enumerate(DEMO_STAFF_NAMES, start=1):
+            email = f"staff_{slug}_{number}@pickleball.vn"
+            staff.append(create_user(self.db, email=email, password=DEMO_PASSWORD, role=UserRole.STAFF.value,
+                                     full_name=f"{name} (NV {slug.replace('_', ' ').title()})", venue_id=self.venue.id))
+            self.summary["staff"].append(email)
+        return staff
+
+    # -- kịch bản --------------------------------------------------------------
+    def run(self) -> dict:
+        if not self.courts:
+            self.summary["skipped"].append("cụm sân chưa có sân nào đang hoạt động.")
+            return self.summary
+        staff = self._staff()
+        self._past(staff)
+        self.now()
+        self._upcoming(staff)
+        return self._close()
+
+    def _past(self, staff: List[User]) -> None:
+        # Đã chơi xong: cọc chuyển khoản từ hôm trước, phần còn lại trả tiền mặt lúc nhận sân, sau đó để lại đánh giá
+        for court, visit in enumerate(VENUE_PAST_VISITS):
+            booking = self._book(court, visit)
+            if booking is None:
+                continue
+            self._pay_deposit(booking)
+            self.at(booking_service.first_slot_start(booking))
+            booking_service.check_in(self.db, booking, staff[0])
+            self._stamp(booking)
+            self._finish(booking)
+            self._review(booking, visit)
+
+        # Đã cọc nhưng không đến sân
+        absent = self._book(3, VENUE_NO_SHOW)
+        if absent is not None:
+            self._pay_deposit(absent)
+            self._finish(absent)
+
+        # Hủy sớm (trước giờ chơi hơn 12 tiếng): được hoàn toàn bộ cọc và cụm sân đã chuyển hoàn
+        refunded = self._book(2, VENUE_REFUNDED, booked_days_before=2)
+        if refunded is not None:
+            self._pay_deposit(refunded)
+            day_before = self.today + timedelta(days=VENUE_REFUNDED.days - 1)
+            self.at(vn_datetime(day_before, time(8, 0)))
+            booking_service.cancel_by_player(self.db, refunded.id, refunded.user, _RefundInfo(
+                bank_account="1900000003", bank_name="Vietcombank", account_holder="KHACH HANG MAU", reason="Bận việc đột xuất",
+            ))
+            self.at(vn_datetime(day_before, time(15, 0)))
+            refunded = booking_service.get_booking_or_404(self.db, refunded.id)
+            booking_service.confirm_refund(self.db, refunded, self.venue.owner or staff[0], f"Đã chuyển hoàn cọc {DEMO_NOTE}")
+            self._stamp(refunded)
+
+        # Khách vãng lai trả đủ tiền mặt tại quầy hôm qua
+        walk_in = self._book(3, VENUE_WALK_IN, user=staff[0], source=BookingSource.DESK.value,
+                             guest_name="Chị Lan (khách vãng lai)", guest_phone="0987000333",
+                             desk_paid="FULL", check_in_now=True)
+        if walk_in is not None:
+            self._finish(walk_in)
+
+    def _upcoming(self, staff: List[User]) -> None:
+        # Tối nay: một đơn đã cọc để thử thao tác nhận sân tại quầy (chạy lệnh sau 20h thì khung này không còn đặt được)
+        tonight = self._book(1, VENUE_TONIGHT)
+        if tonight is not None:
+            self._pay_deposit(tonight)
+
+        # Hai đơn đã cọc có mở phòng đấu
+        for court, room in enumerate(VENUE_ROOMS):
+            booking = self._book(court, room.visit)
+            if booking is None:
+                continue
+            self._pay_deposit(booking)
+            host = booking.user
+            try:
+                match = match_service.create_match(self.db, host, MatchCreate(
+                    booking_id=booking.id, required_skill=host.player_profile.skill_level if host.player_profile else None,
+                    num_players=room.players, purpose=room.purpose, notes=room.notes,
+                ))
+            except HTTPException as exc:
+                self.db.rollback()   # ví dụ chủ phòng đang ở một phòng khác trùng giờ: đơn vẫn giữ, chỉ không mở phòng
+                self.summary["skipped"].append(f"phòng đấu của {room.visit.player}: {exc.detail}")
+                continue
+            self.summary["rooms"] += 1
+            for email in room.joiners:
+                joiner = self.db.query(User).filter(User.email == email).first()
+                try:
+                    if joiner is not None:
+                        match_service.join_match(self.db, match.id, joiner.id)
+                except HTTPException:
+                    self.db.rollback()   # người này đang ở một phòng khác trùng giờ: phòng vẫn mở, chỉ thiếu một người
+
+        # Khách gọi điện giữ sân, sẽ trả tiền khi đến
+        self._book(3, VENUE_PHONE_HOLD, user=staff[0], source=BookingSource.DESK.value,
+                   guest_name="Anh Tùng (đặt qua điện thoại)", guest_phone="0977000444", desk_paid="NONE")
+
+        # Vừa hủy khi còn hơn 12 tiếng: đang chờ cụm sân hoàn cọc
+        pending = self._book(2, VENUE_REFUND_PENDING)
+        if pending is not None:
+            self._pay_deposit(pending)
+            booking_service.cancel_by_player(self.db, pending.id, pending.user, _RefundInfo(
+                bank_account="1900000004", bank_name="MBBank", account_holder="KHACH HANG MAU", reason="Đổi kế hoạch",
+            ))
+
+        # Một đơn đã cọc bình thường
+        confirmed = self._book(2, VENUE_CONFIRMED)
+        if confirmed is not None:
+            self._pay_deposit(confirmed)
+
+    def _close(self) -> dict:
+        ids = [booking.id for booking in self.bookings]
+        rows = self.db.query(PaymentTransaction).filter(PaymentTransaction.booking_id.in_(ids)).all() if ids else []
+        for txn in rows:   # dòng thu tại quầy và dòng hoàn tiền do hàm nghiệp vụ ghi: thêm ghi chú để nhận ra dữ liệu mẫu
+            if txn.gateway != MATCH_DEMO_GATEWAY and DEMO_NOTE not in (txn.transaction_content or ""):
+                txn.transaction_content = f"{txn.transaction_content or ''} {DEMO_NOTE}".strip()
+        self.db.commit()
+        statuses: Dict[str, int] = {}
+        for booking in self.bookings:
+            self.db.refresh(booking)
+            statuses[booking.status] = statuses.get(booking.status, 0) + 1
+        self.summary.update(
+            bookings=len(self.bookings), statuses=statuses,
+            collected=sum(t.amount_in for t in rows if t.kind != PaymentKind.REFUND.value),
+            refunded=sum(t.amount_in for t in rows if t.kind == PaymentKind.REFUND.value),
+        )
+        return self.summary
+
+
+def seed_venue_activity(db: Session, venue_id: Optional[int] = None) -> dict:
+    """
+    Nạp hoạt động mẫu (nhân viên, đơn đặt ở nhiều trạng thái, giao dịch, phòng đấu, đánh giá) cho cụm sân đang hoạt
+    động chưa có đơn nào: cụm sân mang `venue_id`, hoặc mọi cụm sân như vậy khi không chỉ định. Dữ liệu đã có không
+    bị sửa. Trả về {"venues": [báo cáo của từng cụm sân], "skipped": [lý do bỏ qua]}.
+    """
+    result: dict = {"venues": [], "skipped": []}
+    query = db.query(Venue).filter(Venue.status == "ACTIVE")
+    venues = (query.filter(Venue.id == venue_id) if venue_id is not None else query).order_by(Venue.id).all()
+    if venue_id is not None and not venues:
+        result["skipped"].append(f"Không có cụm sân đang hoạt động nào mang id {venue_id}.")
+    for venue in venues:
+        booked = db.query(BookingDetail.id).join(Court, Court.id == BookingDetail.court_id).filter(Court.venue_id == venue.id).first()
+        if booked is not None:
+            if venue_id is not None:
+                result["skipped"].append(f"{venue.name}: đã có đơn đặt sân nên không nạp thêm.")
+            continue
+        try:
+            result["venues"].append(_VenueActivity(db, venue).run())
+        finally:
+            timeutils.set_clock(None)
+    return result
+
+
+def add_venue_activity(venue_id: Optional[int] = None) -> dict:
+    """
+    Chạy seed_venue_activity trong MỘT giao dịch CSDL: nạp trọn vẹn, hoặc không ghi gì nếu có lỗi giữa chừng.
+    Nhờ vậy ứng dụng đang chạy song song (tác vụ nền chốt đơn quá giờ mỗi phút) không bao giờ thấy một đơn mẫu
+    còn dựng dở, ví dụ đơn của hôm qua đã cọc nhưng chưa kịp ghi nhận sân.
+    """
+    if settings.is_sqlite:
+        with SessionLocal() as db:
+            return seed_venue_activity(db, venue_id)
+    with engine.connect() as connection, connection.begin():
+        with SessionLocal(bind=connection, join_transaction_mode="create_savepoint") as db:
+            return seed_venue_activity(db, venue_id)
+
+
+def report_venue_activity(result: dict) -> None:
+    for item in result["venues"]:
+        statuses = ", ".join(f"{count} {name}" for name, count in sorted(item.get("statuses", {}).items()))
+        print(f"{item['venue']}:")
+        print(f"  {item.get('bookings', 0)} đơn đặt sân ({statuses}) | {item['rooms']} phòng đấu | {item['reviews']} đánh giá")
+        print(f"  sổ giao dịch mẫu: thu {item.get('collected', 0):,.0f}đ, hoàn {item.get('refunded', 0):,.0f}đ "
+              f"(tiền cọc chuyển khoản mang nhãn \"{MATCH_DEMO_GATEWAY}\")")
+        if item["staff"]:
+            print(f"  tài khoản nhân viên mới: {', '.join(item['staff'])} (mật khẩu {DEMO_PASSWORD})")
+        if item["owner"]:
+            print(f"  tài khoản chủ sân: {item['owner']}")
+        for reason in item["skipped"]:
+            print(f"  bỏ qua - {reason}")
+    for reason in result["skipped"]:
+        print(f"bỏ qua - {reason}")
+    if not result["venues"] and not result["skipped"]:
+        print("Không có cụm sân nào cần nạp: mọi cụm sân đang hoạt động đều đã có đơn đặt sân.")
+
+
+# ---------------------------------------------------------------------------
 # Điểm vào
 # ---------------------------------------------------------------------------
 def seed_database(if_empty: bool = False, reset: bool = False, assume_yes: bool = False) -> bool:
@@ -833,6 +1167,16 @@ def main() -> None:
         ensure_schema()
         with SessionLocal() as db:
             report_match_demo(seed_match_demo(db))
+        return
+    if "--activity" in args:
+        argv, venue_id = sys.argv[1:], None
+        if "--venue" in argv:
+            value = argv[argv.index("--venue") + 1:][:1]
+            if not value or not value[0].isdigit():
+                raise SystemExit("--venue cần id của cụm sân, ví dụ: --activity --venue 4")
+            venue_id = int(value[0])
+        ensure_schema()
+        report_venue_activity(add_venue_activity(venue_id))
         return
     seed_database(if_empty="--if-empty" in args, reset="--reset" in args, assume_yes="--yes" in args)
 

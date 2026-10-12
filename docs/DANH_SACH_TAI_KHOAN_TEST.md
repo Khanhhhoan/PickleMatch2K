@@ -113,6 +113,22 @@ Các phòng mẫu (ngày tính từ hôm chạy lệnh; giờ có thể lệch 3
 Mỗi phòng gắn với một đơn đã cọc của chủ phòng. Khoản cọc ghi vào sổ giao dịch với nhãn "Dữ liệu mẫu" (mã tham
 chiếu `DEMO-PK2K…`). Qua giờ chơi mà không ai check-in thì đơn chuyển "Không đến sân" và phòng tự đóng, như mọi đơn khác.
 
+## 6. Tài khoản của cụm sân nhập thêm
+
+Cụm sân thêm vào sau (ví dụ bằng `python manage.py import-excel`) chưa có nhân viên hay đơn đặt nào. Lệnh
+`python manage.py seed --activity` (thêm `--venue ID` để chỉ nạp một cụm sân) tạo cho cụm sân đó hai tài khoản nhân
+viên và một bộ đơn đặt sân, giao dịch, phòng đấu, đánh giá mẫu của các người chơi ở mục 4. Lệnh không sửa dữ liệu đã
+có và bỏ qua cụm sân đã có đơn.
+
+| Tài khoản | Email | Ghi chú |
+| :--- | :--- | :--- |
+| Chủ sân | `owner_<tên>@pickleball.vn` | Tạo lúc nhập cụm sân; ví dụ `owner_club88@pickleball.vn` |
+| Nhân viên 1 | `staff_<tên>_1@pickleball.vn` | Tạo bởi `seed --activity`, mật khẩu `123456`; ví dụ `staff_club88_1@pickleball.vn` |
+| Nhân viên 2 | `staff_<tên>_2@pickleball.vn` | Như trên |
+
+Tiền cọc chuyển khoản của các đơn mẫu này mang nhãn "Dữ liệu mẫu" (mã tham chiếu `DEMO-PK2K…`); các dòng thu tại
+quầy và hoàn tiền có ghi chú "(dữ liệu mẫu)".
+
 ## Ghi chú
 
 - Bộ dữ liệu demo còn có sẵn đơn đặt sân ở nhiều trạng thái, giao dịch, phòng đấu và đánh giá; ngày tháng được tính

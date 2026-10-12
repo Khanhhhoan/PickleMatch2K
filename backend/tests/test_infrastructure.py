@@ -326,6 +326,128 @@ def test_excel_import_adds_venues_and_reports_incomplete_rows_instead_of_inventi
     assert db.query(Venue).count() == 2 and len(db.query(Venue).filter_by(name="CLB Lan Anh").one().courts) == 3
 
 
+def test_venue_activity_fills_a_newly_added_venue_and_leaves_everything_else_alone(client, db, tmp_path, monkeypatch):
+    """`python manage.py seed --activity`: cụm sân vừa nhập thêm có nhân viên, đơn, giao dịch, phòng đấu, đánh giá mẫu."""
+    from app.models.venue import Venue
+    from app.services import booking_service
+    from scripts import seed
+    from scripts.import_excel import import_from_excel
+
+    seed.seed_database()
+    import_from_excel(write_excel(tmp_path / "new_venue.xlsx", [
+        [1, "Sân Mới Gò Vấp", "Gò Vấp", "2 Lê Đức Thọ", "Sân 1, Sân 2, Sân 3, Sân 4", 130000, 180000, 130000,
+         "05:00", "22:00", "Chủ Sân Mới", "owner_sanmoi@pickleball.vn", None, None, "Bãi đỗ xe ô tô", "Mô tả",
+         "https://maps.google.com/?q=10.83,106.68", None],
+    ]), password=seed.DEMO_PASSWORD)
+    venue = db.query(Venue).filter_by(name="Sân Mới Gò Vấp").one()
+
+    tables = ("users", "bookings", "payment_transactions", "matches", "match_participants", "reviews")
+    count_rows = text("SELECT " + ", ".join(f"(SELECT count(*) FROM {table})" for table in tables))
+    last_ids = dict(db.execute(text("""
+        SELECT 'u', coalesce(max(id), 0) FROM users UNION ALL SELECT 'b', coalesce(max(id), 0) FROM bookings
+        UNION ALL SELECT 't', coalesce(max(id), 0) FROM payment_transactions
+        UNION ALL SELECT 'm', coalesce(max(id), 0) FROM matches UNION ALL SELECT 'r', coalesce(max(id), 0) FROM reviews
+    """)).all())
+    fingerprint = text("""
+        SELECT md5(concat_ws('#',
+            (SELECT string_agg(concat_ws('|', id, email, role, is_active), ';' ORDER BY id) FROM users WHERE id <= :u),
+            (SELECT string_agg(concat_ws('|', id, status, payment_status, paid_amount, refund_status, created_at), ';' ORDER BY id)
+               FROM bookings WHERE id <= :b),
+            (SELECT string_agg(concat_ws('|', id, booking_id, kind, gateway, amount_in, transaction_content), ';' ORDER BY id)
+               FROM payment_transactions WHERE id <= :t),
+            (SELECT string_agg(concat_ws('|', id, status, num_players), ';' ORDER BY id) FROM matches WHERE id <= :m),
+            (SELECT string_agg(concat_ws('|', match_id, user_id), ';' ORDER BY match_id, user_id)
+               FROM match_participants WHERE match_id <= :m),
+            (SELECT string_agg(concat_ws('|', id, user_id, venue_id, rating, comment), ';' ORDER BY id) FROM reviews WHERE id <= :r)))
+    """)
+    rows_before, data_before = tuple(db.execute(count_rows).one()), db.execute(fingerprint, last_ids).scalar()
+    db.rollback()
+
+    # Hỏng giữa chừng thì không ghi gì: cả lượt nạp nằm trong một giao dịch
+    def lost_connection(*args, **kwargs):
+        raise RuntimeError("mất kết nối giữa chừng")
+
+    monkeypatch.setattr(booking_service, "confirm_refund", lost_connection)
+    with pytest.raises(RuntimeError):
+        seed.add_venue_activity(venue.id)
+    monkeypatch.undo()
+    assert tuple(db.execute(count_rows).one()) == rows_before
+    db.rollback()
+
+    result = seed.add_venue_activity(venue.id)
+
+    assert result["skipped"] == [] and len(result["venues"]) == 1
+    item = result["venues"][0]
+    # Chạy sau 20h thì khung giờ tối nay không còn đặt được: đó là lượt duy nhất được phép thiếu
+    assert len(item["skipped"]) <= 1 and all("đã qua" in reason for reason in item["skipped"])
+    tonight = 1 - len(item["skipped"])
+    assert item["statuses"] == {"COMPLETED": 6, "NO_SHOW": 1, "CANCELLED": 2, "CONFIRMED": 4 + tonight}
+    assert (item["bookings"], item["rooms"], item["reviews"]) == (13 + tonight, 2, 5)
+    assert item["owner"] == "owner_sanmoi@pickleball.vn"
+    assert item["staff"] == ["staff_sanmoi_1@pickleball.vn", "staff_sanmoi_2@pickleball.vn"]
+
+    db.expire_all()
+    assert db.execute(fingerprint, last_ids).scalar() == data_before          # dữ liệu có từ trước không bị sửa
+    added = [after - before for after, before in zip(db.execute(count_rows).one(), rows_before)]
+    assert added == [2, 13 + tonight, 18 + tonight, 2, 3, 5]                  # tài khoản, đơn, giao dịch, phòng, thành viên, đánh giá
+
+    here = "(SELECT d.booking_id FROM booking_details d JOIN courts c ON c.id = d.court_id WHERE c.venue_id = :venue)"
+    scope = {"venue": venue.id}
+    at_venue = dict(db.execute(text(f"SELECT status, count(*) FROM bookings WHERE id IN {here} GROUP BY status"), scope).all())
+    assert at_venue == item["statuses"]
+    mismatched = db.execute(text("""
+        SELECT b.booking_code FROM bookings b
+        LEFT JOIN payment_transactions t ON t.booking_id = b.id AND t.kind IN ('DEPOSIT', 'BALANCE')
+        GROUP BY b.id HAVING abs(b.paid_amount - coalesce(sum(t.amount_in), 0)) > 0.5
+    """)).all()
+    assert mismatched == []                                                   # số tiền đã trả khớp sổ giao dịch
+    ledger_rows = db.execute(text(f"""
+        SELECT kind, gateway, coalesce(reference_number, ''), coalesce(transaction_content, '')
+        FROM payment_transactions WHERE booking_id IN {here}
+    """), scope).all()
+    # Dòng nào cũng nhận ra được là dữ liệu mẫu: cọc chuyển khoản mang nhãn riêng, các dòng còn lại có ghi chú
+    assert all((gateway == seed.MATCH_DEMO_GATEWAY and reference.startswith("DEMO-PK2K")) or content.endswith(seed.DEMO_NOTE)
+               for _, gateway, reference, content in ledger_rows)
+    assert sorted(kind for kind, *_ in ledger_rows) == ["BALANCE"] * 5 + ["DEPOSIT"] * (12 + tonight) + ["REFUND"]
+    refunds = dict(db.execute(text(f"""
+        SELECT refund_status, count(*) FROM bookings WHERE id IN {here} AND refund_status IS NOT NULL GROUP BY refund_status
+    """), scope).all())
+    assert refunds == {"COMPLETED": 1, "PENDING": 1}
+    # Đơn đã qua được ghi đúng thời điểm trong quá khứ, không phải lúc chạy lệnh
+    late = db.execute(text(f"""
+        SELECT count(*) FROM bookings b WHERE b.id IN {here} AND b.status IN ('COMPLETED', 'NO_SHOW')
+          AND b.created_at > (SELECT min(d.date + d.start_time) FROM booking_details d WHERE d.booking_id = b.id) AT TIME ZONE 'Asia/Ho_Chi_Minh'
+    """), scope).scalar()
+    assert late == 0
+
+    reviews = db.query(Review).filter_by(venue_id=venue.id).all()
+    assert sorted(r.rating for r in reviews) == [4.0, 4.0, 5.0, 5.0, 5.0]
+    fake_reviews = db.execute(text("""
+        SELECT r.id FROM reviews r WHERE NOT EXISTS (
+            SELECT 1 FROM bookings b JOIN booking_details d ON d.booking_id = b.id JOIN courts c ON c.id = d.court_id
+            WHERE b.user_id = r.user_id AND b.status = 'COMPLETED' AND c.venue_id = r.venue_id)
+    """)).all()
+    assert fake_reviews == []
+    rooms = db.query(Match).filter_by(venue_id=venue.id).order_by(Match.date).all()
+    assert [(room.status, len(room.participants), room.num_players) for room in rooms] == [("OPEN", 1, 2), ("OPEN", 2, 4)]
+    assert all(room.booking.status == "CONFIRMED" and room.booking.paid_amount == room.booking.deposit_amount for room in rooms)
+
+    # Nhân viên mới đăng nhập được và thấy đơn của đúng cụm sân mình
+    login = client.post("/api/v1/auth/login", data={"username": item["staff"][0], "password": seed.DEMO_PASSWORD})
+    assert login.status_code == 200
+    staff = db.query(User).filter_by(email=item["staff"][0]).one()
+    assert staff.staff_profile.venue_id == venue.id
+    viewer = db.query(User).filter_by(email="player@example.com").one()
+    listed = [m for m in client.get("/api/v1/matches", headers=auth(viewer)).json() if m["venue_id"] == venue.id]
+    assert len(listed) == 2
+
+    again = seed.add_venue_activity(venue.id)                                 # chạy lại: không nạp trùng
+    assert again["venues"] == [] and len(again["skipped"]) == 1
+    assert seed.add_venue_activity() == {"venues": [], "skipped": []}         # không còn cụm sân nào chưa có đơn
+    db.rollback()
+    assert [after - before for after, before in zip(db.execute(count_rows).one(), rows_before)] == added
+
+
 def test_destructive_scripts_refuse_to_run_without_confirmation(db, world):
     from scripts._common import rebuild_empty_schema
 

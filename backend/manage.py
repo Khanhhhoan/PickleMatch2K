@@ -3,7 +3,8 @@ Bộ lệnh quản trị PickleMatch2K. Chạy trong thư mục backend/ với m
 
     python manage.py migrate        Sao lưu rồi đưa schema lên phiên bản mới nhất (--check | --no-backup)
     python manage.py show           Báo cáo tổng quan dữ liệu (chỉ đọc)
-    python manage.py seed           Nạp dữ liệu demo vào CSDL trống   (--if-empty | --reset | --preferences | --feedback | --matches)
+    python manage.py seed           Nạp dữ liệu demo vào CSDL trống   (--if-empty | --reset | --preferences | --feedback | --matches
+                                    | --activity [--venue ID])
     python manage.py reset          Xóa sạch, dựng lại CSDL trống + tài khoản Admin (phải xác nhận)
     python manage.py import-excel   Nhập cụm sân từ file Excel        (--file duong_dan.xlsx, --dry-run)
     python manage.py backup         Sao lưu CSDL ra thư mục backups/
@@ -94,6 +95,8 @@ def main() -> None:
     parser.add_argument("--preferences", action="store_true", help="seed: chỉ bổ sung mục đích chơi mẫu cho tài khoản demo")
     parser.add_argument("--feedback", action="store_true", help="seed: chỉ nạp phiếu ghép cặp mô phỏng để huấn luyện mô hình")
     parser.add_argument("--matches", action="store_true", help="seed: nạp thêm người chơi và phòng đấu mẫu để thử ghép trận")
+    parser.add_argument("--activity", action="store_true", help="seed: nạp thêm hoạt động mẫu cho cụm sân mới chưa có đơn nào")
+    parser.add_argument("--venue", type=int, default=None, help="seed --activity: chỉ nạp cho cụm sân mang id này")
     parser.add_argument("--file", "-f", default=None, help="import-excel: đường dẫn file .xlsx")
     parser.add_argument("--dry-run", action="store_true", help="import-excel: chỉ kiểm tra, không ghi")
     parser.add_argument("--report", action="store_true", help="train-model: chỉ in bảng đánh giá")
@@ -133,6 +136,11 @@ def main() -> None:
             ensure_schema()
             with SessionLocal() as db:
                 seed.report_match_demo(seed.seed_match_demo(db))
+        elif args.activity:
+            from scripts._common import ensure_schema
+
+            ensure_schema()
+            seed.report_venue_activity(seed.add_venue_activity(args.venue))
         else:
             seed.seed_database(if_empty=args.if_empty, reset=args.reset, assume_yes=args.yes)
     elif args.action == "reset":
