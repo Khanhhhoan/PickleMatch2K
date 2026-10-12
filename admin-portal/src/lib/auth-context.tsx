@@ -47,7 +47,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
           localStorage.removeItem(TOKEN_KEY);
           setToken(null);
           setUser(null);
-          throw new Error("Truy cập bị từ chối: Tài khoản này không có quyền Quản Trị Viên (Admin)!");
+          throw new Error("Tài khoản này không có quyền vào cổng quản trị.");
         }
         setUser(data);
       } else {
@@ -112,12 +112,12 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     });
 
     if (!meRes.ok) {
-      throw new Error("Không thể xác thực thông tin tài khoản!");
+      throw new Error("Không xác thực được tài khoản. Vui lòng thử lại.");
     }
 
     const userData = await meRes.json();
     if (userData.role !== "ADMIN") {
-      throw new Error("Tài khoản của bạn không có quyền truy cập Cổng Quản Trị Hệ Thống (Admin Portal)!");
+      throw new Error("Tài khoản này không có quyền vào cổng quản trị.");
     }
 
     localStorage.setItem(TOKEN_KEY, accessToken);

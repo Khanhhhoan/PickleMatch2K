@@ -1,14 +1,16 @@
 """Sổ giao dịch: mọi khoản tiền vào/ra của một đơn đặt đều được ghi thành PaymentTransaction."""
 import json
-from typing import List, Optional
+from datetime import date
+from typing import Dict, List, Optional
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.models.booking import Booking, BookingDetail
 from app.models.payment import PaymentKind, PaymentMethod, PaymentTransaction
 from app.models.venue import Court
 from app.services.code_generator import generate_next_transaction_code
+from app.utils.timeutils import VN_TZ_NAME
 
 INCOMING_KINDS = (PaymentKind.DEPOSIT.value, PaymentKind.BALANCE.value)
 
@@ -83,3 +85,29 @@ def sum_transactions(
     if until is not None:
         query = query.filter(PaymentTransaction.created_at < until)
     return float(query.scalar() or 0.0)
+
+
+def vn_day(column):
+    """Biểu thức SQL: ngày theo giờ Việt Nam của một cột thời điểm (cột lưu UTC), dùng để gom nhóm theo ngày."""
+    return func.date(func.timezone(VN_TZ_NAME, column))
+
+
+def daily_net_revenue(db: Session, *, venue_ids: Optional[List[int]]) -> Dict[date, float]:
+    """Thực thu từng ngày (khoản thu trừ khoản hoàn) của các giao dịch thành công thuộc phạm vi cụm sân."""
+    booking_ids = venue_booking_ids_subquery(db, venue_ids)
+    day = vn_day(PaymentTransaction.created_at)
+    signed_amount = case(
+        (PaymentTransaction.kind == PaymentKind.REFUND.value, -PaymentTransaction.amount_in),
+        else_=PaymentTransaction.amount_in,
+    )
+    rows = (
+        db.query(day, func.sum(signed_amount))
+        .filter(
+            PaymentTransaction.status == "SUCCESS",
+            PaymentTransaction.created_at.isnot(None),
+            PaymentTransaction.booking_id.in_(db.query(booking_ids.c.booking_id)),
+        )
+        .group_by(day)
+        .all()
+    )
+    return {row[0]: float(row[1] or 0.0) for row in rows}

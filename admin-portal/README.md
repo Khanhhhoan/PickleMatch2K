@@ -18,14 +18,15 @@ npx tsc --noEmit
 
 | Thẻ | Nội dung | API chính |
 | :--- | :--- | :--- |
-| Tổng quan | Số liệu toàn hệ thống và phân bố trạng thái của đơn đặt, cụm sân, phòng đấu | `/bookings/owner/stats` |
+| Tổng quan | Số liệu toàn hệ thống; thống kê thực thu và số đơn đặt theo từng ngày, từng tháng hoặc từng năm; phân bố trạng thái của đơn đặt, cụm sân, phòng đấu | `/bookings/owner/stats` |
 | Cụm sân | Duyệt / từ chối cụm sân chờ duyệt, đổi trạng thái, tạo, sửa, xóa | `/venues/admin/*` |
-| Tài khoản | Tạo, sửa, khóa / mở khóa, xóa (tài khoản đã có lịch sử thì chỉ bị khóa) | `/users/admin/users` |
+| Tài khoản | Xem chi tiết, tạo, sửa, khóa / mở khóa, xóa (tài khoản đã có lịch sử thì chỉ bị khóa) | `/users/admin/users` |
 | Đơn đặt sân | Tra cứu toàn bộ đơn và tình trạng hoàn tiền, đổi trạng thái, xóa đơn | `/bookings/admin/all` |
 | Sổ giao dịch | Tiền cọc, phần thu tại sân, tiền hoàn; lọc theo chủ sân | `/payments/transactions` |
 | Phòng đấu | Tạo, đổi trạng thái, xóa phòng đấu; xem và gỡ người tham gia | `/matches/admin/*` |
 
-Mọi số liệu lấy trực tiếp từ API; cổng không tự tính hay hiển thị số liệu giả.
+Mọi số liệu lấy trực tiếp từ API; cổng không tự tính hay hiển thị số liệu giả. Phần thống kê theo thời gian dùng chuỗi
+theo ngày (`daily`, tính theo giờ Việt Nam) mà API trả về, cổng chỉ gom các ngày thành tháng và năm.
 
 ## Mã nguồn
 
@@ -35,5 +36,5 @@ src/
 ├── app/login/              Đăng nhập quản trị
 ├── components/ui.tsx       Thành phần giao diện dùng chung
 ├── components/tabs/        OverviewTab, VenuesTab, UsersTab, BookingsTab, TransactionsTab, MatchesTab
-└── lib/                    api.ts, auth-context.tsx, types.ts, labels.ts, use-websocket.ts
+└── lib/                    api.ts, auth-context.tsx, types.ts, labels.ts, stats.ts, use-websocket.ts
 ```

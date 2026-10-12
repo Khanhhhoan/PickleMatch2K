@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import { apiDelete, apiPost, apiPut } from "@/lib/api";
-import { ROLE_LABEL, userDisplayName, userPhone } from "@/lib/labels";
+import { PURPOSE_LABEL, ROLE_LABEL, userDisplayName, userPhone } from "@/lib/labels";
 import { TabProps, User } from "@/lib/types";
 import { BTN_DANGER, BTN_PRIMARY, BTN_SECONDARY, Badge, Chips, DataTable, Field, INPUT, Modal, TD, Toolbar } from "@/components/ui";
 
@@ -40,6 +40,42 @@ export default function UsersTab({ data, run, currentUserId }: TabProps & { curr
   const [role, setRole] = useState<RoleFilter>("ALL");
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<UserForm | null>(null);
+  const [viewId, setViewId] = useState<number | null>(null);
+
+  const viewing = viewId ? data.users.find((u) => u.id === viewId) || null : null;
+  // Các dòng của bảng chi tiết: thông tin chung, rồi thông tin riêng của từng vai trò
+  const details = useMemo<[string, string][]>(() => {
+    if (!viewing) return [];
+    const rows: [string, string][] = [
+      ["Email đăng nhập", viewing.email],
+      ["Số điện thoại", userPhone(viewing) || "Chưa khai"],
+    ];
+    if (viewing.role === "PLAYER") {
+      const profile = viewing.player_profile;
+      rows.push(
+        ["Trình độ", profile?.skill_level != null ? String(profile.skill_level) : "Chưa khai"],
+        ["Lối đánh", profile?.play_style || "Chưa khai"],
+        ["Mục đích chơi", PURPOSE_LABEL[profile?.purpose || ""] || "Chưa khai"],
+        ["Đơn đã đặt trên web", String(data.bookings.filter((b) => b.user_email === viewing.email).length)],
+        ["Phòng đấu đã mở", String(data.matches.filter((m) => m.creator_id === viewing.id).length)],
+      );
+    }
+    if (viewing.role === "OWNER") {
+      const venues = data.venues.filter((v) => v.owner_id === viewing.id).map((v) => v.name);
+      rows.push(
+        ["Đơn vị", viewing.owner_profile?.company_name || "Chưa khai"],
+        ["Tài khoản nhận tiền", viewing.owner_profile?.bank_account || "Chưa cấu hình"],
+        ["Cụm sân quản lý", venues.length > 0 ? venues.join(", ") : "Chưa có cụm sân"],
+      );
+    }
+    if (viewing.role === "STAFF") {
+      rows.push(
+        ["Cụm sân trực", viewing.staff_profile?.venue_name || "Chưa gán cụm sân"],
+        ["Chủ sân", viewing.staff_profile?.owner_name || "—"],
+      );
+    }
+    return rows;
+  }, [viewing, data.bookings, data.matches, data.venues]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -132,6 +168,7 @@ export default function UsersTab({ data, run, currentUserId }: TabProps & { curr
               </Badge>
             </td>
             <td className={`${TD} text-right whitespace-nowrap space-x-1.5`}>
+              <button type="button" className={BTN_SECONDARY} onClick={() => setViewId(user.id)}>Chi tiết</button>
               <button type="button" className={BTN_SECONDARY} onClick={() => openEdit(user)}>Sửa</button>
               {user.id !== currentUserId && (
                 <>
@@ -143,6 +180,41 @@ export default function UsersTab({ data, run, currentUserId }: TabProps & { curr
           </tr>
         ))}
       </DataTable>
+
+      {viewing && (
+        <Modal title="Chi tiết tài khoản" onClose={() => setViewId(null)}>
+          <div className="flex items-center justify-between gap-3 pb-3 border-b border-[#eef1f6]">
+            <p className="text-base font-black text-[#17253d]">{userDisplayName(viewing)}</p>
+            <div className="flex gap-1.5 shrink-0">
+              <Badge tone={ROLE_TONE[viewing.role]}>{ROLE_LABEL[viewing.role]}</Badge>
+              <Badge tone={viewing.is_active ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"}>
+                {viewing.is_active ? "Hoạt động" : "Đã khóa"}
+              </Badge>
+            </div>
+          </div>
+          <dl className="divide-y divide-[#f3f5f9] text-xs">
+            {details.map(([label, value]) => (
+              <div key={label} className="flex items-start justify-between gap-4 py-2.5">
+                <dt className="text-[#718096] font-bold shrink-0">{label}</dt>
+                <dd className="text-[#17253d] font-semibold text-right break-words min-w-0">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="flex justify-end gap-2 pt-3">
+            <button type="button" className={BTN_SECONDARY} onClick={() => setViewId(null)}>Đóng</button>
+            <button
+              type="button"
+              className={BTN_PRIMARY}
+              onClick={() => {
+                openEdit(viewing);
+                setViewId(null);
+              }}
+            >
+              Sửa thông tin
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {form && (
         <Modal title={form.id ? `Sửa tài khoản ${ROLE_LABEL[form.role]}` : "Thêm tài khoản"} onClose={() => setForm(null)}>

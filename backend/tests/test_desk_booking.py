@@ -1,4 +1,6 @@
 """Đơn tạo tại quầy, khách vãng lai, dời lịch và số liệu doanh thu lấy từ sổ giao dịch."""
+from datetime import datetime, timezone
+
 import pytest
 
 from app.models.booking import Booking
@@ -167,7 +169,7 @@ def test_reschedule_rules(client, world, clock):
 # ---------------------------------------------------------------------------
 # Thống kê từ sổ giao dịch
 # ---------------------------------------------------------------------------
-def test_owner_stats_come_from_the_ledger(client, world, clock):
+def test_owner_stats_come_from_the_ledger(client, db, world, clock):
     day = clock.day(1)
     played = confirmed_booking(client, world.p1, world.court, day, hours=(9,))               # cọc 50k chuyển khoản
     refunded = confirmed_booking(client, world.p2, world.venue_a.courts[1], day, hours=(9,))  # cọc 50k rồi hủy
@@ -194,6 +196,20 @@ def test_owner_stats_come_from_the_ledger(client, world, clock):
     assert (other["collected_amount"], other["total_bookings"]) == (100000, 1)
     everything = client.get(f"{BOOKINGS}/owner/stats", headers=auth(world.admin)).json()
     assert everything["collected_amount"] == 350000 and everything["total_bookings"] == 5
+
+    # Chuỗi theo ngày cộng lại đúng bằng các con số tổng, trong từng phạm vi
+    for scope in (stats, other, everything):
+        assert sum(d["revenue"] for d in scope["daily"]) == scope["total_revenue"]
+        assert sum(d["bookings"] for d in scope["daily"]) == scope["total_bookings"]
+
+    # Ngày được tính theo giờ Việt Nam: 18:30 UTC ngày 01/01 là 01:30 ngày 02/01
+    db.query(PaymentTransaction).filter_by(booking_id=played["id"]).update(
+        {"created_at": datetime(2026, 1, 1, 18, 30, tzinfo=timezone.utc)}
+    )
+    db.commit()
+    daily = client.get(f"{BOOKINGS}/owner/stats", headers=auth(world.owner_a)).json()["daily"]
+    assert daily[0] == {"date": "2026-01-02", "revenue": 100000, "bookings": 0}
+    assert sum(d["revenue"] for d in daily) == 200000 and [d["date"] for d in daily] == sorted(d["date"] for d in daily)
 
 
 def test_staff_shift_stats_cover_only_today_at_their_venue(client, world, clock):

@@ -514,10 +514,21 @@ async function main() {
     for (const jargon of ["Random Forest", "Độ chính xác", "phiếu ghép cặp"]) {
       if (await hasText(page, jargon)) throw new Error(`Trang tổng quan còn nội dung kỹ thuật: ${jargon}`);
     }
+    // thống kê doanh thu và đơn đặt sân: đổi được giữa từng ngày, từng tháng và từng năm
+    await waitForText(page, "Thống kê doanh thu và đơn đặt sân");
+    await page.waitForSelector('select[aria-label="Tháng thống kê"]', { timeout: TIMEOUT });
+    await clickText(page, "button", "Theo tháng", { exact: true });
+    await waitForText(page, "Th12");
+    await clickText(page, "button", "Theo năm", { exact: true });
+    await page.waitForFunction(() => !document.querySelector('select[aria-label="Năm thống kê"]'), { timeout: TIMEOUT });
   });
   await step(admin, "khóa rồi mở khóa một tài khoản", async (page) => {
     await clickText(page, "nav button", "Tài khoản");
     await waitForText(page, "player18@gmail.com");
+    await clickText(page, "button", "Chi tiết", { within: "player18@gmail.com", exact: true });
+    await waitForText(page, "Chi tiết tài khoản");
+    await waitForText(page, "Mục đích chơi");
+    await clickText(page, "button", "Đóng", { exact: true });
     await clickText(page, "button", "Khóa", { within: "player18@gmail.com", exact: true });
     await waitForText(page, "Đã khóa tài khoản");
     await clickText(page, "button", "Mở khóa", { within: "player18@gmail.com", exact: true });

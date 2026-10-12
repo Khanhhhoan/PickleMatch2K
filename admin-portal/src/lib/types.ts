@@ -105,6 +105,15 @@ export interface Match {
   participants: MatchParticipant[];
 }
 
+export interface DailyActivity {
+  /** Ngày theo giờ Việt Nam, dạng YYYY-MM-DD. */
+  date: string;
+  /** Thực thu trong ngày: khoản thu trừ khoản hoàn. */
+  revenue: number;
+  /** Số đơn đặt sân được tạo trong ngày. */
+  bookings: number;
+}
+
 export interface Stats {
   total_revenue: number;
   collected_amount: number;
@@ -114,6 +123,8 @@ export interface Stats {
   pending_refunds: number;
   total_bookings: number;
   total_courts: number;
+  /** Chỉ gồm những ngày có phát sinh, cũ trước mới sau. */
+  daily?: DailyActivity[];
 }
 
 export interface AdminData {

@@ -3,6 +3,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Callable, Optional
 
 VN_TZ = timezone(timedelta(hours=7))
+VN_TZ_NAME = "Asia/Ho_Chi_Minh"  # tên múi giờ cho các phép tính ngày thực hiện ngay trong SQL
 
 # Nguồn thời gian thay thế, chỉ dùng trong kiểm thử để "đứng" hoặc "tua" đồng hồ (xem tests/conftest.py).
 _clock: Optional[Callable[[], datetime]] = None

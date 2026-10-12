@@ -29,7 +29,7 @@ export default function AdminLoginPage() {
       await login(email, password);
       router.push("/");
     } catch (err: any) {
-      setError(err.message || "Đăng nhập thất bại. Vui lòng kiểm tra lại tài khoản Admin.");
+      setError(err.message || "Đăng nhập không thành công. Vui lòng kiểm tra lại email và mật khẩu.");
     } finally {
       setLoading(false);
     }

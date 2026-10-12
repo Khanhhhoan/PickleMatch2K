@@ -1,6 +1,7 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api import deps
@@ -264,6 +265,23 @@ def _count_bookings(db: Session, venue_ids: Optional[List[int]], *filters) -> in
     return db.query(Booking.id).filter(Booking.id.in_(db.query(booking_ids.c.booking_id)), *filters).count()
 
 
+def _daily_activity(db: Session, venue_ids: Optional[List[int]]) -> List[dict]:
+    """Thực thu và số đơn được tạo theo từng ngày (giờ Việt Nam), cũ trước mới sau. Ngày không phát sinh gì thì không có dòng."""
+    revenue = ledger.daily_net_revenue(db, venue_ids=venue_ids)
+    booking_ids = ledger.venue_booking_ids_subquery(db, venue_ids)
+    day = ledger.vn_day(Booking.created_at)
+    created = dict(
+        db.query(day, func.count(Booking.id))
+        .filter(Booking.created_at.isnot(None), Booking.id.in_(db.query(booking_ids.c.booking_id)))
+        .group_by(day)
+        .all()
+    )
+    return [
+        {"date": d.isoformat(), "revenue": revenue.get(d, 0.0), "bookings": int(created.get(d, 0))}
+        for d in sorted(set(revenue) | set(created))
+    ]
+
+
 @router.get("/owner/stats")
 def get_owner_stats(db: Session = Depends(deps.get_db), current_user: User = Depends(venue_staff)):
     """Thống kê của các cụm sân đang quản lý. Doanh thu lấy từ sổ giao dịch, không ước lượng."""
@@ -287,6 +305,7 @@ def get_owner_stats(db: Session = Depends(deps.get_db), current_user: User = Dep
         "total_bookings": _count_bookings(db, scope),
         "total_courts": db.query(Court.id).filter(Court.venue_id.in_(scope or [0])).count(),
         "venue_names": [v.name for v in venues],
+        "daily": _daily_activity(db, scope),
     }
 
 
