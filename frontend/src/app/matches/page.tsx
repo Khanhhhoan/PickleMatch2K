@@ -370,7 +370,7 @@ function MatchesContent() {
 
         {!loading && activeTab === "suggested" && suggested.length > 0 && (
           <p className="text-xs text-zinc-500 mb-3">
-            Những phòng hợp với bạn nhất, dựa trên trình độ, khu vực, mục đích và phong cách chơi.
+            Những phòng hợp với bạn nhất, dựa trên trình độ, khu vực, mục đích, phong cách chơi và độ tuổi.
           </p>
         )}
 

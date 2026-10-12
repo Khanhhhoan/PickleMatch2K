@@ -20,6 +20,7 @@ Random Forest là mô hình duy nhất của dự án: lệnh này không huấn
 """
 import argparse
 import json
+import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,7 +44,7 @@ if sys.platform == "win32":
         except Exception:
             pass
 
-from app.ml.features import FEATURE_NAMES, MAX_DISTANCE_KM  # noqa: E402
+from app.ml.features import FEATURE_NAMES, MAX_AGE_DIFF, MAX_DISTANCE_KM  # noqa: E402
 from app.models.ml import SIMULATED_SOURCE  # noqa: E402
 
 ML_DIR = Path(__file__).resolve().parent
@@ -56,7 +57,8 @@ RANDOM_STATE = 42
 # Độ lệch chuẩn của nhiễu cộng vào điểm quy tắc khi sinh nhãn mô phỏng: mức dao động giữa những người trả lời.
 # Nhiễu quá nhỏ thì hai người cùng trình độ, ở gần luôn được trả lời "muốn ghép" và mô hình học ra độ phù hợp 100%.
 LABEL_NOISE_SD = 0.15
-# Số phiếu tối thiểu trong mỗi lá của rừng (xem build_model).
+# Mỗi lá của rừng gom ít nhất LEAF_SHARE số phiếu huấn luyện, và không dưới MIN_SAMPLES_LEAF phiếu (xem build_model).
+LEAF_SHARE = 0.01
 MIN_SAMPLES_LEAF = 25
 
 
@@ -64,13 +66,20 @@ MIN_SAMPLES_LEAF = 25
 # Dữ liệu
 # ---------------------------------------------------------------------------
 def synthetic_rule_score(df: pd.DataFrame) -> np.ndarray:
-    """Quy tắc viết tay dùng để gán nhãn dữ liệu tổng hợp (chưa cộng nhiễu). Nhãn = 1 khi điểm >= 0.5."""
-    level, dist = df["level_diff"].to_numpy(), df["distance_km"].to_numpy()
+    """
+    Quy tắc viết tay dùng để gán nhãn dữ liệu mô phỏng (chưa cộng nhiễu). Nhãn = 1 khi điểm >= 0.5.
+
+    Điểm cộng trừ của từng tiêu chí được chọn để mô hình học ra mức đóng góp xấp xỉ: trình độ 55%, khoảng cách 20%,
+    mục đích 10%, lối đánh 9%, tuổi 7%. Chênh trình độ từ 1.5 trở lên bị trừ nặng, để các tiêu chí khác không bù
+    được một khoảng cách trình độ lớn.
+    """
+    level, dist, age = df["level_diff"].to_numpy(), df["distance_km"].to_numpy(), df["age_diff"].to_numpy()
     score = np.full(len(df), 0.50)
-    score += np.select([level <= 0.25, level <= 0.5, level <= 1.0], [0.30, 0.18, -0.10], default=-0.38)
-    score += np.select([dist <= 3, dist <= 8, dist <= 15], [0.10, 0.04, -0.06], default=-0.18)
-    score += np.where(df["purpose_match"].to_numpy() == 1, 0.08, -0.06)
-    score += np.where(df["style_match"].to_numpy() == 1, 0.05, -0.03)
+    score += np.select([level <= 0.25, level <= 0.5, level <= 1.0, level <= 1.5], [0.19, 0.11, -0.06, -0.34], default=-0.49)
+    score += np.select([dist <= 3, dist <= 8, dist <= 15], [0.11, 0.04, -0.07], default=-0.20)
+    score += np.where(df["purpose_match"].to_numpy() == 1, 0.12, -0.09)
+    score += np.where(df["style_match"].to_numpy() == 1, 0.11, -0.07)
+    score += np.select([age <= 5, age <= 10, age <= 20], [0.08, 0.03, -0.05], default=-0.13)
     return score
 
 
@@ -89,18 +98,22 @@ def generate_synthetic_pairs(n: int = SYNTHETIC_SAMPLES, seed: int = RANDOM_STAT
         "distance_km": np.clip(rng.exponential(8.0, n), 0.2, MAX_DISTANCE_KM).round(2),
         "purpose_match": (rng.random(n) < 0.40).astype(int),
         "style_match": (rng.random(n) < 0.45).astype(int),
+        "age_diff": np.clip(np.abs(rng.normal(0, 12, n)).round(), 0, MAX_AGE_DIFF),
     })
     df["label"] = noisy_rule_labels(df, rng)
     return df
 
 
 def load_real_feedback() -> pd.DataFrame:
-    """Mọi dòng của bảng pair_feedback (khảo sát thật lẫn phiếu mô phỏng). Bảng rỗng nếu chưa kết nối được CSDL."""
+    """
+    Các dòng đủ đặc trưng của bảng pair_feedback (khảo sát thật lẫn phiếu mô phỏng); câu trả lời khảo sát thu trước
+    khi có tiêu chí tuổi bị bỏ qua. Bảng rỗng nếu chưa kết nối được CSDL.
+    """
     columns = FEATURE_NAMES + ["label", "rater_id", "source"]
     try:
         from app.db.database import engine
 
-        return pd.read_sql(f"SELECT {', '.join(columns)} FROM pair_feedback ORDER BY id", engine)
+        return pd.read_sql(f"SELECT {', '.join(columns)} FROM pair_feedback WHERE age_diff IS NOT NULL ORDER BY id", engine)
     except Exception as exc:
         print(f"(Không đọc được dữ liệu khảo sát: {exc.__class__.__name__})")
         return pd.DataFrame(columns=columns)
@@ -122,16 +135,16 @@ def metrics(y_true, y_pred, y_prob=None) -> Dict[str, float]:
     return result
 
 
-def build_model() -> RandomForestClassifier:
+def build_model(n_samples: int) -> RandomForestClassifier:
     """
     Xác suất của mô hình được hiện cho người chơi dưới dạng "độ phù hợp", nên rừng được cấu hình để xác suất đó là
-    một tỉ lệ đáng tin: mỗi lá gom ít nhất MIN_SAMPLES_LEAF phiếu (lá vài phiếu dễ ra 0% hoặc 100%), và không cân lại
-    trọng số hai lớp (cân lại làm xác suất lệch khỏi tỉ lệ "muốn ghép" có thật trong dữ liệu).
+    một tỉ lệ đáng tin: mỗi lá gom ít nhất 1% số phiếu huấn luyện và không dưới 25 phiếu (lá ít phiếu dễ ra 0% hoặc
+    100%), và không cân lại trọng số hai lớp (cân lại làm xác suất lệch khỏi tỉ lệ "muốn ghép" có thật trong dữ liệu).
     """
     return RandomForestClassifier(
         n_estimators=200,
         max_depth=8,
-        min_samples_leaf=MIN_SAMPLES_LEAF,
+        min_samples_leaf=max(MIN_SAMPLES_LEAF, math.ceil(n_samples * LEAF_SHARE)),
         random_state=RANDOM_STATE,
         n_jobs=-1,
     )
@@ -139,7 +152,7 @@ def build_model() -> RandomForestClassifier:
 
 def evaluate_split(X_train, y_train, X_test, y_test) -> Dict[str, float]:
     """Huấn luyện Random Forest trên phần huấn luyện rồi đo trên phần kiểm tra."""
-    forest = build_model().fit(X_train, y_train)
+    forest = build_model(len(X_train)).fit(X_train, y_train)
     return metrics(y_test, forest.predict(X_test), forest.predict_proba(X_test)[:, 1])
 
 
@@ -227,7 +240,7 @@ def train(report_only: bool = False, force_synthetic: bool = False) -> dict:
         print(f"\nNhiễu của dữ liệu: {noise:.1%} số phiếu có câu trả lời khác với quy tắc sinh nhãn, "
               f"nên độ chính xác tối đa có thể đạt trên dữ liệu này là {1 - noise:.1%}.")
 
-    model = build_model().fit(X, y)
+    model = build_model(len(X)).fit(X, y)
     importances = {f: round(float(v), 4) for f, v in zip(FEATURE_NAMES, model.feature_importances_)}
     print("\nMức đóng góp của đặc trưng:", importances)
 

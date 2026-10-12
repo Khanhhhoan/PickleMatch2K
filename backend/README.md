@@ -19,7 +19,7 @@ backend/
 │   │                       user, search, match, venue_recommendation, ml, maintenance (tác vụ nền), storage
 │   ├── ml/                 features (đặc trưng dùng chung), train_model, mô hình .pkl và model_meta.json
 │   └── utils/              timeutils (giờ Việt Nam, đồng hồ nghiệp vụ), geo (Haversine)
-├── alembic/versions/       0001 schema gốc → 0002 chỉnh lệch CSDL cũ → 0003 lõi đặt sân → 0004 nhãn khảo sát → 0005 bỏ giờ rảnh → 0006 bỏ tiện ích ưa thích, ngân sách
+├── alembic/versions/       0001 schema gốc → 0002 chỉnh lệch CSDL cũ → 0003 lõi đặt sân → 0004 nhãn khảo sát → 0005 bỏ giờ rảnh → 0006 bỏ tiện ích ưa thích, ngân sách → 0007 thêm chênh lệch tuổi
 ├── scripts/                Script quản trị (seed, reset, import_excel, backup_db, show_db)
 ├── tests/                  Bộ kiểm thử pytest
 ├── manage.py               Bộ lệnh quản trị
@@ -121,7 +121,7 @@ giờ, đóng phòng đấu đã qua giờ. Một tác vụ lỗi không chặn 
 ## Mô hình ghép cặp
 
 ```powershell
-python manage.py seed --feedback                # nạp 3.000 phiếu ghép cặp mô phỏng vào bảng pair_feedback (bỏ qua nếu đã có)
+python manage.py seed --feedback                # nạp 10.000 phiếu ghép cặp mô phỏng vào bảng pair_feedback (bỏ qua nếu đã có)
 python manage.py seed --feedback --regenerate   # thay các phiếu mô phỏng bằng bộ sinh theo quy tắc hiện tại
 python manage.py train-model                    # huấn luyện từ bảng pair_feedback, ghi app/ml/match_rf_model.pkl + model_meta.json
 python manage.py train-model --report           # chỉ in bảng đánh giá, không ghi file

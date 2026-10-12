@@ -1,7 +1,7 @@
 """
 Phục vụ mô hình ghép cặp người chơi (Random Forest).
 
-Mô hình nhận 4 đặc trưng định nghĩa trong app.ml.features. Nếu không nạp được file mô hình hoặc
+Mô hình nhận 5 đặc trưng định nghĩa trong app.ml.features. Nếu không nạp được file mô hình hoặc
 mô hình được huấn luyện với bộ đặc trưng khác, dịch vụ báo "chưa sẵn sàng" và KHÔNG tự thay bằng
 công thức ước lượng nào khác, để con số hiển thị luôn đúng là của mô hình.
 """
@@ -39,6 +39,12 @@ META_PATH = ML_DIR / "model_meta.json"
 
 MAX_CANDIDATES = 300
 LEVEL_WINDOW = 1.5  # chỉ xét ứng viên chênh trình độ trong khoảng này
+
+# Hồ sơ ứng viên giả định (khảo sát và phiếu mô phỏng): mức chênh so với người trả lời được rút từ các danh sách này.
+# Chênh trình độ nhỏ xuất hiện nhiều hơn chênh lớn, giống những người mà một người chơi thật sự cân nhắc ghép cùng.
+CANDIDATE_LEVEL_OFFSETS = [-2.0, -1.5, -1.0, -1.0, -0.5, -0.5, 0.0, 0.0, 0.5, 0.5, 1.0, 1.0, 1.5, 2.0]
+CANDIDATE_DISTANCES_KM = [1, 2, 3, 5, 8, 12, 18, 25, 35]
+CANDIDATE_AGE_GAPS = [0, 1, 2, 3, 5, 8, 12, 18, 25, 35]
 
 
 class MatchPredictor:
@@ -96,10 +102,20 @@ class MatchPredictor:
         if not self.available:
             raise RuntimeError(self.error or "Mô hình chưa sẵn sàng")
         frame = pd.DataFrame(list(rows), columns=FEATURE_NAMES)
+        if frame.isna().any().any():   # thiếu đặc trưng thì báo lỗi, không để mô hình tự đoán thay
+            raise ValueError(f"Mỗi cặp phải có đủ {len(FEATURE_NAMES)} đặc trưng: {', '.join(FEATURE_NAMES)}")
         return [float(p) for p in self.model.predict_proba(frame)[:, 1]]
 
 
 match_predictor = MatchPredictor()
+
+
+def public_features(features: Dict[str, float]) -> Dict[str, float]:
+    """
+    Đặc trưng được phép trả về qua API. Chênh lệch tuổi vẫn được dùng để tính, nhưng không trả về: từ con số đó
+    người gọi suy ra được tuổi của người kia, trong khi ngày sinh là thông tin riêng của mỗi người.
+    """
+    return {name: value for name, value in features.items() if name != "age_diff"}
 
 
 def _display_name(user: User) -> str:
@@ -165,7 +181,7 @@ def recommend_partners(
             "purpose": other.purpose,
             "distance_km": features["distance_km"] if has_distance else None,
             "probability": round(probability * 100, 1),
-            "features": features,
+            "features": public_features(features),
         })
     # Xác suất bằng nhau thì ưu tiên người sát trình độ hơn, rồi tới người ở gần hơn
     items.sort(key=lambda item: (-item["probability"], item["features"]["level_diff"], item["features"]["distance_km"]))
@@ -219,10 +235,10 @@ def predict_pair(user_a: User, user_b: User) -> dict:
     features = pair_features(ProfileView.from_profile(user_a.player_profile), ProfileView.from_profile(user_b.player_profile))
     if features is None or not match_predictor.available:
         return {"model_available": match_predictor.available, "success_probability": None,
-                "is_match_recommended": None, "features_used": features or {}}
+                "is_match_recommended": None, "features_used": public_features(features or {})}
     probability = match_predictor.predict_proba([features])[0]
     return {"model_available": True, "success_probability": probability,
-            "is_match_recommended": probability >= 0.5, "features_used": features}
+            "is_match_recommended": probability >= 0.5, "features_used": public_features(features)}
 
 
 # ---------------------------------------------------------------------------
@@ -235,15 +251,16 @@ def _sign(features: Dict[str, float]) -> str:
     return hmac.new(settings.SECRET_KEY.encode(), canonical.encode(), hashlib.sha256).hexdigest()
 
 
-def hypothetical_candidate(rng: random.Random, viewer: ProfileView) -> Tuple[ProfileView, float]:
+def hypothetical_candidate(rng: random.Random, viewer: ProfileView) -> Tuple[ProfileView, float, float]:
     """
-    Một hồ sơ ứng viên GIẢ ĐỊNH xoay quanh hồ sơ `viewer`, trải các mức chênh trình độ và khoảng cách.
-    Dùng chung cho khảo sát thu nhãn và cho bộ phiếu mô phỏng. Trả về (ứng viên, khoảng cách km).
+    Một hồ sơ ứng viên GIẢ ĐỊNH xoay quanh hồ sơ `viewer`, trải các mức chênh trình độ, khoảng cách và tuổi.
+    Dùng chung cho khảo sát thu nhãn và cho bộ phiếu mô phỏng. Trả về (ứng viên, khoảng cách km, chênh lệch tuổi).
     """
-    level = min(8.0, max(1.0, viewer.skill_level + rng.choice([-2.0, -1.5, -1.0, -0.5, 0.0, 0.0, 0.5, 1.0, 1.5, 2.0])))
+    level = min(8.0, max(1.0, viewer.skill_level + rng.choice(CANDIDATE_LEVEL_OFFSETS)))
     candidate = ProfileView(skill_level=level, purpose=rng.choice(PURPOSES), play_style=rng.choice(PLAY_STYLES))
-    distance = round(rng.choice([1, 2, 3, 5, 8, 12, 18, 25, 35]) * rng.uniform(0.8, 1.2), 1)
-    return candidate, distance
+    distance = round(rng.choice(CANDIDATE_DISTANCES_KM) * rng.uniform(0.8, 1.2), 1)
+    age_gap = float(rng.choice(CANDIDATE_AGE_GAPS))
+    return candidate, distance, age_gap
 
 
 def generate_survey_pairs(user: User, count: int = 10) -> Tuple[List[dict], List[str]]:
@@ -259,14 +276,15 @@ def generate_survey_pairs(user: User, count: int = 10) -> Tuple[List[dict], List
     viewer = ProfileView(skill_level=me.skill_level, purpose=me.purpose, play_style=me.play_style)
     pairs = []
     for _ in range(count):
-        candidate, distance = hypothetical_candidate(rng, viewer)
-        features = pair_features(viewer, candidate, distance_km=distance)
+        candidate, distance, age_gap = hypothetical_candidate(rng, viewer)
+        features = pair_features(viewer, candidate, distance_km=distance, age_diff=age_gap)
         pairs.append({
             "candidate": {
                 "skill_level": candidate.skill_level,
                 "distance_km": distance,
                 "purpose": candidate.purpose,
                 "play_style": candidate.play_style,
+                "age_gap": age_gap,
             },
             "features": features,
             "signature": _sign(features),
@@ -288,6 +306,7 @@ def save_survey_answers(db: Session, user: User, answers: Sequence) -> int:
             distance_km=float(features["distance_km"]),
             purpose_match=int(features["purpose_match"]),
             style_match=int(features["style_match"]),
+            age_diff=float(features["age_diff"]),
         ))
         saved += 1
     db.commit()
@@ -295,11 +314,14 @@ def save_survey_answers(db: Session, user: User, answers: Sequence) -> int:
 
 
 def feedback_summary(db: Session) -> dict:
-    """Số nhãn khảo sát thật (labels, positive, raters) và số phiếu mô phỏng nạp sẵn (simulated)."""
+    """
+    Số nhãn khảo sát thật dùng được cho mô hình (labels, positive, raters) và số phiếu mô phỏng nạp sẵn (simulated).
+    Câu trả lời thu trước khi có tiêu chí tuổi thiếu chênh lệch tuổi nên không được tính.
+    """
     from sqlalchemy import func
 
     total, positive, raters = db.query(
         func.count(PairFeedback.id), func.coalesce(func.sum(PairFeedback.label), 0), func.count(func.distinct(PairFeedback.rater_id))
-    ).filter(PairFeedback.source != SIMULATED_SOURCE).one()
+    ).filter(PairFeedback.source != SIMULATED_SOURCE, PairFeedback.age_diff.isnot(None)).one()
     simulated = db.query(func.count(PairFeedback.id)).filter(PairFeedback.source == SIMULATED_SOURCE).scalar()
     return {"labels": int(total), "positive": int(positive), "raters": int(raters), "simulated": int(simulated or 0)}

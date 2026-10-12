@@ -10,9 +10,9 @@ trong file `.env`; schema luôn được tạo/cập nhật bằng migration Ale
 | `python manage.py show` | Báo cáo tổng quan dữ liệu | Không (chỉ đọc) |
 | `python manage.py seed` | Nạp bộ dữ liệu demo vào CSDL **trống** | Không |
 | `python manage.py seed --if-empty` | Như trên, nhưng bỏ qua nếu đã có dữ liệu (dùng cho Docker) | Không |
-| `python manage.py seed --feedback` | Chỉ nạp 3.000 phiếu ghép cặp **mô phỏng** vào bảng `pair_feedback` (nguồn `simulated`) để huấn luyện mô hình từ CSDL; bỏ qua nếu đã có | Không |
+| `python manage.py seed --feedback` | Chỉ nạp 10.000 phiếu ghép cặp **mô phỏng** vào bảng `pair_feedback` (nguồn `simulated`) để huấn luyện mô hình từ CSDL; bỏ qua nếu đã có | Không |
 | `python manage.py seed --feedback --regenerate` | Thay các phiếu mô phỏng bằng bộ sinh theo quy tắc hiện tại (dùng sau khi đổi quy tắc sinh nhãn); câu trả lời khảo sát thật được giữ nguyên | Chỉ phiếu mô phỏng |
-| `python manage.py seed --preferences` | Chỉ bổ sung mục đích chơi mẫu cho tài khoản demo đang để trống | Không |
+| `python manage.py seed --preferences` | Chỉ bổ sung mục đích chơi và ngày sinh mẫu cho tài khoản demo đang để trống (kể cả các tài khoản `ghepNN`) | Không |
 | `python manage.py seed --matches` | Nạp **thêm** 12 người chơi mẫu và 10 phòng đấu cho 6 ngày tới để thử chức năng ghép trận; chạy lại được, không sửa dữ liệu đã có | Không |
 | `python manage.py seed --activity` | Nạp **thêm** hoạt động mẫu (nhân viên, đơn đặt, giao dịch, phòng đấu, đánh giá) cho cụm sân mới chưa có đơn nào; `--venue ID` để chỉ nạp một cụm sân; không sửa dữ liệu đã có | Không |
 | `python manage.py seed --reset` | Xóa toàn bộ rồi nạp lại dữ liệu demo | **Có** |
@@ -41,7 +41,7 @@ Trước khi chạy chúng trên CSDL đang dùng, hãy sao lưu: `python manage
   ứng dụng, nên luôn thỏa các ràng buộc hiện hành (không đặt trùng, tiền đã trả khớp sổ giao dịch, chỉ người
   đã chơi xong mới có đánh giá). Ngày tháng tính tương đối theo ngày chạy script.
 - Tài khoản nhận tiền của chủ sân lấy từ biến `SEPAY_BANK_*` trong `.env`; mã nguồn không chứa số tài khoản nào.
-- 3.000 phiếu ghép cặp mô phỏng (mỗi người chơi demo 150 phiếu) làm dữ liệu huấn luyện cho mô hình. Các phiếu mang
+- 10.000 phiếu ghép cặp mô phỏng (mỗi người chơi demo 500 phiếu) làm dữ liệu huấn luyện cho mô hình. Các phiếu mang
   nguồn `simulated`, tách biệt với câu trả lời khảo sát thật (nguồn `survey`); cổng quản trị hiển thị riêng hai con số.
   Muốn sinh lại (ví dụ sau khi đổi quy tắc sinh nhãn): `python manage.py seed --feedback --regenerate`, rồi
   `python manage.py train-model`. Lệnh huấn luyện chỉ dùng phiếu mô phỏng cho tới khi có đủ 300 câu trả lời khảo sát thật.

@@ -49,7 +49,7 @@ KLTN/
 ├── .github/workflows/      Kiểm tra tự động (CI)
 ├── backend/                API FastAPI
 │   ├── app/                api, core, db, ml, models, schemas, services, utils
-│   ├── alembic/            Các phiên bản schema (0001 → 0006)
+│   ├── alembic/            Các phiên bản schema (0001 → 0007)
 │   ├── scripts/            Script quản trị CSDL (xem backend/scripts/README.md)
 │   ├── tests/              Bộ kiểm thử pytest (xem backend/tests/README.md)
 │   └── manage.py           Bộ lệnh quản trị
@@ -225,6 +225,10 @@ Sau khi nâng cấp:
 - Từ revision 0005, mô hình ghép cặp chỉ còn 4 đặc trưng (đã bỏ giờ rảnh). Bước nâng cấp này xóa các phiếu ghép cặp mô
   phỏng cũ và giữ nguyên câu trả lời khảo sát thật; nạp bộ phiếu mô phỏng mới bằng `python manage.py seed --feedback`.
 - Từ revision 0006, hồ sơ người chơi không còn lưu tiện ích ưa thích và ngân sách (hai cột này vốn không còn ô nhập).
+- Từ revision 0007, mô hình ghép cặp có thêm tiêu chí thứ năm là chênh lệch tuổi. Bước nâng cấp này xóa các phiếu ghép
+  cặp mô phỏng cũ và giữ nguyên câu trả lời khảo sát thật (các câu cũ không có chênh lệch tuổi nên không được tính).
+  Sau khi nâng cấp: nạp bộ 10.000 phiếu mô phỏng mới bằng `python manage.py seed --feedback`, và bổ sung ngày sinh mẫu
+  cho các tài khoản demo đang để trống bằng `python manage.py seed --preferences`.
 - Phiếu ghép cặp mô phỏng nạp từ bản cũ được sinh với nhiễu 0,08, khiến độ phù hợp của phòng thường hiện 100%. Mô hình
   đi kèm mã nguồn đã được huấn luyện lại với nhiễu 0,15; để bảng `pair_feedback` khớp với mô hình, sinh lại các phiếu
   mô phỏng bằng `python manage.py seed --feedback --regenerate` (câu trả lời khảo sát thật được giữ nguyên).
@@ -236,7 +240,7 @@ Sau khi nâng cấp:
 - Số tiền lưu bằng kiểu số thực (`FLOAT`); mọi giá trị trong hệ thống là số nguyên VNĐ.
 - Quét QR bằng camera cần trình duyệt hỗ trợ `BarcodeDetector` và trang chạy trên HTTPS hoặc `localhost`;
   các trường hợp khác nhân viên nhập mã đơn bằng tay.
-- Mô hình ghép cặp được huấn luyện trên **3.000 phiếu ghép cặp mô phỏng** lưu trong bảng `pair_feedback`
+- Mô hình ghép cặp được huấn luyện trên **10.000 phiếu ghép cặp mô phỏng** lưu trong bảng `pair_feedback`
   (nạp bằng `python manage.py seed --feedback`), không phải khảo sát người chơi thật. Thu thập câu trả lời thật qua
   trang khảo sát (`/survey`) là hướng phát triển: các câu trả lời được lưu riêng, và khi đủ 300 nhãn thật thì lệnh
   `python manage.py train-model` tự chuyển sang huấn luyện bằng nhãn thật. Xem phần đánh giá trong

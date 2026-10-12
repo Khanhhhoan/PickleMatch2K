@@ -4,7 +4,7 @@ Hệ thống dùng **PostgreSQL 17**. Schema được định nghĩa bằng mode
 qua migration Alembic (`backend/alembic/versions/`). Một ca kiểm thử so sánh CSDL sau migration với model để bảo đảm
 hai bên luôn khớp nhau.
 
-Tài liệu này mô tả schema ở revision **0006**.
+Tài liệu này mô tả schema ở revision **0007**.
 
 ## 1. Sơ đồ quan hệ
 
@@ -152,8 +152,9 @@ Duy nhất theo (`match_id`, `user_id`).
 
 ### 2.5. Nhãn cho mô hình ghép cặp
 
-**`pair_feedback`**: `rater_id` (FK → `users.id`), `source` (`survey` = câu trả lời khảo sát thật, `simulated` = phiếu mô phỏng nạp sẵn bằng `python manage.py seed --feedback`), bốn đặc trưng của cặp được hỏi (`level_diff`, `distance_km`,
-`purpose_match`, `style_match`), `label` (1 = muốn ghép, 0 = không), `created_at`.
+**`pair_feedback`**: `rater_id` (FK → `users.id`), `source` (`survey` = câu trả lời khảo sát thật, `simulated` = phiếu mô phỏng nạp sẵn bằng `python manage.py seed --feedback`), năm đặc trưng của cặp được hỏi (`level_diff`, `distance_km`,
+`purpose_match`, `style_match`, `age_diff`), `label` (1 = muốn ghép, 0 = không), `created_at`. Cột `age_diff` cho phép
+để trống: câu trả lời khảo sát thu trước revision 0007 không có chênh lệch tuổi và không tham gia huấn luyện.
 Bảng chỉ lưu đặc trưng của cặp, không lưu danh tính người được so sánh.
 
 ## 3. Ràng buộc bảo vệ dữ liệu
@@ -225,6 +226,7 @@ tạo cùng lúc.
 | `0004` | Bảng `pair_feedback` |
 | `0005` | Bỏ giờ rảnh khỏi hệ thống: xóa cột `player_profiles.availability` và `pair_feedback.availability_overlap`, mô hình ghép cặp còn 4 đặc trưng. Phiếu mô phỏng cũ bị xóa để nạp lại bằng `python manage.py seed --feedback`; câu trả lời khảo sát thật được giữ |
 | `0006` | Bỏ `player_profiles.preferred_amenities` và `player_profiles.budget_max`: hồ sơ không còn lưu tiện ích ưa thích và ngân sách. Thuật toán gợi ý sân nhận hai giá trị này qua tham số của yêu cầu |
+| `0007` | Thêm `pair_feedback.age_diff` (chênh lệch tuổi): mô hình ghép cặp có 5 đặc trưng. Phiếu mô phỏng cũ bị xóa để nạp lại bằng `python manage.py seed --feedback`; câu trả lời khảo sát thật được giữ, cột mới để trống |
 
 Nâng cấp một CSDL cũ: `python manage.py migrate` (tự sao lưu trước, xem README gốc).
 

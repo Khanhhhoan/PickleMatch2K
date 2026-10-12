@@ -1,6 +1,7 @@
 """Mô hình ghép cặp: đặc trưng dùng chung, huấn luyện/đánh giá, phục vụ theo lô và khảo sát thu nhãn."""
 import json
 import math
+from datetime import date
 
 import joblib
 import pandas as pd
@@ -25,12 +26,14 @@ def view(**kwargs) -> ProfileView:
 # ---------------------------------------------------------------------------
 # Đặc trưng
 # ---------------------------------------------------------------------------
-def test_pair_features_are_symmetric_and_use_the_four_documented_features():
-    a = view(latitude=10.78, longitude=106.70, purpose="practice", play_style="Offensive")
-    b = view(skill_level=4.0, latitude=10.80, longitude=106.72, purpose="practice", play_style="All-Round")
+def test_pair_features_are_symmetric_and_use_the_five_documented_features():
+    a = view(latitude=10.78, longitude=106.70, purpose="practice", play_style="Offensive", age=30)
+    b = view(skill_level=4.0, latitude=10.80, longitude=106.72, purpose="practice", play_style="All-Round", age=37)
     ab, ba = pair_features(a, b), pair_features(b, a)
-    assert ab == ba and list(ab) == FEATURE_NAMES == ["level_diff", "distance_km", "purpose_match", "style_match"]
-    assert ab == {"level_diff": 0.5, "distance_km": pytest.approx(3.11, abs=0.05), "purpose_match": 1, "style_match": 1}
+    assert ab == ba
+    assert list(ab) == FEATURE_NAMES == ["level_diff", "distance_km", "purpose_match", "style_match", "age_diff"]
+    assert ab == {"level_diff": 0.5, "distance_km": pytest.approx(3.11, abs=0.05), "purpose_match": 1, "style_match": 1,
+                  "age_diff": 7.0}
 
 
 def test_missing_data_handling():
@@ -38,10 +41,21 @@ def test_missing_data_handling():
     unknown = pair_features(view(), view())
     assert unknown["distance_km"] == F.UNKNOWN_DISTANCE_KM
     assert (unknown["purpose_match"], unknown["style_match"]) == (0, 0)
+    assert unknown["age_diff"] == F.UNKNOWN_AGE_DIFF                        # chưa khai ngày sinh: giá trị trung tính
+    assert pair_features(view(age=25), view())["age_diff"] == F.UNKNOWN_AGE_DIFF
     far = pair_features(view(latitude=10.78, longitude=106.70), view(latitude=21.03, longitude=105.85))
     assert far["distance_km"] == F.MAX_DISTANCE_KM
-    assert pair_features(view(), view(), distance_km=7.25)["distance_km"] == 7.25
-    assert view().missing_fields() == ["location", "purpose", "play_style"]
+    assert pair_features(view(age=18), view(age=95))["age_diff"] == F.MAX_AGE_DIFF
+    given = pair_features(view(), view(), distance_km=7.25, age_diff=12)    # khoảng cách và chênh tuổi cho sẵn
+    assert (given["distance_km"], given["age_diff"]) == (7.25, 12.0)
+    assert view().missing_fields() == ["location", "purpose", "play_style", "date_of_birth"]
+
+
+def test_profile_view_takes_the_age_from_the_date_of_birth(db):
+    today = date.today()
+    user = make_user(db, skill_level=3.0, date_of_birth=date(today.year - 30, 1, 1))
+    assert ProfileView.from_profile(user.player_profile).age == 30
+    assert "date_of_birth" not in ProfileView.from_profile(user.player_profile).missing_fields()
 
 
 @pytest.mark.parametrize("raw, canonical", [
@@ -69,16 +83,22 @@ def test_synthetic_prior_is_reproducible_and_balanced():
     assert first["distance_km"].between(0, F.MAX_DISTANCE_KM).all()
 
 
-def test_simulated_respondents_find_a_good_pair_likely_but_not_certain():
-    """Câu trả lời mô phỏng có dao động giữa người với người: cặp hợp trình độ, ở gần là "rất có thể", không phải 100%."""
-    pairs = pd.DataFrame([
-        {"level_diff": 0.0, "distance_km": 6.0, "purpose_match": 0, "style_match": 0},    # chỉ hợp trình độ và ở gần
-        {"level_diff": 0.5, "distance_km": 6.0, "purpose_match": 0, "style_match": 0},
-        {"level_diff": 2.0, "distance_km": 25.0, "purpose_match": 0, "style_match": 0},
-    ])
-    margin = (train_model.synthetic_rule_score(pairs) - 0.5) / train_model.LABEL_NOISE_SD
-    same_level, half_level_apart, far_apart = (0.5 * (1 + math.erf(z / math.sqrt(2))) for z in margin)   # P(muốn ghép)
-    assert 0.90 < same_level < 0.97 and 0.70 < half_level_apart < 0.90 and far_apart < 0.01
+def test_simulated_respondents_weigh_all_five_criteria_and_never_forgive_a_large_level_gap():
+    """Xác suất "muốn ghép" của người trả lời mô phỏng: có dao động, và tiêu chí nào cũng làm con số thay đổi."""
+    def chance(level, distance, purpose, style, age):
+        pair = pd.DataFrame([dict(zip(FEATURE_NAMES, (level, distance, purpose, style, age)))])
+        margin = float(train_model.synthetic_rule_score(pair)[0] - 0.5) / train_model.LABEL_NOISE_SD
+        return 0.5 * (1 + math.erf(margin / math.sqrt(2)))
+
+    only_level_and_place = chance(0.0, 6.0, 0, 0, 2)                 # cùng trình, sân gần, cùng lứa; khác mục đích và lối đánh
+    assert 0.75 < only_level_and_place < 0.92                         # rất có thể, không phải chắc chắn
+    assert chance(0.0, 6.0, 1, 0, 2) > only_level_and_place           # cùng mục đích thì hơn
+    assert chance(0.0, 6.0, 0, 1, 2) > only_level_and_place           # hợp lối đánh thì hơn
+    assert chance(0.0, 6.0, 0, 0, 30) < only_level_and_place - 0.2    # lệch 30 tuổi thì kém hẳn
+    assert chance(0.0, 25.0, 0, 0, 2) < only_level_and_place - 0.2    # sân xa thì kém hẳn
+    assert chance(1.0, 2.0, 1, 1, 2) > 0.9                            # lệch 1.0 trình độ: các tiêu chí khác bù được
+    assert chance(2.0, 2.0, 1, 1, 2) < 0.5                            # lệch 2.0: hợp mọi thứ còn lại vẫn không đủ
+    assert chance(2.0, 25.0, 0, 0, 30) < 0.01
 
 
 def test_evaluation_measures_the_random_forest_against_what_the_data_allows():
@@ -116,7 +136,8 @@ def test_training_prefers_real_survey_labels_and_evaluates_by_rater(db, monkeypa
     pairs = train_model.generate_synthetic_pairs(360, seed=3)
     db.add_all([
         PairFeedback(rater_id=raters[i % 6], label=int(row.label), level_diff=float(row.level_diff),
-                     distance_km=float(row.distance_km), purpose_match=int(row.purpose_match), style_match=int(row.style_match))
+                     distance_km=float(row.distance_km), purpose_match=int(row.purpose_match), style_match=int(row.style_match),
+                     age_diff=float(row.age_diff))
         for i, row in enumerate(pairs.itertuples())
     ])
     db.commit()
@@ -134,7 +155,7 @@ def test_training_prefers_real_survey_labels_and_evaluates_by_rater(db, monkeypa
 
 def test_too_few_survey_labels_fall_back_to_the_synthetic_prior(db, monkeypatch):
     rater = make_user(db, skill_level=3.5)
-    db.add(PairFeedback(rater_id=rater.id, label=1, level_diff=0, distance_km=1, purpose_match=1, style_match=1))
+    db.add(PairFeedback(rater_id=rater.id, label=1, level_diff=0, distance_km=1, purpose_match=1, style_match=1, age_diff=2))
     db.commit()
     monkeypatch.setattr(train_model, "SYNTHETIC_SAMPLES", 3000)
     data, source, groups = train_model.choose_dataset(force_synthetic=False)
@@ -157,10 +178,11 @@ def test_simulated_feedback_is_stored_in_the_database_and_marked_as_simulated(db
     rows = db.query(PairFeedback).all()
     assert {r.source for r in rows} == {"simulated"} and {r.rater_id for r in rows} == {u.id for u in raters}
     assert {r.label for r in rows} == {0, 1}
-    assert all(r.distance_km > 0 and r.level_diff >= 0 for r in rows)
-    # cả bốn đặc trưng đều biến thiên, không đặc trưng nào bị đứng yên
+    assert all(r.distance_km > 0 and r.level_diff >= 0 and r.age_diff >= 0 for r in rows)
+    # cả năm đặc trưng đều biến thiên, không đặc trưng nào bị đứng yên
     assert {r.purpose_match for r in rows} == {0, 1} == {r.style_match for r in rows}
     assert len({r.level_diff for r in rows}) >= 4 and len({round(r.distance_km) for r in rows}) >= 4
+    assert len({r.age_diff for r in rows}) >= 6
 
     assert seed.seed_simulated_feedback(db, per_player=120) == 0                     # chạy lại không nạp trùng
     assert db.query(PairFeedback).count() == 360
@@ -170,14 +192,14 @@ def test_simulated_feedback_is_stored_in_the_database_and_marked_as_simulated(db
 
 def test_simulated_feedback_is_the_same_on_every_installation(db):
     _load_simulated_feedback(db)
-    first = [(r.rater_id, r.level_diff, r.distance_km, r.purpose_match, r.style_match, r.label)
+    first = [(r.rater_id, r.level_diff, r.distance_km, r.purpose_match, r.style_match, r.age_diff, r.label)
              for r in db.query(PairFeedback).order_by(PairFeedback.id)]
     db.query(PairFeedback).delete()
     db.commit()
     from scripts import seed
 
     seed.seed_simulated_feedback(db, per_player=120)
-    second = [(r.rater_id, r.level_diff, r.distance_km, r.purpose_match, r.style_match, r.label)
+    second = [(r.rater_id, r.level_diff, r.distance_km, r.purpose_match, r.style_match, r.age_diff, r.label)
               for r in db.query(PairFeedback).order_by(PairFeedback.id)]
     assert first == second
 
@@ -197,16 +219,19 @@ def test_training_reads_simulated_feedback_from_the_database_and_says_so(db):
 def test_a_few_survey_answers_are_kept_apart_until_there_are_enough_of_them(db):
     raters, _ = _load_simulated_feedback(db)
     db.add_all([
-        PairFeedback(rater_id=raters[0].id, label=1, level_diff=2.0, distance_km=30, purpose_match=0, style_match=0)
+        PairFeedback(rater_id=raters[0].id, label=1, level_diff=2.0, distance_km=30, purpose_match=0, style_match=0, age_diff=4)
         for _ in range(5)
     ])
+    # một câu trả lời cũ, thu trước khi có tiêu chí tuổi: không có chênh lệch tuổi
+    db.add(PairFeedback(rater_id=raters[0].id, label=0, level_diff=0.0, distance_km=1, purpose_match=1, style_match=1))
     db.commit()
 
     data, source, groups = train_model.choose_dataset(force_synthetic=False)
     assert (source, len(data), groups.nunique()) == ("simulated", 360, 3)        # 5 câu trả lời thật chưa được trộn vào
     assert (data.attrs["n_survey"], data.attrs["n_simulated"]) == (0, 360)
     summary = ml_service.feedback_summary(db)                                    # nhưng vẫn được lưu và đếm riêng
-    assert (summary["labels"], summary["simulated"]) == (5, 360)
+    assert (summary["labels"], summary["simulated"]) == (5, 360)                 # câu trả lời thiếu tuổi không được tính
+    assert db.query(PairFeedback).filter_by(source="survey").count() == 6        # nhưng không bị xóa
 
 
 def test_regenerating_simulated_feedback_replaces_only_the_simulated_sheets(db, monkeypatch):
@@ -214,11 +239,11 @@ def test_regenerating_simulated_feedback_replaces_only_the_simulated_sheets(db, 
     from scripts import seed
 
     def simulated():
-        return [(r.rater_id, r.level_diff, r.distance_km, r.purpose_match, r.style_match, r.label)
+        return [(r.rater_id, r.level_diff, r.distance_km, r.purpose_match, r.style_match, r.age_diff, r.label)
                 for r in db.query(PairFeedback).filter_by(source="simulated").order_by(PairFeedback.id)]
 
     raters, _ = _load_simulated_feedback(db)
-    db.add(PairFeedback(rater_id=raters[0].id, label=1, level_diff=0, distance_km=1, purpose_match=1, style_match=1))
+    db.add(PairFeedback(rater_id=raters[0].id, label=1, level_diff=0, distance_km=1, purpose_match=1, style_match=1, age_diff=3))
     db.commit()
     survey_id = db.query(PairFeedback).filter_by(source="survey").one().id
     before = simulated()
@@ -229,8 +254,8 @@ def test_regenerating_simulated_feedback_replaces_only_the_simulated_sheets(db, 
     assert seed.seed_simulated_feedback(db, per_player=120, replace=True) == 360
     db.expire_all()
     after = simulated()
-    assert [row[:5] for row in after] == [row[:5] for row in before]             # vẫn những cặp được hỏi đó
-    assert [row[5] for row in after] != [row[5] for row in before]               # câu trả lời theo quy tắc mới
+    assert [row[:6] for row in after] == [row[:6] for row in before]             # vẫn những cặp được hỏi đó
+    assert [row[6] for row in after] != [row[6] for row in before]               # câu trả lời theo quy tắc mới
     assert db.query(PairFeedback).filter_by(source="survey").one().id == survey_id   # câu trả lời thật còn nguyên
     assert db.query(PairFeedback).count() == 361
 
@@ -240,7 +265,8 @@ def test_real_survey_answers_replace_simulated_ones_once_there_are_enough(db):
     real = train_model.generate_synthetic_pairs(300, seed=5)
     db.add_all([
         PairFeedback(rater_id=raters[i % 3].id, label=int(row.label), level_diff=float(row.level_diff),
-                     distance_km=float(row.distance_km), purpose_match=int(row.purpose_match), style_match=int(row.style_match))
+                     distance_km=float(row.distance_km), purpose_match=int(row.purpose_match), style_match=int(row.style_match),
+                     age_diff=float(row.age_diff))
         for i, row in enumerate(real.itertuples())
     ])
     db.commit()
@@ -263,39 +289,50 @@ def test_shipped_model_matches_the_feature_module_and_its_metadata():
     assert "baselines" not in info and 0 < info["label_noise_rate"] < 0.3
 
 
+def pair(level_diff, distance_km, purpose_match, style_match, age_diff):
+    return dict(zip(FEATURE_NAMES, (level_diff, distance_km, purpose_match, style_match, age_diff)))
+
+
 def test_shipped_model_never_scores_a_pair_as_certain():
     """Độ phù hợp là một ước lượng: với mọi tổ hợp đặc trưng, con số của mô hình không làm tròn thành 100%."""
     rows = [
-        {"level_diff": level, "distance_km": distance, "purpose_match": purpose, "style_match": style}
+        pair(level, distance, purpose, style, age)
         for level in (0.0, 0.5, 1.0, 1.5, 2.0, 3.0) for distance in (0.2, 1, 2, 3, 5, 8, 12, 18, 25, 35, 50)
-        for purpose in (0, 1) for style in (0, 1)
+        for purpose in (0, 1) for style in (0, 1) for age in (0, 3, 8, 15, 30, 45)
     ]
     scores = match_predictor.predict_proba(rows)
     assert max(scores) < 0.995
     assert max(scores) > 0.95 and min(scores) < 0.05          # vẫn tách rõ cặp rất hợp với cặp không hợp
-    # cùng trình độ, cùng khoảng cách: hợp thêm mục đích và lối đánh thì không thể kém hơn
-    plain, matched = match_predictor.predict_proba([
-        {"level_diff": 0.0, "distance_km": 6.0, "purpose_match": 0, "style_match": 0},
-        {"level_diff": 0.0, "distance_km": 6.0, "purpose_match": 1, "style_match": 1},
+
+
+def test_shipped_model_uses_every_criterion_and_keeps_level_in_the_lead():
+    plain, same_purpose, same_style, same_age, all_three = match_predictor.predict_proba([
+        pair(0.0, 6.0, 0, 0, 30), pair(0.0, 6.0, 1, 0, 30), pair(0.0, 6.0, 0, 1, 30), pair(0.0, 6.0, 0, 0, 2), pair(0.0, 6.0, 1, 1, 2),
     ])
-    assert 0.70 < plain < matched
+    assert plain < same_purpose and plain < same_style and plain < same_age    # tiêu chí nào khớp thêm cũng làm điểm tăng
+    assert all_three > max(same_purpose, same_style, same_age) and all_three > 0.9
+    near, far = match_predictor.predict_proba([pair(0.0, 2.0, 1, 1, 2), pair(0.0, 30.0, 1, 1, 2)])
+    assert near > far
+    # chênh trình độ lớn thì hợp mọi tiêu chí còn lại vẫn không đạt ngưỡng đề xuất
+    assert all(score < 0.7 for score in match_predictor.predict_proba([pair(1.5, 2.0, 1, 1, 2), pair(2.0, 2.0, 1, 1, 2)]))
+    shares = match_predictor.info()["feature_importances"]
+    assert max(shares, key=shares.get) == "level_diff" and 0.45 < shares["level_diff"] < 0.65
+    assert all(shares[name] > 0.05 for name in FEATURE_NAMES)                  # không tiêu chí nào chỉ để cho có
 
 
 def test_batch_prediction_equals_one_by_one_and_follows_common_sense():
-    rows = [
-        {"level_diff": 0.0, "distance_km": 2.0, "purpose_match": 1, "style_match": 1},
-        {"level_diff": 0.5, "distance_km": 12.0, "purpose_match": 0, "style_match": 0},
-        {"level_diff": 2.5, "distance_km": 30.0, "purpose_match": 0, "style_match": 0},
-    ]
+    rows = [pair(0.0, 2.0, 1, 1, 2), pair(0.5, 12.0, 0, 0, 12), pair(2.5, 30.0, 0, 0, 30)]
     batch = match_predictor.predict_proba(rows)
     assert batch == pytest.approx([match_predictor.predict_proba([row])[0] for row in rows])
     assert batch[0] > batch[1] > batch[2] and batch[0] > 0.9 and batch[2] < 0.1
     assert match_predictor.predict_proba([]) == []
+    with pytest.raises(ValueError, match="đủ 5 đặc trưng"):                    # thiếu đặc trưng thì không đoán bừa
+        match_predictor.predict_proba([{"level_diff": 0.0, "distance_km": 2.0, "purpose_match": 1, "style_match": 1}])
 
 
 def test_a_model_trained_on_other_features_is_reported_unavailable_without_a_fake_fallback(client, db, tmp_path, monkeypatch):
     stale = RandomForestClassifier(n_estimators=3, random_state=0).fit(
-        pd.DataFrame({"level_diff": [0, 1, 2, 3], "age_diff": [1, 2, 3, 4]}), [1, 1, 0, 0])
+        pd.DataFrame({"level_diff": [0, 1, 2, 3], "rank_diff": [1, 2, 3, 4]}), [1, 1, 0, 0])
     path = tmp_path / "match_rf_model.pkl"
     joblib.dump(stale, path)
     monkeypatch.setattr(ml_service, "MODEL_PATH", path)
@@ -322,7 +359,7 @@ def test_a_model_trained_on_other_features_is_reported_unavailable_without_a_fak
 # API gợi ý người chơi
 # ---------------------------------------------------------------------------
 def test_recommend_partners_ranks_real_candidates_without_contact_details(client, db):
-    common = dict(latitude=10.78, longitude=106.70, purpose="recreational")
+    common = dict(latitude=10.78, longitude=106.70, purpose="recreational", date_of_birth=date(1996, 5, 1))
     me = make_user(db, skill_level=3.5, play_style="Offensive", **common)
     twin = make_user(db, full_name="Bạn Hợp", phone="0900111222", skill_level=3.5, play_style="Offensive", **common)
     weaker = make_user(db, full_name="Bạn Lệch", skill_level=2.5, play_style="Defensive", latitude=10.95, longitude=106.90)
@@ -338,10 +375,12 @@ def test_recommend_partners_ranks_real_candidates_without_contact_details(client
     assert [item["full_name"] for item in body["items"]] == ["Bạn Hợp", "Bạn Lệch"]
     best, worst = body["items"]
     assert best["user_id"] == twin.id and best["probability"] > worst["probability"]
-    assert best["distance_km"] == 0 and list(best["features"]) == FEATURE_NAMES
+    assert best["distance_km"] == 0
+    assert list(best["features"]) == ["level_diff", "distance_km", "purpose_match", "style_match"]
     assert worst["user_id"] == weaker.id
     dump = json.dumps(body["items"])
     assert "@" not in dump and "0900111222" not in dump
+    assert "age" not in dump and "1996" not in dump          # tuổi được dùng để tính nhưng không lộ ra ngoài
 
     nearby = client.get(f"{ML}/recommend-partners", headers=auth(me), params={"radius_km": 5}).json()
     assert [item["user_id"] for item in nearby["items"]] == [twin.id]
@@ -353,14 +392,16 @@ def test_incomplete_profile_is_told_what_is_missing(client, db):
     blank = make_user(db)
     body = client.get(f"{ML}/recommend-partners", headers=auth(blank)).json()
     assert body["items"] == []
-    assert body["missing_profile_fields"] == ["skill_level", "location", "purpose", "play_style"]
+    assert body["missing_profile_fields"] == ["skill_level", "location", "purpose", "play_style", "date_of_birth"]
 
 
 def test_predict_match_uses_the_callers_own_profile(client, db):
-    me, other, third = (make_user(db, skill_level=level) for level in (3.5, 3.5, 6.0))
+    same = dict(latitude=10.78, longitude=106.70, purpose="recreational", play_style="Offensive", date_of_birth=date(1996, 5, 1))
+    me, other, third = (make_user(db, skill_level=level, **same) for level in (3.5, 3.5, 6.0))
     request = {"user_a_id": third.id, "user_b_id": other.id}
     mine = client.post(f"{ML}/predict-match", json=request, headers=auth(me)).json()
     assert mine["features_used"]["level_diff"] == 0.0 and mine["is_match_recommended"] is True   # user_a_id bị bỏ qua
+    assert "age_diff" not in mine["features_used"]                                               # tuổi không lộ qua API
     admin = make_user(db, "ADMIN")
     theirs = client.post(f"{ML}/predict-match", json=request, headers=auth(admin)).json()
     assert theirs["features_used"]["level_diff"] == 2.5 and theirs["is_match_recommended"] is False
@@ -375,7 +416,8 @@ def test_survey_answers_are_stored_only_when_untampered(client, db):
     survey = client.get(f"{ML}/survey/pairs", headers=auth(me), params={"count": 4}).json()
     pairs = survey["pairs"]
     assert len(pairs) == 4 and all(list(p["features"]) == FEATURE_NAMES for p in pairs)
-    assert all(set(p["candidate"]) == {"skill_level", "distance_km", "purpose", "play_style"} for p in pairs)
+    assert all(set(p["candidate"]) == {"skill_level", "distance_km", "purpose", "play_style", "age_gap"} for p in pairs)
+    assert all(p["features"]["age_diff"] == p["candidate"]["age_gap"] for p in pairs)
 
     forged = {**pairs[2]["features"], "level_diff": 0.0, "distance_km": 0.1}
     answers = [
@@ -388,7 +430,7 @@ def test_survey_answers_are_stored_only_when_untampered(client, db):
 
     rows = db.query(PairFeedback).order_by(PairFeedback.id).all()
     assert [(r.rater_id, r.label, r.source) for r in rows] == [(me.id, 1, "survey"), (me.id, 0, "survey")]
-    assert rows[0].level_diff == pairs[0]["features"]["level_diff"]
+    assert rows[0].level_diff == pairs[0]["features"]["level_diff"] and rows[0].age_diff == pairs[0]["features"]["age_diff"]
 
     assert client.post(f"{ML}/survey/answers", json={"answers": []}, headers=auth(me)).status_code == 422
     assert client.get(f"{ML}/survey/pairs").status_code == 401
@@ -401,7 +443,7 @@ def test_survey_needs_a_skill_level(client, db):
 
 def test_model_info_shows_survey_progress_to_admin_only(client, db):
     player, admin = make_user(db, skill_level=3.5), make_user(db, "ADMIN")
-    db.add(PairFeedback(rater_id=player.id, label=1, level_diff=0, distance_km=1, purpose_match=1, style_match=1))
+    db.add(PairFeedback(rater_id=player.id, label=1, level_diff=0, distance_km=1, purpose_match=1, style_match=1, age_diff=3))
     db.commit()
     assert client.get(f"{ML}/model-info").status_code == 401
     assert "survey" not in client.get(f"{ML}/model-info", headers=auth(player)).json()
@@ -412,10 +454,10 @@ def test_model_info_shows_survey_progress_to_admin_only(client, db):
 def test_model_info_gives_the_recommendation_threshold_and_what_a_player_still_has_to_fill_in(client, db):
     from app.core.matching_policy import RECOMMEND_MIN_COMPATIBILITY
 
-    player = make_user(db, "PLAYER", skill_level=3.5)      # chưa khai vị trí, mục đích, lối đánh
+    player = make_user(db, "PLAYER", skill_level=3.5)      # chưa khai vị trí, mục đích, lối đánh, ngày sinh
     info = client.get(f"{ML}/model-info", headers=auth(player)).json()
     assert info["recommend_threshold"] == RECOMMEND_MIN_COMPATIBILITY == 70
-    assert info["missing_profile_fields"] == ["location", "purpose", "play_style"]
+    assert info["missing_profile_fields"] == ["location", "purpose", "play_style", "date_of_birth"]
 
     admin = make_user(db, "ADMIN")
     assert "missing_profile_fields" not in client.get(f"{ML}/model-info", headers=auth(admin)).json()

@@ -162,7 +162,7 @@ Cài đặt: `backend/app/ml/features.py` (đặc trưng), `backend/app/ml/train
 
 ### 5.1. Đặc trưng
 
-Mô hình nhận bốn đặc trưng của **một cặp** người chơi, đều đối xứng giữa hai người:
+Mô hình nhận năm đặc trưng của **một cặp** người chơi, đều đối xứng giữa hai người:
 
 | Đặc trưng | Định nghĩa |
 | :--- | :--- |
@@ -170,9 +170,13 @@ Mô hình nhận bốn đặc trưng của **một cặp** người chơi, đề
 | `distance_km` | Khoảng cách Haversine giữa hai vị trí thường chơi, chặn trên 50 km. Thiếu vị trí của một bên thì dùng giá trị trung tính 10 km và báo hồ sơ còn thiếu |
 | `purpose_match` | 1 nếu cùng mục đích chơi (giao lưu, luyện tập, thi đấu), ngược lại 0 |
 | `style_match` | 1 nếu cùng phong cách hoặc một bên chơi toàn diện, ngược lại 0 |
+| `age_diff` | Chênh lệch tuổi tính theo năm (tuổi lấy từ ngày sinh trong hồ sơ), chặn trên 50. Thiếu ngày sinh của một bên thì dùng giá trị trung tính 10 và báo hồ sơ còn thiếu |
 
 Cùng một module tạo đặc trưng cho huấn luyện, khảo sát và suy luận, nên dữ liệu huấn luyện và dữ liệu phục vụ luôn
 nhất quán. Thiếu trình độ của một trong hai người thì không dự đoán.
+
+Tuổi chỉ được dùng để tính độ phù hợp: người chơi không nhìn thấy ngày sinh hay tuổi của nhau, và các API cũng không
+trả về chênh lệch tuổi của một cặp.
 
 Thời gian không phải là đặc trưng. Mỗi phòng đấu gắn với một đơn đặt sân nên đã có ngày giờ cố định ghi ngay trên thẻ
 phòng; người chơi tự chọn phòng theo giờ mình đi được, mô hình chỉ trả lời câu hỏi "những người trong phòng có hợp
@@ -180,22 +184,37 @@ với mình không".
 
 ### 5.2. Dữ liệu huấn luyện
 
-Dữ liệu huấn luyện nằm trong bảng `pair_feedback` của CSDL. Mỗi dòng là một "phiếu ghép cặp": 4 đặc trưng của một cặp,
+Dữ liệu huấn luyện nằm trong bảng `pair_feedback` của CSDL. Mỗi dòng là một "phiếu ghép cặp": 5 đặc trưng của một cặp,
 người trả lời, nhãn muốn ghép (1) hay không (0), và cột `source` ghi nguồn. Hệ thống hiện dùng dữ liệu tự nạp; thu
 thập câu trả lời của người chơi thật là hướng phát triển:
 
-1. **Phiếu ghép cặp mô phỏng** (`source = simulated`, **đang dùng**): 3.000 phiếu nạp bằng
-   `python manage.py seed --feedback`. Mỗi tài khoản trong 20 tài khoản người chơi demo "trả lời" 150 phiếu. Hồ sơ ứng
-   viên được sinh bằng đúng hàm mà trang khảo sát dùng (trải các mức chênh trình độ và khoảng cách); câu trả
-   lời được sinh từ một quy tắc viết tay (`synthetic_rule_score`: ưu tiên chênh lệch trình độ nhỏ, ở gần, cùng mục
-   đích và phong cách) cộng nhiễu Gauss $\sigma = 0.15$. Nhiễu mô tả sự dao động giữa những người trả lời: một cặp
-   hợp trình độ và ở gần được trả lời "muốn ghép" với xác suất cao nhưng không phải lúc nào cũng vậy. Hạt giống ngẫu
-   nhiên cố định nên cài ở đâu cũng ra cùng một bộ dữ liệu. Đây là dữ liệu mô phỏng để minh họa quy trình, **không
-   phải** câu trả lời của người chơi thật.
+1. **Phiếu ghép cặp mô phỏng** (`source = simulated`, **đang dùng**): 10.000 phiếu nạp bằng
+   `python manage.py seed --feedback`. Mỗi tài khoản trong 20 tài khoản người chơi demo "trả lời" 500 phiếu. Hồ sơ ứng
+   viên được sinh bằng đúng hàm mà trang khảo sát dùng (trải các mức chênh trình độ, khoảng cách và tuổi; chênh trình
+   độ nhỏ xuất hiện nhiều hơn chênh lớn). Câu trả lời được sinh từ một quy tắc viết tay (`synthetic_rule_score`, bảng
+   bên dưới) cộng nhiễu Gauss $\sigma = 0.15$. Nhiễu mô tả sự dao động giữa những người trả lời: một cặp hợp nhau được
+   trả lời "muốn ghép" với xác suất cao nhưng không phải lúc nào cũng vậy. Hạt giống ngẫu nhiên cố định nên cài ở đâu
+   cũng ra cùng một bộ dữ liệu. Đây là dữ liệu mô phỏng để minh họa quy trình, **không phải** câu trả lời của người
+   chơi thật.
 2. **Nhãn khảo sát thật** (`source = survey`, **hướng phát triển**): trang `/survey` cho người chơi trả lời về các hồ sơ
    ứng viên giả định xoay quanh hồ sơ của chính mình. Các câu trả lời được lưu riêng và chưa tham gia huấn luyện; khi
-   có từ 300 nhãn thật trở lên, lệnh huấn luyện tự chuyển sang chỉ học từ các nhãn này.
+   có từ 300 nhãn thật trở lên, lệnh huấn luyện tự chuyển sang chỉ học từ các nhãn này. Câu trả lời thu trước khi có
+   tiêu chí tuổi không có chênh lệch tuổi nên không được tính.
 3. **Dữ liệu tổng hợp trong bộ nhớ**: 60.000 cặp sinh từ cùng quy tắc, chỉ dùng khi CSDL chưa có đủ 300 phiếu.
+
+Quy tắc sinh câu trả lời mô phỏng: điểm của một cặp bằng 0,50 cộng điểm của năm tiêu chí trong bảng dưới, cộng thêm
+nhiễu; từ 0,50 trở lên là "muốn ghép". Các mức điểm được chọn để mô hình học ra mức đóng góp xấp xỉ: trình độ 55%,
+khoảng cách 20%, mục đích 10%, phong cách 9%, tuổi 7%.
+
+| Tiêu chí | Điểm cộng / trừ |
+| :--- | :--- |
+| Chênh trình độ | ≤ 0,25: +0,19 · ≤ 0,5: +0,11 · ≤ 1,0: −0,06 · ≤ 1,5: −0,34 · lớn hơn: −0,49 |
+| Khoảng cách | ≤ 3 km: +0,11 · ≤ 8 km: +0,04 · ≤ 15 km: −0,07 · xa hơn: −0,20 |
+| Mục đích chơi | cùng: +0,12 · khác: −0,09 |
+| Phong cách | hợp: +0,11 · không hợp: −0,07 |
+| Chênh lệch tuổi | ≤ 5: +0,08 · ≤ 10: +0,03 · ≤ 20: −0,05 · lớn hơn: −0,13 |
+
+Chênh trình độ từ 1,5 trở lên bị trừ nặng, để các tiêu chí còn lại không bù được một khoảng cách trình độ lớn.
 
 Dữ liệu lấy từ CSDL (nguồn 1 và 2) được đánh giá bằng **GroupKFold theo người trả lời**, để phiếu của cùng một người
 không nằm ở cả tập huấn luyện lẫn tập kiểm tra.
@@ -215,47 +234,59 @@ hiện chi tiết kỹ thuật. Thông tin về mô hình đang chạy (nguồn 
 
 ### 5.3. Mô hình
 
-`RandomForestClassifier` của scikit-learn: 200 cây, độ sâu tối đa 8, tối thiểu 25 phiếu mỗi lá, `random_state=42`.
-Xác suất của mô hình được hiện cho người chơi dưới dạng độ phù hợp, nên rừng được cấu hình để xác suất đó là một tỉ lệ
-đáng tin: mỗi lá phải gom đủ 25 phiếu (lá chỉ vài phiếu dễ cho ra 0% hoặc 100%) và hai lớp không bị cân lại trọng số
-(cân lại làm xác suất lệch khỏi tỉ lệ "muốn ghép" có thật trong dữ liệu). Mô hình được lưu thành `match_rf_model.pkl`,
-kèm `model_meta.json` ghi nguồn dữ liệu, cách đánh giá và các chỉ số.
+`RandomForestClassifier` của scikit-learn: 200 cây, độ sâu tối đa 8, mỗi lá gom ít nhất 1% số phiếu huấn luyện (100
+phiếu với bộ 10.000 phiếu, không bao giờ dưới 25), `random_state=42`. Xác suất của mô hình được hiện cho người chơi
+dưới dạng độ phù hợp, nên rừng được cấu hình để xác suất đó là một tỉ lệ đáng tin: lá phải gom đủ nhiều phiếu (lá chỉ
+vài phiếu dễ cho ra 0% hoặc 100%) và hai lớp không bị cân lại trọng số (cân lại làm xác suất lệch khỏi tỉ lệ "muốn
+ghép" có thật trong dữ liệu). Mô hình được lưu thành `match_rf_model.pkl`, kèm `model_meta.json` ghi nguồn dữ liệu,
+cách đánh giá và các chỉ số.
 
 Cách mô hình tính độ phù hợp của một cặp:
 
 1. Mỗi cây trong 200 cây được dựng từ một mẫu ngẫu nhiên (lấy có hoàn lại) của các phiếu, và ở mỗi nút chỉ xét ngẫu
    nhiên một phần đặc trưng, nên các cây khác nhau.
-2. Một cây là chuỗi câu hỏi dạng ngưỡng trên 4 đặc trưng (ví dụ "chênh trình độ ≤ 0.75?", "sân cách ≤ 8.25 km?"). Đi hết
+2. Một cây là chuỗi câu hỏi dạng ngưỡng trên 5 đặc trưng (ví dụ "chênh trình độ ≤ 0.75?", "sân cách ≤ 8.05 km?"). Đi hết
    các câu hỏi, cặp đang xét rơi vào một lá; lá ghi tỉ lệ phiếu "muốn ghép" trong nhóm phiếu huấn luyện giống cặp đó.
 3. Rừng lấy trung bình tỉ lệ của 200 lá (`predict_proba`). Trung bình đó nhân 100 là độ phù hợp của cặp.
 
-Rừng đang dùng: mỗi cây có 35 đến 50 lá (trung bình 42), sâu tối đa 8 tầng, mỗi nút xét 2 trong 4 đặc trưng. Câu hỏi
-đầu tiên của 110 cây là về chênh lệch trình độ, của 65 cây về khoảng cách, của 25 cây về mục đích chơi.
+Rừng đang dùng: mỗi cây có 36 đến 51 lá (trung bình 43), sâu tối đa 8 tầng, mỗi nút xét 2 trong 5 đặc trưng. Câu hỏi
+đầu tiên của 78 cây là về chênh lệch trình độ, 57 cây về khoảng cách, 44 cây về mục đích chơi, 17 cây về phong cách và
+4 cây về tuổi.
 
 Random Forest là mô hình duy nhất của dự án: hệ thống không huấn luyện, không phục vụ và không so sánh với mô hình nào
 khác; khi thiếu file mô hình, API trả kết quả rỗng chứ không thay bằng công thức khác.
 
 ### 5.4. Kết quả đánh giá hiện tại
 
-3.000 phiếu mô phỏng của 20 tài khoản demo, tỷ lệ nhãn "muốn ghép" 39,1%. Random Forest được đánh giá bằng GroupKFold
+10.000 phiếu mô phỏng của 20 tài khoản demo, tỷ lệ nhãn "muốn ghép" 40,8%. Random Forest được đánh giá bằng GroupKFold
 5 phần theo người trả lời: mỗi lượt học từ phiếu của 16 người và đo trên phiếu của 4 người còn lại (số trong bảng là
 trung bình của 5 lượt):
 
 | Chỉ số | Random Forest | Ý nghĩa |
 | :--- | :---: | :--- |
-| Accuracy | 0.8796 | Tỉ lệ phiếu mô hình đoán đúng câu trả lời |
-| Precision | 0.8410 | Trong các cặp mô hình cho là hợp, tỉ lệ cặp được trả lời "muốn ghép" |
-| Recall | 0.8534 | Trong các cặp được trả lời "muốn ghép", tỉ lệ cặp mô hình nhận ra |
-| F1 | 0.8467 | Trung bình điều hòa của precision và recall |
-| ROC-AUC | 0.9555 | Khả năng xếp cặp hợp lên trên cặp không hợp (1.0 là xếp đúng hoàn toàn) |
+| Accuracy | 0.8531 | Tỉ lệ phiếu mô hình đoán đúng câu trả lời |
+| Precision | 0.8340 | Trong các cặp mô hình cho là hợp, tỉ lệ cặp được trả lời "muốn ghép" |
+| Recall | 0.7968 | Trong các cặp được trả lời "muốn ghép", tỉ lệ cặp mô hình nhận ra |
+| F1 | 0.8147 | Trung bình điều hòa của precision và recall |
+| ROC-AUC | 0.9305 | Khả năng xếp cặp hợp lên trên cặp không hợp (1.0 là xếp đúng hoàn toàn) |
 
-Mức đóng góp của đặc trưng: `level_diff` 0.825, `distance_km` 0.130, `purpose_match` 0.031, `style_match` 0.014.
+Mức đóng góp của đặc trưng trong mô hình đã huấn luyện:
+
+| Tiêu chí | Mức đóng góp | Mục tiêu khi thiết kế quy tắc |
+| :--- | :---: | :---: |
+| Trình độ (`level_diff`) | 54,6% | 55% |
+| Khoảng cách (`distance_km`) | 19,5% | 20% |
+| Mục đích chơi (`purpose_match`) | 10,1% | 10% |
+| Phong cách (`style_match`) | 8,5% | 9% |
+| Tuổi (`age_diff`) | 7,3% | 7% |
 
 **Cách đọc các con số này.**
 
-- Câu trả lời mô phỏng có dao động ngẫu nhiên: 11,7% số phiếu có nhãn khác với quy tắc sinh nhãn. Phần dao động này
-  không học được, nên độ chính xác tối đa có thể đạt trên bộ dữ liệu này là 88,3%. Random Forest đạt 87,96%, tức gần
+- Câu trả lời mô phỏng có dao động ngẫu nhiên: 14,4% số phiếu có nhãn khác với quy tắc sinh nhãn. Phần dao động này
+  không học được, nên độ chính xác tối đa có thể đạt trên bộ dữ liệu này là 85,6%. Random Forest đạt 85,31%, tức gần
   như học lại trọn quy tắc.
+- Mức đóng góp là kết quả đo trên mô hình (độ giảm tạp chất Gini mà mỗi đặc trưng mang lại), không phải con số gán
+  tay; nó khớp mục tiêu vì các mức điểm của quy tắc sinh nhãn được chọn theo mục tiêu đó.
 - Các con số cho thấy quy trình dữ liệu → huấn luyện → đánh giá → phục vụ hoạt động đúng. Chúng **không** nói lên mức
   độ mô hình dự đoán đúng mong muốn của người chơi thật; kết luận đó cần nhãn khảo sát thật.
 
@@ -265,7 +296,7 @@ Giao diện dùng mô hình để **đề xuất những phòng đấu đã đư
 
 ```text
 Người xem A ──▶ các phòng đang tuyển người
-            ──▶ với mỗi phòng: tạo 4 đặc trưng cho từng cặp (A, thành viên của phòng);
+            ──▶ với mỗi phòng: tạo 5 đặc trưng cho từng cặp (A, thành viên của phòng);
                 khoảng cách tính từ vị trí của A tới sân của phòng
             ──▶ model.predict_proba cho từng cặp
             ──▶ độ phù hợp của phòng = trung bình các xác suất (0-100%)
@@ -273,17 +304,20 @@ Người xem A ──▶ các phòng đang tuyển người
 ```
 
 Độ phù hợp là một ước lượng nên không bao giờ là 100%: với mô hình hiện tại, xác suất của một cặp nằm trong khoảng
-từ gần 0% đến 99,3%. Vài giá trị điển hình:
+từ gần 0% đến 98,7%. Vài giá trị điển hình (cùng lứa = lệch không quá 5 tuổi):
 
 | Cặp người chơi | Độ phù hợp |
 | :--- | :---: |
-| Cùng trình độ, sân cách 2 km, cùng mục đích, hợp phong cách | 99% |
-| Cùng trình độ, sân cách 6 km, khác mục đích, khác phong cách | 89% |
-| Cùng trình độ, sân cách 25 km, khác mục đích, khác phong cách | 53% |
-| Lệch 0,5 trình độ, sân cách 6 km, khác mục đích, khác phong cách | 81% |
-| Lệch 1,0 trình độ, sân cách 2 km, cùng mục đích, hợp phong cách | 66% |
-| Lệch 1,0 trình độ, sân cách 6 km, khác mục đích, khác phong cách | 15% |
-| Lệch 2,0 trình độ, sân cách 25 km, khác mục đích, khác phong cách | dưới 1% |
+| Cùng trình độ, sân cách 6 km, cùng mục đích, hợp phong cách, cùng lứa | 96% |
+| Như trên nhưng khác mục đích | 92% |
+| Như trên nhưng không hợp phong cách | 91% |
+| Như trên nhưng lệch 30 tuổi | 85% |
+| Như trên nhưng sân cách 25 km | 83% |
+| Cùng trình độ, sân cách 6 km, khác mục đích, không hợp phong cách, cùng lứa | 71% |
+| Lệch 1,0 trình độ, sân cách 2 km, cùng mục đích, hợp phong cách, cùng lứa | 91% |
+| Lệch 1,0 trình độ, sân cách 6 km, khác mục đích, không hợp phong cách, cùng lứa | 30% |
+| Lệch 1,5 trình độ, sân cách 2 km, cùng mục đích, hợp phong cách, cùng lứa | 36% |
+| Lệch 2,0 trình độ, sân cách 6 km, khác mục đích, không hợp phong cách | 4% |
 
 Ngưỡng 70% nằm ở `backend/app/core/matching_policy.py`: bộ phân loại tách hai lớp ở 50%, ngưỡng cao hơn chỉ giữ lại
 những phòng mô hình đánh giá rõ ràng là phù hợp. `GET /api/v1/matches` trả `compatibility` và `is_recommended` cho từng

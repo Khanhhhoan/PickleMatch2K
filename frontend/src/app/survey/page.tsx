@@ -16,12 +16,15 @@ interface SurveyPair {
     distance_km: number;
     purpose: string;
     play_style: string;
+    age_gap: number; // chênh lệch tuổi so với người trả lời (năm)
   };
   features: Record<string, number>;
   signature: string; // chữ ký của máy chủ: câu trả lời chỉ được ghi nhận khi đặc trưng không bị sửa
 }
 
 const PAIRS_PER_ROUND = 10;
+
+const ageGapLabel = (gap: number) => (gap <= 0 ? "cùng tuổi với bạn" : `hơn kém bạn ${gap} tuổi`);
 
 /**
  * Khảo sát thu nhãn thật cho mô hình ghép cặp: người chơi xem các hồ sơ giả định và trả lời
@@ -124,7 +127,7 @@ export default function MatchingSurveyPage() {
                         Người chơi {index + 1}: trình độ {c.skill_level.toFixed(1)} • {playStyleLabel(c.play_style, true)}
                       </p>
                       <p>
-                        Cách bạn khoảng {c.distance_km} km • {purposeLabel(c.purpose)}
+                        Cách bạn khoảng {c.distance_km} km • {purposeLabel(c.purpose)} • {ageGapLabel(c.age_gap)}
                       </p>
                     </div>
                     <div className="flex gap-2 shrink-0">

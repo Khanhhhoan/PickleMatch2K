@@ -4,20 +4,23 @@
 Module này là NGUỒN DUY NHẤT xây dựng đặc trưng, dùng chung cho huấn luyện (train_model.py),
 khảo sát thu nhãn và suy luận trên API, để dữ liệu huấn luyện và dữ liệu phục vụ luôn nhất quán.
 
-Bốn đặc trưng (đều đối xứng giữa hai người chơi):
+Năm đặc trưng (đều đối xứng giữa hai người chơi):
     level_diff     Chênh lệch trình độ DUPR tự khai
     distance_km    Khoảng cách địa lý giữa hai người (hoặc từ người chơi tới sân của phòng đấu)
     purpose_match  Cùng mục đích chơi (giao lưu / luyện tập / thi đấu)
     style_match    Phong cách chơi tương thích
+    age_diff       Chênh lệch tuổi, tính theo năm
 """
 import math
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-FEATURE_NAMES = ["level_diff", "distance_km", "purpose_match", "style_match"]
+FEATURE_NAMES = ["level_diff", "distance_km", "purpose_match", "style_match", "age_diff"]
 
 MAX_DISTANCE_KM = 50.0
 UNKNOWN_DISTANCE_KM = 10.0  # dùng khi một trong hai bên chưa khai vị trí (giá trị trung tính, có ghi chú thiếu dữ liệu)
+MAX_AGE_DIFF = 50.0
+UNKNOWN_AGE_DIFF = 10.0     # dùng khi một trong hai bên chưa khai ngày sinh (giá trị trung tính, có ghi chú thiếu dữ liệu)
 
 PURPOSES = ["recreational", "practice", "competitive"]
 
@@ -50,6 +53,7 @@ class ProfileView:
     longitude: Optional[float] = None
     purpose: Optional[str] = None
     play_style: Optional[str] = None
+    age: Optional[float] = None     # số tuổi, tính từ ngày sinh trong hồ sơ
 
     @classmethod
     def from_profile(cls, profile) -> "ProfileView":
@@ -61,6 +65,7 @@ class ProfileView:
             longitude=profile.longitude,
             purpose=profile.purpose if profile.purpose in PURPOSES else None,
             play_style=canonical_style(profile.play_style),
+            age=profile.age,
         )
 
     def missing_fields(self) -> List[str]:
@@ -73,6 +78,8 @@ class ProfileView:
             missing.append("purpose")
         if not self.play_style:
             missing.append("play_style")
+        if self.age is None:
+            missing.append("date_of_birth")
         return missing
 
 
@@ -89,11 +96,14 @@ def style_compatible(a: Optional[str], b: Optional[str]) -> int:
     return int(a == b or "All-Round" in (a, b))
 
 
-def pair_features(a: ProfileView, b: ProfileView, distance_km: Optional[float] = None) -> Optional[Dict[str, float]]:
+def pair_features(
+    a: ProfileView, b: ProfileView, distance_km: Optional[float] = None, age_diff: Optional[float] = None
+) -> Optional[Dict[str, float]]:
     """
     Vector đặc trưng của một cặp. Trả về None nếu thiếu trình độ của một trong hai người,
     vì không thể ước lượng độ phù hợp khi chưa biết trình độ.
     distance_km: truyền vào khi khoảng cách cần tính tới một điểm khác (ví dụ sân của phòng đấu).
+    age_diff: truyền vào khi chênh lệch tuổi được cho sẵn (hồ sơ ứng viên giả định của khảo sát và phiếu mô phỏng).
     """
     if a.skill_level is None or b.skill_level is None:
         return None
@@ -102,9 +112,12 @@ def pair_features(a: ProfileView, b: ProfileView, distance_km: Optional[float] =
             distance_km = UNKNOWN_DISTANCE_KM
         else:
             distance_km = haversine_km(a.latitude, a.longitude, b.latitude, b.longitude)
+    if age_diff is None:
+        age_diff = UNKNOWN_AGE_DIFF if a.age is None or b.age is None else abs(float(a.age) - float(b.age))
     return {
         "level_diff": round(abs(float(a.skill_level) - float(b.skill_level)), 2),
         "distance_km": round(min(float(distance_km), MAX_DISTANCE_KM), 2),
         "purpose_match": int(bool(a.purpose) and a.purpose == b.purpose),
         "style_match": style_compatible(a.play_style, b.play_style),
+        "age_diff": round(min(abs(float(age_diff)), MAX_AGE_DIFF), 1),
     }

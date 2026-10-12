@@ -11,8 +11,9 @@ SIMULATED_SOURCE = "simulated"  # phiếu mô phỏng nạp sẵn để minh h�
 class PairFeedback(Base):
     """
     Nhãn cho mô hình ghép cặp: một người chơi trả lời "có muốn ghép với người này không" cho một cặp hồ sơ.
-    Mỗi dòng lưu đúng 4 đặc trưng mà mô hình dùng. Cột `source` phân biệt câu trả lời khảo sát thật (survey)
+    Mỗi dòng lưu đúng 5 đặc trưng mà mô hình dùng. Cột `source` phân biệt câu trả lời khảo sát thật (survey)
     với phiếu mô phỏng nạp sẵn (simulated); hai loại không bao giờ được trình bày lẫn với nhau.
+    Câu trả lời khảo sát thu trước khi có tiêu chí tuổi không có `age_diff` (NULL) và không tham gia huấn luyện.
     """
     __tablename__ = "pair_feedback"
 
@@ -23,5 +24,6 @@ class PairFeedback(Base):
     distance_km = Column(Float, nullable=False)
     purpose_match = Column(Integer, nullable=False)
     style_match = Column(Integer, nullable=False)
+    age_diff = Column(Float, nullable=True)
     label = Column(Integer, nullable=False)  # 1 = muốn ghép, 0 = không
     created_at = Column(DateTime(timezone=True), server_default=func.now())

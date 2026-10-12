@@ -29,7 +29,7 @@ NEXT_PUBLIC_ADMIN_URL=https://admin.ten-mien.vn
 | `/bookings` | Người chơi | Đơn của tôi, đếm ngược hạn cọc, vé QR, hủy đơn với mức hoàn tiền xem trước |
 | `/matches`, `/matches/create` | Người chơi | Phòng do mô hình đề xuất (độ phù hợp từ 70%), mọi phòng đang mở, phòng của tôi; mở phòng trên đơn đã cọc |
 | `/survey` | Người chơi | Khảo sát thu nhãn cho mô hình ghép cặp |
-| `/profile` | Người chơi | Hồ sơ và 4 thông tin mô hình ghép cặp dùng: trình độ, phong cách, mục đích, khu vực thường chơi |
+| `/profile` | Người chơi | Hồ sơ và 5 thông tin mô hình ghép cặp dùng: trình độ, phong cách, mục đích, khu vực thường chơi, ngày sinh |
 | `/owner/dashboard` | Chủ sân | Doanh thu và hoạt động của cụm sân |
 | `/owner/venues` | Chủ sân | Thông tin và tài khoản nhận tiền, sân con và bảng giá, giờ mở cửa, nhân viên |
 | `/owner/bookings` | Chủ sân | Quầy đặt sân |

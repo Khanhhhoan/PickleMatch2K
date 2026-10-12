@@ -32,7 +32,7 @@ def predict_match(
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_active_user),
 ):
-    """Xác suất phù hợp giữa người đang đăng nhập và một người chơi khác."""
+    """Xác suất phù hợp giữa người đang đăng nhập và một người chơi khác (chênh lệch tuổi không được trả về)."""
     user_a = current_user
     if current_user.role == UserRole.ADMIN.value and request.user_a_id:
         user_a = db.query(User).filter(User.id == request.user_a_id).first()

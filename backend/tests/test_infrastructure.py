@@ -605,6 +605,42 @@ def test_dropping_free_time_keeps_real_survey_answers_and_clears_only_the_simula
         _rebuild_schema()   # các test sau cần schema mới nhất
 
 
+def test_adding_the_age_criterion_keeps_real_survey_answers_and_clears_only_the_simulated_sheets(db):
+    """Migration 0007: bảng phiếu có thêm chênh lệch tuổi; phiếu mô phỏng cũ bị xóa để nạp lại, câu trả lời thật còn nguyên."""
+    from alembic import command
+
+    from app.db.migrations import alembic_config, run_migrations
+    from app.ml import train_model
+    from app.services import ml_service
+
+    db.rollback()
+    _rebuild_schema("0006")
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO users (email, password_hash, role, is_active) VALUES ('old@example.com', 'x', 'PLAYER', true)"))
+            conn.execute(text(
+                "INSERT INTO pair_feedback (rater_id, source, level_diff, distance_km, purpose_match, style_match, label) "
+                "VALUES (1, 'survey', 0.5, 3, 1, 0, 1), (1, 'simulated', 1.5, 9, 0, 0, 0)"))
+
+        run_migrations()
+
+        _assert_migrated_with_data_intact()
+        with engine.connect() as conn:
+            assert [tuple(row) for row in conn.execute(text(
+                "SELECT source, level_diff, distance_km, purpose_match, style_match, age_diff, label FROM pair_feedback"
+            ))] == [("survey", 0.5, 3.0, 1, 0, None, 1)]
+        # câu trả lời cũ không có chênh lệch tuổi: còn trong bảng, nhưng không được tính và không tham gia huấn luyện
+        assert ml_service.feedback_summary(db)["labels"] == 0
+        db.rollback()
+        assert len(train_model.load_real_feedback()) == 0
+
+        command.downgrade(alembic_config(), "0006")          # quay lại được, câu trả lời thật không mất
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT count(*) FROM pair_feedback")).scalar() == 1
+    finally:
+        _rebuild_schema()   # các test sau cần schema mới nhất
+
+
 def test_a_database_newer_than_the_code_is_reported_instead_of_migrated(db):
     import manage
     from app.db.migrations import migration_status, require_current_schema

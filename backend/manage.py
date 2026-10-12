@@ -92,7 +92,7 @@ def main() -> None:
     parser.add_argument("--check", action="store_true", help="migrate: chỉ báo trạng thái (mã thoát 3 nếu cần nâng cấp)")
     parser.add_argument("--if-empty", action="store_true", help="seed: bỏ qua nếu CSDL đã có dữ liệu")
     parser.add_argument("--reset", action="store_true", help="seed: xóa toàn bộ dữ liệu rồi nạp lại")
-    parser.add_argument("--preferences", action="store_true", help="seed: chỉ bổ sung mục đích chơi mẫu cho tài khoản demo")
+    parser.add_argument("--preferences", action="store_true", help="seed: chỉ bổ sung mục đích chơi và ngày sinh mẫu cho tài khoản demo")
     parser.add_argument("--feedback", action="store_true", help="seed: chỉ nạp phiếu ghép cặp mô phỏng để huấn luyện mô hình")
     parser.add_argument("--regenerate", action="store_true",
                         help="seed --feedback: thay phiếu mô phỏng cũ bằng bộ sinh theo quy tắc hiện tại (giữ câu trả lời khảo sát thật)")
@@ -123,7 +123,7 @@ def main() -> None:
 
             ensure_schema()
             with SessionLocal() as db:
-                print(f"Đã bổ sung mục đích chơi mẫu cho {seed.apply_demo_preferences(db)} tài khoản demo.")
+                print(f"Đã bổ sung mục đích chơi, ngày sinh mẫu cho {seed.apply_demo_preferences(db)} tài khoản demo.")
         elif args.feedback:
             from app.db.database import SessionLocal
             from scripts._common import ensure_schema

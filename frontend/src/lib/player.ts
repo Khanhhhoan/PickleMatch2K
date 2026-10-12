@@ -34,6 +34,7 @@ export const PROFILE_FIELD_LABEL: Record<string, string> = {
   location: "vị trí",
   purpose: "mục đích chơi",
   play_style: "lối đánh",
+  date_of_birth: "ngày sinh",
 };
 
 const LEGACY_STYLE_KEYWORDS: [string, string][] = [
