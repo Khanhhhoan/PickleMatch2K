@@ -48,7 +48,7 @@ Nhân viên chỉ thấy và thao tác trên đơn của cụm sân mình đư�
 
 ## 4. Danh sách người chơi / vận động viên (Players)
 
-Mỗi người chơi có sẵn vị trí, mục đích chơi, tiện ích ưa thích và ngân sách, nên dùng được ngay cho
+Mỗi người chơi có sẵn trình độ, lối đánh, mục đích chơi và vị trí, nên dùng được ngay cho
 chức năng gợi ý sân và ghép cặp.
 
 | STT | Email | Họ Tên | DUPR | Phong Cách Đánh | Mục Đích Chơi |

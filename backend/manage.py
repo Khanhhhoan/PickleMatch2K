@@ -91,7 +91,7 @@ def main() -> None:
     parser.add_argument("--check", action="store_true", help="migrate: chỉ báo trạng thái (mã thoát 3 nếu cần nâng cấp)")
     parser.add_argument("--if-empty", action="store_true", help="seed: bỏ qua nếu CSDL đã có dữ liệu")
     parser.add_argument("--reset", action="store_true", help="seed: xóa toàn bộ dữ liệu rồi nạp lại")
-    parser.add_argument("--preferences", action="store_true", help="seed: chỉ bổ sung sở thích mẫu cho tài khoản demo")
+    parser.add_argument("--preferences", action="store_true", help="seed: chỉ bổ sung mục đích chơi mẫu cho tài khoản demo")
     parser.add_argument("--feedback", action="store_true", help="seed: chỉ nạp phiếu ghép cặp mô phỏng để huấn luyện mô hình")
     parser.add_argument("--matches", action="store_true", help="seed: nạp thêm người chơi và phòng đấu mẫu để thử ghép trận")
     parser.add_argument("--file", "-f", default=None, help="import-excel: đường dẫn file .xlsx")
@@ -118,7 +118,7 @@ def main() -> None:
 
             ensure_schema()
             with SessionLocal() as db:
-                print(f"Đã bổ sung sở thích mẫu cho {seed.apply_demo_preferences(db)} tài khoản demo.")
+                print(f"Đã bổ sung mục đích chơi mẫu cho {seed.apply_demo_preferences(db)} tài khoản demo.")
         elif args.feedback:
             from app.db.database import SessionLocal
             from scripts._common import ensure_schema

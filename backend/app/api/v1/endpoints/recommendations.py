@@ -29,7 +29,7 @@ def recommend_venues(
     """
     Top-N cụm sân phù hợp theo điểm đa tiêu chí:
     Score = (0.30·D + 0.25·P + 0.20·T + 0.15·R + 0.10·S) / tổng trọng số các tiêu chí có dữ liệu.
-    Tham số không truyền (vị trí, ngân sách, tiện ích) được lấy từ hồ sơ người chơi nếu đã đăng nhập.
+    Vị trí không truyền thì lấy từ hồ sơ người chơi nếu đã đăng nhập; ngân sách và tiện ích chỉ lấy từ tham số.
     """
     return venue_recommendation_service.get_venue_recommendations(
         db=db,

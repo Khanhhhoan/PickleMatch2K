@@ -203,8 +203,8 @@ def test_demo_seed_builds_a_consistent_dataset(client, db):
     partners = client.get("/api/v1/ml/recommend-partners", headers=auth(player)).json()
     assert partners["missing_profile_fields"] == [] and len(partners["items"]) == 8
     venues = client.get("/api/v1/recommendations/venues", headers=auth(player)).json()
-    assert len(venues) == 3 and all(v["preference_score"] is not None and v["distance_score"] is not None for v in venues)
-    assert seed.apply_demo_preferences(db) == 0             # không ghi đè sở thích đã có
+    assert len(venues) == 3 and all(v["distance_score"] is not None and v["preference_score"] is None for v in venues)
+    assert seed.apply_demo_preferences(db) == 0             # không ghi đè mục đích chơi đã có
 
 
 def test_match_demo_adds_rooms_to_a_database_in_use_without_touching_what_is_there(client, db):
@@ -468,6 +468,8 @@ def test_dropping_free_time_keeps_real_survey_answers_and_clears_only_the_simula
 
         _assert_migrated_with_data_intact()
         assert "availability" not in columns("player_profiles") and "availability_overlap" not in columns("pair_feedback")
+        assert not {"preferred_amenities", "budget_max"} & columns("player_profiles")      # migration 0006
+        assert "avatar_url" in columns("player_profiles")
         with engine.connect() as conn:
             assert [tuple(row) for row in conn.execute(text(
                 "SELECT source, level_diff, distance_km, purpose_match, style_match, label FROM pair_feedback"))] == [("survey", 0.5, 3.0, 1, 0, 1)]

@@ -49,7 +49,7 @@ KLTN/
 ├── .github/workflows/      Kiểm tra tự động (CI)
 ├── backend/                API FastAPI
 │   ├── app/                api, core, db, ml, models, schemas, services, utils
-│   ├── alembic/            Các phiên bản schema (0001 → 0005)
+│   ├── alembic/            Các phiên bản schema (0001 → 0006)
 │   ├── scripts/            Script quản trị CSDL (xem backend/scripts/README.md)
 │   ├── tests/              Bộ kiểm thử pytest (xem backend/tests/README.md)
 │   └── manage.py           Bộ lệnh quản trị
@@ -224,6 +224,7 @@ Sau khi nâng cấp:
   dữ liệu khác).
 - Từ revision 0005, mô hình ghép cặp chỉ còn 4 đặc trưng (đã bỏ giờ rảnh). Bước nâng cấp này xóa các phiếu ghép cặp mô
   phỏng cũ và giữ nguyên câu trả lời khảo sát thật; nạp bộ phiếu mô phỏng mới bằng `python manage.py seed --feedback`.
+- Từ revision 0006, hồ sơ người chơi không còn lưu tiện ích ưa thích và ngân sách (hai cột này vốn không còn ô nhập).
 
 ## 10. Giới hạn đã biết
 

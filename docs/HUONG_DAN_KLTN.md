@@ -96,8 +96,9 @@ Cài đặt: `backend/app/services/venue_recommendation_service.py`, tham số �
 API: `GET /api/v1/recommendations/venues`.
 
 > **Trạng thái:** thuật toán và API này vẫn hoạt động và có kiểm thử, nhưng giao diện web không còn gọi tới: trang chủ
-> liệt kê cụm sân theo khoảng cách, hồ sơ không còn ô tiện ích ưa thích và ngân sách. Nếu báo cáo vẫn trình bày phần
-> này, cần ghi rõ đây là thành phần backend chưa đưa lên giao diện.
+> liệt kê cụm sân theo khoảng cách, và hồ sơ người chơi không còn lưu tiện ích ưa thích hay ngân sách. Hai tiêu chí
+> giá-theo-ngân-sách và tiện ích vì vậy chỉ có dữ liệu khi yêu cầu API truyền `budget_max` và `amenity_ids`. Nếu báo cáo
+> vẫn trình bày phần này, cần ghi rõ đây là thành phần backend chưa đưa lên giao diện.
 
 ### 4.1. Quy trình
 
@@ -113,7 +114,7 @@ $K$ là tập tiêu chí **có dữ liệu**. Khi đủ cả năm tiêu chí, c�
 
 $$\text{Score} = 0.30\,D + 0.25\,P + 0.20\,T + 0.15\,R + 0.10\,S$$
 
-Tiêu chí thiếu dữ liệu (chưa biết vị trí người dùng, chưa khai tiện ích ưa thích) bị loại khỏi phép tính và các trọng số
+Tiêu chí thiếu dữ liệu (chưa biết vị trí người dùng, yêu cầu không nêu tiện ích mong muốn) bị loại khỏi phép tính và các trọng số
 còn lại được chuẩn hóa lại; hệ thống không gán một điểm "trung tính" tự đặt ra.
 
 ### 4.3. Chuẩn hóa từng tiêu chí
@@ -124,7 +125,7 @@ còn lại được chuẩn hóa lại; hệ thống không gán một điểm "
 | $P$ - giá | 0.25 | Có ngân sách $B$: $P = 1$ nếu giá $\le B$, giảm tuyến tính về 0 khi giá đạt $1.5B$. Chưa có ngân sách: min-max trên các sân ứng viên (rẻ nhất 1, đắt nhất 0) |
 | $T$ - giờ trống | 0.20 | Tỷ lệ khung giờ còn đặt được trong ngày (hoặc trong khoảng giờ người dùng chọn), không tính khung đã qua |
 | $R$ - đánh giá | 0.15 | Trung bình Bayes chia cho 5 (xem dưới) |
-| $S$ - tiện ích | 0.10 | Tỷ lệ tiện ích ưa thích của người dùng mà sân đáp ứng |
+| $S$ - tiện ích | 0.10 | Tỷ lệ tiện ích người dùng yêu cầu mà sân đáp ứng |
 
 Giá dùng để chấm là giá trung bình của các khung giờ còn trống trong ngày đang xét (hoặc của mọi khung giờ trong ngày
 khi sân đã kín lịch).
@@ -142,7 +143,7 @@ mới có hai đánh giá 5 sao không vượt lên trên sân có năm mươi �
 
 $$\text{Score} = 0.30(0.9) + 0.25(0.8) + 0.20(1.0) + 0.15(0.85) + 0.10(0.7) = 0.8675$$
 
-Cùng sân đó khi người dùng chưa khai tiện ích ưa thích (bỏ $S$, tổng trọng số còn 0.90):
+Cùng sân đó khi yêu cầu không nêu tiện ích mong muốn (bỏ $S$, tổng trọng số còn 0.90):
 
 $$\text{Score} = \frac{0.27 + 0.20 + 0.20 + 0.1275}{0.90} = 0.8861$$
 

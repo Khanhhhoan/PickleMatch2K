@@ -1,7 +1,6 @@
 import enum
-import json
 from datetime import date
-from typing import List, Optional
+from typing import Optional
 
 from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
@@ -15,16 +14,6 @@ class UserRole(str, enum.Enum):
     OWNER = "OWNER"
     ADMIN = "ADMIN"
     STAFF = "STAFF"
-
-
-def _load_json_list(raw: Optional[str]) -> list:
-    if not raw:
-        return []
-    try:
-        value = json.loads(raw)
-        return value if isinstance(value, list) else []
-    except (TypeError, ValueError):
-        return []
 
 
 class User(Base):
@@ -58,10 +47,7 @@ class PlayerProfile(Base):
     date_of_birth = Column(Date, nullable=True)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
-    # Dữ liệu phục vụ gợi ý sân và ghép người chơi
     purpose = Column(String, nullable=True)            # recreational | practice | competitive
-    preferred_amenities = Column(String, nullable=True)  # JSON: danh sách id tiện ích ưa thích
-    budget_max = Column(Float, nullable=True)          # Ngân sách tối đa mỗi giờ thuê sân (VNĐ)
 
     user = relationship("User", back_populates="player_profile")
 
@@ -79,16 +65,6 @@ class PlayerProfile(Base):
         today = date.today()
         dob = self.date_of_birth
         return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-
-    @property
-    def preferred_amenity_ids(self) -> List[int]:
-        ids = []
-        for item in _load_json_list(self.preferred_amenities):
-            try:
-                ids.append(int(item))
-            except (TypeError, ValueError):
-                continue
-        return ids
 
 
 class OwnerProfile(Base):

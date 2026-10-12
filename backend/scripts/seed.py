@@ -4,7 +4,7 @@ Nạp bộ dữ liệu demo của đồ án PickleMatch2K.
     python scripts/seed.py               # nạp khi CSDL còn trống (dừng nếu đã có dữ liệu)
     python scripts/seed.py --if-empty    # đã có dữ liệu thì bỏ qua, không báo lỗi (dùng cho Docker)
     python scripts/seed.py --reset       # XÓA toàn bộ dữ liệu rồi nạp lại (phải xác nhận, hoặc thêm --yes)
-    python scripts/seed.py --preferences # chỉ bổ sung sở thích mẫu cho các tài khoản demo đang để trống
+    python scripts/seed.py --preferences # chỉ bổ sung mục đích chơi mẫu cho các tài khoản demo đang để trống
     python scripts/seed.py --feedback    # chỉ nạp phiếu ghép cặp MÔ PHỎNG để huấn luyện mô hình từ CSDL
     python scripts/seed.py --matches     # nạp THÊM người chơi và phòng đấu mẫu để thử chức năng ghép trận
 
@@ -173,51 +173,49 @@ class PlayerSeed:
     matches_played: int
     matches_won: int
     purpose: str
-    amenities: List[str]          # tiện ích ưa thích (khóa trong AMENITIES)
-    budget: int                   # ngân sách tối đa mỗi giờ (VNĐ)
 
 
 PLAYERS = [
     PlayerSeed("khanhhoan121209@gmail.com", "Nguyễn Hoàng Khánh", "0908888999", 3.5, "Dinking & Control", date(1998, 5, 15), 10.8322, 106.6863, 10, 6,
-     "recreational", ["indoor", "parking"], 220000),
+     "recreational"),
     PlayerSeed("player@example.com", "Trần Minh Nam", "0912345678", 3.5, "All-Round", date(1996, 8, 20), 10.7769, 106.7009, 10, 6,
-     "recreational", ["led", "canteen"], 250000),
+     "recreational"),
     PlayerSeed("player01@gmail.com", "Lê Hoàng Long", "0901112233", 3.0, "Dinking & Control", date(1999, 3, 10), 10.7735, 106.6685, 10, 6,
-     "practice", ["indoor", "shower"], 180000),
+     "practice"),
     PlayerSeed("player02@gmail.com", "Phạm Minh Tuấn", "0902223344", 4.0, "Offensive", date(1995, 11, 22), 10.7901, 106.7322, 10, 7,
-     "competitive", ["coach", "led"], 260000),
+     "competitive"),
     PlayerSeed("player03@gmail.com", "Vũ Đức Cường", "0903334455", 4.5, "Serve & Volley", date(2001, 7, 4), 10.8225, 106.7198, 10, 8,
-     "competitive", ["coach"], 300000),
+     "competitive"),
     PlayerSeed("player04@gmail.com", "Hoàng Gia Huy", "0904445566", 2.5, "Defensive", date(1990, 2, 18), 10.7958, 106.6908, 10, 5,
-     "recreational", ["rental", "parking"], 170000),
+     "recreational"),
     PlayerSeed("player05@gmail.com", "Đỗ Bảo Nam", "0905556677", 3.5, "Offensive", date(1997, 12, 5), 10.8334, 106.6764, 10, 6,
-     "recreational", ["indoor", "lounge"], 210000),
+     "recreational"),
     PlayerSeed("player06@gmail.com", "Bùi Phương Thảo", "0906667788", 3.0, "All-Round", date(1988, 9, 14), 10.7485, 106.7262, 10, 4,
-     "recreational", ["rental", "canteen", "parking"], 200000),
+     "recreational"),
     PlayerSeed("player07@gmail.com", "Ngô Quang Hải", "0907778899", 4.0, "Serve & Volley", date(2000, 1, 30), 10.7812, 106.6854, 10, 7,
-     "competitive", ["led", "shower"], 260000),
+     "competitive"),
     PlayerSeed("player08@gmail.com", "Trịnh Thu Hà", "0908889900", 2.0, "Defensive", date(1994, 6, 25), 10.7995, 106.6562, 10, 3,
-     "practice", ["rental", "coach"], 160000),
+     "practice"),
     PlayerSeed("player09@gmail.com", "Dương Tiến Đạt", "0909990011", 3.5, "Dinking & Control", date(1998, 10, 12), 10.7771, 106.7117, 12, 8,
-     "practice", ["parking", "canteen"], 230000),
+     "practice"),
     PlayerSeed("player10@gmail.com", "Mai Tuấn Kiên", "0911122233", 5.0, "Offensive", date(2002, 4, 19), 10.7745, 106.6912, 10, 6,
-     "competitive", ["coach", "led"], 320000),
+     "competitive"),
     PlayerSeed("player11@gmail.com", "Đặng Thùy Linh", "0912233344", 3.0, "All-Round", None, 10.8123, 106.7045, 12, 8,
-     "recreational", ["indoor", "canteen"], 190000),
+     "recreational"),
     PlayerSeed("player12@gmail.com", "Phan Đình Trọng", "0913344455", 3.5, "Offensive", None, 10.8412, 106.6698, 12, 8,
-     "recreational", ["indoor", "parking"], 210000),
+     "recreational"),
     PlayerSeed("player13@gmail.com", "Lâm Thảo My", "0914455566", 2.5, "Defensive", None, 10.7689, 106.6712, 12, 8,
-     "practice", ["rental"], 170000),
+     "practice"),
     PlayerSeed("player14@gmail.com", "Huỳnh Tấn Tài", "0915566677", 4.0, "Serve & Volley", None, 10.7934, 106.7410, 12, 8,
-     "competitive", ["coach", "shower"], 270000),
+     "competitive"),
     PlayerSeed("player15@gmail.com", "Cao Minh Trí", "0916677788", 3.5, "Dinking & Control", None, 10.7350, 106.7180, 12, 8,
-     "practice", ["parking"], 220000),
+     "practice"),
     PlayerSeed("player16@gmail.com", "Đoàn Ngọc Ánh", "0917788899", 3.0, "All-Round", None, 10.8050, 106.6500, 12, 8,
-     "recreational", ["indoor", "lounge"], 180000),
+     "recreational"),
     PlayerSeed("player17@gmail.com", "Lương Gia Bảo", "0918899900", 4.5, "Offensive", None, 10.7980, 106.6850, 12, 8,
-     "competitive", ["led"], 300000),
+     "competitive"),
     PlayerSeed("player18@gmail.com", "Hà Quốc Việt", "0919900011", 3.5, "All-Round", None, 10.7710, 106.6980, 12, 8,
-     "recreational", ["canteen", "led"], 240000),
+     "recreational"),
 ]
 
 
@@ -302,26 +300,17 @@ def seed_accounts_and_venues(db: Session, amenities: Dict[str, Amenity]) -> dict
 
 def apply_demo_preferences(db: Session) -> int:
     """
-    Điền mục đích chơi, tiện ích ưa thích và ngân sách mẫu cho các tài khoản demo.
+    Điền mục đích chơi mẫu cho các tài khoản demo.
     Chỉ điền vào trường đang trống, nên chạy lại nhiều lần hoặc chạy trên CSDL đang dùng đều an toàn.
     """
-    amenity_ids = {key: row.id for key, name, _ in AMENITIES
-                   for row in db.query(Amenity).filter(Amenity.name == name)}
     updated = 0
     for player in PLAYERS:
         user = db.query(User).filter(User.email == player.email).first()
         profile = user.player_profile if user else None
-        if profile is None:
+        if profile is None or profile.purpose:
             continue
-        changed = False
-        if not profile.purpose:
-            profile.purpose, changed = player.purpose, True
-        if not profile.preferred_amenities:
-            ids = [amenity_ids[key] for key in player.amenities if key in amenity_ids]
-            profile.preferred_amenities, changed = json.dumps(ids), True
-        if not profile.budget_max:
-            profile.budget_max, changed = float(player.budget), True
-        updated += int(changed)
+        profile.purpose = player.purpose
+        updated += 1
     db.commit()
     return updated
 
@@ -588,29 +577,29 @@ MATCH_DEMO_GATEWAY = "Dữ liệu mẫu"  # nhãn trên giao dịch cọc của 
 MATCH_DEMO_PLAYERS = [
     # email, họ tên, điện thoại, DUPR, phong cách, ngày sinh, vĩ độ, kinh độ, số trận, số thắng, mục đích
     PlayerSeed("ghep01@example.com", "Trần Quốc Bảo", "0900000101", 3.5, "All-Round", None, 10.7850, 106.7200, 24, 13,
-     "recreational", [], 0),
+     "recreational"),
     PlayerSeed("ghep02@example.com", "Nguyễn Thị Mai Anh", "0900000102", 3.5, "Dinking & Control", None, 10.8000, 106.7100, 18, 10,
-     "recreational", [], 0),
+     "recreational"),
     PlayerSeed("ghep03@example.com", "Lê Minh Khôi", "0900000103", 4.0, "Offensive", None, 10.7760, 106.7000, 40, 26,
-     "competitive", [], 0),
+     "competitive"),
     PlayerSeed("ghep04@example.com", "Phạm Gia Hân", "0900000104", 3.0, "Defensive", None, 10.8300, 106.6800, 12, 5,
-     "practice", [], 0),
+     "practice"),
     PlayerSeed("ghep05@example.com", "Võ Thành Đạt", "0900000105", 4.5, "Serve & Volley", None, 10.7900, 106.6900, 60, 41,
-     "competitive", [], 0),
+     "competitive"),
     PlayerSeed("ghep06@example.com", "Đinh Ngọc Lan", "0900000106", 2.5, "Defensive", None, 10.8000, 106.7250, 6, 2,
-     "recreational", [], 0),
+     "recreational"),
     PlayerSeed("ghep07@example.com", "Bùi Anh Tuấn", "0900000107", 3.0, "All-Round", None, 10.8250, 106.6850, 15, 7,
-     "recreational", [], 0),
+     "recreational"),
     PlayerSeed("ghep08@example.com", "Hồ Thanh Tùng", "0900000108", 4.0, "Serve & Volley", None, 10.7830, 106.7150, 35, 21,
-     "competitive", [], 0),
+     "competitive"),
     PlayerSeed("ghep09@example.com", "Trương Mỹ Duyên", "0900000109", 3.5, "Offensive", None, 10.7800, 106.7050, 20, 11,
-     "practice", [], 0),
+     "practice"),
     PlayerSeed("ghep10@example.com", "Lý Hoàng Phúc", "0900000110", 5.0, "Offensive", None, 10.8300, 106.6700, 80, 60,
-     "competitive", [], 0),
+     "competitive"),
     PlayerSeed("ghep11@example.com", "Đặng Khánh Vy", "0900000111", 3.0, "Dinking & Control", None, 10.8400, 106.6800, 10, 4,
-     "recreational", [], 0),
+     "recreational"),
     PlayerSeed("ghep12@example.com", "Châu Nhật Minh", "0900000112", 4.5, "Offensive", None, 10.7950, 106.7280, 55, 36,
-     "competitive", [], 0),
+     "competitive"),
 ]
 
 
@@ -790,7 +779,7 @@ def seed_database(if_empty: bool = False, reset: bool = False, assume_yes: bool 
                 return False
             raise SystemExit(
                 f"CSDL đã có {existing} tài khoản. Dùng --reset để xóa và nạp lại, "
-                "hoặc --preferences để chỉ bổ sung sở thích mẫu cho tài khoản demo."
+                "hoặc --preferences để chỉ bổ sung mục đích chơi mẫu cho tài khoản demo."
             )
 
         print("Đang nạp tiện ích, tài khoản và cụm sân...")
@@ -833,7 +822,7 @@ def main() -> None:
     if "--preferences" in args:
         ensure_schema()
         with SessionLocal() as db:
-            print(f"Đã bổ sung sở thích mẫu cho {apply_demo_preferences(db)} tài khoản demo.")
+            print(f"Đã bổ sung mục đích chơi mẫu cho {apply_demo_preferences(db)} tài khoản demo.")
         return
     if "--feedback" in args:
         ensure_schema()

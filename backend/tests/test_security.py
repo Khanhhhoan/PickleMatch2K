@@ -105,7 +105,7 @@ def test_register_creates_player_without_fabricated_profile_data(client, db):
     # Không gán sẵn số điện thoại, trình độ hay toạ độ giả
     assert profile["phone"] is None and profile["skill_level"] is None
     assert profile["latitude"] is None and profile["longitude"] is None
-    assert profile["preferred_amenity_ids"] == []
+    assert profile["purpose"] is None and profile["play_style"] is None
     assert "password" not in str(body).lower()
 
 

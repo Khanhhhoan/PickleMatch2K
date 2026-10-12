@@ -1,5 +1,5 @@
 /**
- * Các giá trị hồ sơ người chơi dùng cho gợi ý sân và mô hình ghép cặp.
+ * Các giá trị hồ sơ người chơi dùng cho mô hình ghép cặp.
  * Phải khớp với backend (app/ml/features.py): PLAY_STYLES, PURPOSES.
  */
 

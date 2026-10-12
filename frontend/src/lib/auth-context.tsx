@@ -16,10 +16,7 @@ export interface PlayerProfile {
   age?: number | null;
   latitude?: number | null;
   longitude?: number | null;
-  // Dữ liệu phục vụ gợi ý sân và ghép người chơi
   purpose?: string | null;
-  preferred_amenity_ids?: number[];
-  budget_max?: number | null;
 }
 
 export interface UserProfile {

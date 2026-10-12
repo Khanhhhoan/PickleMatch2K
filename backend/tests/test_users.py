@@ -2,7 +2,7 @@
 import pytest
 
 from app.models.user import PlayerProfile, User
-from app.models.venue import Amenity, Venue
+from app.models.venue import Venue
 from helpers import auth, confirmed_booking, make_user
 
 USERS = "/api/v1/users"
@@ -17,34 +17,29 @@ def update_profile(client, user, **fields):
 # Hồ sơ
 # ---------------------------------------------------------------------------
 def test_player_updates_matching_profile(client, db):
-    led, roof = Amenity(name="Đèn LED"), Amenity(name="Mái che")
-    db.add_all([led, roof])
-    db.commit()
     player = make_user(db)
 
     response = update_profile(
         client, player, full_name="  Nguyễn An ", phone="0901 234 567", skill_level=3.5, play_style="Offensive",
-        latitude=10.78, longitude=106.7, purpose="practice", budget_max=200000,
-        preferred_amenity_ids=[roof.id, 9999, led.id],
-        company_name="Không áp dụng cho người chơi",
+        latitude=10.78, longitude=106.7, purpose="practice",
+        budget_max=200000, preferred_amenity_ids=[1], company_name="Không áp dụng cho người chơi",
     )
     assert response.status_code == 200, response.text
     profile = response.json()["player_profile"]
     assert (profile["full_name"], profile["phone"], profile["skill_level"]) == ("Nguyễn An", "0901234567", 3.5)
-    assert (profile["purpose"], profile["budget_max"]) == ("practice", 200000)
-    assert profile["preferred_amenity_ids"] == [led.id, roof.id]              # bỏ id tiện ích không tồn tại
+    assert (profile["purpose"], profile["play_style"], profile["latitude"]) == ("practice", "Offensive", 10.78)
+    assert "budget_max" not in profile and "preferred_amenity_ids" not in profile   # hồ sơ không còn hai mục này
     assert response.json()["owner_profile"] is None
 
-    # Chỉ trường được gửi mới thay đổi; ngân sách 0 nghĩa là không giới hạn
-    cleared = update_profile(client, player, budget_max=0).json()["player_profile"]
-    assert (cleared["budget_max"], cleared["purpose"], cleared["skill_level"]) == (None, "practice", 3.5)
+    # Chỉ trường được gửi mới thay đổi
+    changed = update_profile(client, player, purpose="competitive").json()["player_profile"]
+    assert (changed["purpose"], changed["skill_level"], changed["play_style"]) == ("competitive", 3.5, "Offensive")
 
 
 @pytest.mark.parametrize("fields", [
     {"purpose": "gambling"},
     {"skill_level": 0.5}, {"skill_level": 9},
     {"latitude": 91}, {"longitude": -181},
-    {"budget_max": -1},
     {"phone": "abc"},
     {"date_of_birth": "2999-01-01"},
     {"matches_played": 3, "matches_won": 5},

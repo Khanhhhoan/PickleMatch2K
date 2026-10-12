@@ -11,7 +11,7 @@ trong file `.env`; schema luôn được tạo/cập nhật bằng migration Ale
 | `python manage.py seed` | Nạp bộ dữ liệu demo vào CSDL **trống** | Không |
 | `python manage.py seed --if-empty` | Như trên, nhưng bỏ qua nếu đã có dữ liệu (dùng cho Docker) | Không |
 | `python manage.py seed --feedback` | Chỉ nạp 3.000 phiếu ghép cặp **mô phỏng** vào bảng `pair_feedback` (nguồn `simulated`) để huấn luyện mô hình từ CSDL; bỏ qua nếu đã có | Không |
-| `python manage.py seed --preferences` | Chỉ bổ sung sở thích mẫu (mục đích chơi, tiện ích ưa thích, ngân sách) cho tài khoản demo đang để trống | Không |
+| `python manage.py seed --preferences` | Chỉ bổ sung mục đích chơi mẫu cho tài khoản demo đang để trống | Không |
 | `python manage.py seed --matches` | Nạp **thêm** 12 người chơi mẫu và 10 phòng đấu cho 6 ngày tới để thử chức năng ghép trận; chạy lại được, không sửa dữ liệu đã có | Không |
 | `python manage.py seed --reset` | Xóa toàn bộ rồi nạp lại dữ liệu demo | **Có** |
 | `python manage.py reset` | Xóa toàn bộ, chỉ giữ danh mục tiện ích và một tài khoản Admin | **Có** |

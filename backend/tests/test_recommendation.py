@@ -93,23 +93,24 @@ def test_distance_radius_and_budget(client, world):
     assert tight["Sân A"]["price_score"] > tight["Sân B"]["price_score"] == 0.0
 
 
-def test_profile_supplies_location_budget_and_preferred_amenities(client, db, world):
+def test_profile_supplies_location_while_budget_and_amenities_come_from_the_request(client, db, world):
     roof, parking = Amenity(name="Mái che"), Amenity(name="Bãi xe")
     db.add_all([roof, parking])
     world.venue_b.amenities = [roof, parking]
     db.commit()
-    player = make_user(db, latitude=10.85, longitude=106.75, budget_max=500000,
-                       preferred_amenities=f"[{roof.id}, {parking.id}]")
+    player = make_user(db, latitude=10.85, longitude=106.75)
 
-    by_name, order = recommend(client, player)
-    assert by_name["Sân B"]["distance_km"] == 0 and by_name["Sân B"]["preference_score"] == 1.0
-    assert by_name["Sân A"]["preference_score"] == 0.0
-    assert by_name["Sân A"]["price_score"] == by_name["Sân B"]["price_score"] == 1.0
+    by_name, _ = recommend(client, player)
+    assert by_name["Sân B"]["distance_km"] == 0 and by_name["Sân A"]["distance_km"] > 5     # vị trí lấy từ hồ sơ
+    assert all(item["preference_score"] is None and "preference" not in item["criteria_used"] for item in by_name.values())
+    assert by_name["Sân A"]["price_score"] == 1.0 and by_name["Sân B"]["price_score"] == 0.0  # không có ngân sách: so giá giữa các sân
+
+    asked, order = recommend(client, player, amenity_ids=[roof.id, parking.id], budget_max=500000)
+    assert asked["Sân B"]["preference_score"] == 1.0 and asked["Sân A"]["preference_score"] == 0.0
+    assert asked["Sân A"]["price_score"] == asked["Sân B"]["price_score"] == 1.0
     assert order[0] == "Sân B"
-
-    # Tham số truyền trực tiếp được ưu tiên hơn hồ sơ
-    override, _ = recommend(client, player, amenity_ids=[roof.id, 99999])
-    assert override["Sân B"]["preference_score"] == 0.5
+    half, _ = recommend(client, player, amenity_ids=[roof.id, 99999])
+    assert half["Sân B"]["preference_score"] == 0.5
 
 
 def test_time_score_reflects_remaining_free_slots(client, world, clock):

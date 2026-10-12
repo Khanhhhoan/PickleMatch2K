@@ -4,7 +4,7 @@ Hệ thống dùng **PostgreSQL 17**. Schema được định nghĩa bằng mode
 qua migration Alembic (`backend/alembic/versions/`). Một ca kiểm thử so sánh CSDL sau migration với model để bảo đảm
 hai bên luôn khớp nhau.
 
-Tài liệu này mô tả schema ở revision **0005**.
+Tài liệu này mô tả schema ở revision **0006**.
 
 ## 1. Sơ đồ quan hệ
 
@@ -52,8 +52,6 @@ Ký hiệu: **PK** khóa chính, **FK** khóa ngoại, **U** duy nhất, **NN** 
 | `skill_level` | FLOAT | Trình độ DUPR tự khai |
 | `play_style` | VARCHAR | Phong cách chơi |
 | `purpose` | VARCHAR | `recreational`, `practice`, `competitive` |
-| `preferred_amenities` | VARCHAR | Danh sách mã tiện ích ưa thích (JSON). Chỉ thuật toán gợi ý sân ở backend dùng; giao diện không còn nhập |
-| `budget_max` | FLOAT | Ngân sách tối đa mỗi giờ (VNĐ). Chỉ thuật toán gợi ý sân ở backend dùng; giao diện không còn nhập |
 | `latitude`, `longitude` | FLOAT | Vị trí thường chơi |
 | `matches_played`, `matches_won` | INTEGER | |
 
@@ -226,6 +224,7 @@ tạo cùng lúc.
 | `0003` | Lõi đặt sân mới: nguồn đơn và khách vãng lai, tiền cọc / đã trả, hạn thanh toán, check-in, hủy; `is_active` và các ràng buộc chống đặt trùng; sổ giao dịch theo loại và hình thức; phòng đấu gắn với đơn; hồ sơ ghép cặp (mục đích, khung rảnh, tiện ích ưa thích, ngân sách). Dữ liệu cũ được chuyển đổi tại chỗ và migration dừng lại nếu phát hiện đơn còn hiệu lực bị trùng giờ |
 | `0004` | Bảng `pair_feedback` |
 | `0005` | Bỏ giờ rảnh khỏi hệ thống: xóa cột `player_profiles.availability` và `pair_feedback.availability_overlap`, mô hình ghép cặp còn 4 đặc trưng. Phiếu mô phỏng cũ bị xóa để nạp lại bằng `python manage.py seed --feedback`; câu trả lời khảo sát thật được giữ |
+| `0006` | Bỏ `player_profiles.preferred_amenities` và `player_profiles.budget_max`: hồ sơ không còn lưu tiện ích ưa thích và ngân sách. Thuật toán gợi ý sân nhận hai giá trị này qua tham số của yêu cầu |
 
 Nâng cấp một CSDL cũ: `python manage.py migrate` (tự sao lưu trước, xem README gốc).
 
@@ -233,7 +232,7 @@ Nâng cấp một CSDL cũ: `python manage.py migrate` (tự sao lưu trước, 
 
 - Số tiền dùng kiểu `FLOAT`. Mọi giá trị là số nguyên VNĐ và phép so tiền chuyển khoản cho phép sai số 1 VNĐ;
   chuyển sang kiểu số nguyên là hướng cải thiện về sau.
-- Các danh sách (`preferred_amenities`, `images`) lưu dạng chuỗi JSON trong cột `VARCHAR`.
+- Danh sách ảnh của cụm sân (`venues.images`) lưu dạng chuỗi JSON trong cột `VARCHAR`.
 - Dữ liệu chuyển đổi từ phiên bản cũ: hệ thống cũ chỉ đánh dấu trạng thái thanh toán mà không ghi đủ sổ giao dịch, nên
   migration `0003` suy ra `paid_amount` của đơn cũ từ trạng thái đó. Với các đơn này, `paid_amount` có thể lớn hơn tổng
   các dòng sổ, và doanh thu trên bảng tổng quan (cộng từ sổ) không gồm phần chênh. Đơn tạo từ phiên bản hiện tại

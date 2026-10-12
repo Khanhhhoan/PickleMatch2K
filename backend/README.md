@@ -19,7 +19,7 @@ backend/
 │   │                       user, search, match, venue_recommendation, ml, maintenance (tác vụ nền), storage
 │   ├── ml/                 features (đặc trưng dùng chung), train_model, mô hình .pkl và model_meta.json
 │   └── utils/              timeutils (giờ Việt Nam, đồng hồ nghiệp vụ), geo (Haversine)
-├── alembic/versions/       0001 schema gốc → 0002 chỉnh lệch CSDL cũ → 0003 lõi đặt sân → 0004 nhãn khảo sát → 0005 bỏ giờ rảnh
+├── alembic/versions/       0001 schema gốc → 0002 chỉnh lệch CSDL cũ → 0003 lõi đặt sân → 0004 nhãn khảo sát → 0005 bỏ giờ rảnh → 0006 bỏ tiện ích ưa thích, ngân sách
 ├── scripts/                Script quản trị (seed, reset, import_excel, backup_db, show_db)
 ├── tests/                  Bộ kiểm thử pytest
 ├── manage.py               Bộ lệnh quản trị

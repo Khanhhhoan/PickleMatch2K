@@ -4,10 +4,12 @@ Gợi ý cụm sân theo phương pháp lọc -> chấm điểm đa tiêu chí -
     Score = Σ w_i * s_i / Σ w_i     (chỉ trên các tiêu chí có dữ liệu)
 
     D  Khoảng cách từ người dùng tới sân
-    P  Mức giá so với ngân sách (hoặc so với các sân ứng viên khi chưa khai ngân sách)
+    P  Mức giá so với ngân sách (hoặc so với các sân ứng viên khi yêu cầu không kèm ngân sách)
     T  Tỷ lệ khung giờ còn trống trong ngày/khoảng giờ muốn chơi
     R  Điểm đánh giá (trung bình Bayes)
-    S  Mức đáp ứng các tiện ích người dùng ưa thích
+    S  Mức đáp ứng các tiện ích người dùng yêu cầu
+
+Vị trí lấy từ yêu cầu, không có thì lấy từ hồ sơ người chơi. Ngân sách và tiện ích chỉ lấy từ yêu cầu.
 """
 from datetime import date, time
 from typing import Dict, List, Optional, Sequence
@@ -77,7 +79,7 @@ def normalize_rating(rating: float) -> float:
 
 
 def normalize_preference(venue_amenity_ids: set, preferred_ids: set) -> Optional[float]:
-    """Tỷ lệ tiện ích ưa thích mà sân đáp ứng. None khi người dùng chưa khai sở thích."""
+    """Tỷ lệ tiện ích được yêu cầu mà sân đáp ứng. None khi yêu cầu không nêu tiện ích nào."""
     if not preferred_ids:
         return None
     return len(venue_amenity_ids & preferred_ids) / len(preferred_ids)
@@ -107,10 +109,8 @@ def get_venue_recommendations(
     ref_lat = latitude if latitude is not None else (user_profile.latitude if user_profile else None)
     ref_lng = longitude if longitude is not None else (user_profile.longitude if user_profile else None)
     eval_date = target_date or today_vn()
-    budget = budget_max if budget_max else (user_profile.budget_max if user_profile else None)
-    preferred = set(preferred_amenity_ids) if preferred_amenity_ids else (
-        set(user_profile.preferred_amenity_ids) if user_profile else set()
-    )
+    budget = budget_max or None
+    preferred = set(preferred_amenity_ids or [])
 
     venues = (
         db.query(Venue)

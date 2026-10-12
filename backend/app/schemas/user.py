@@ -1,6 +1,6 @@
 import re
 from datetime import date
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
@@ -44,10 +44,7 @@ class PlayerProfileBase(BaseModel):
     age: Optional[int] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    # Dữ liệu phục vụ gợi ý sân và ghép người chơi
     purpose: Optional[str] = None
-    preferred_amenity_ids: List[int] = []
-    budget_max: Optional[float] = None     # VNĐ/giờ
 
 
 class PlayerProfileResponse(PlayerProfileBase):
@@ -129,8 +126,6 @@ class ProfileUpdateRequest(BaseModel):
     latitude: Optional[float] = Field(default=None, ge=-90, le=90)
     longitude: Optional[float] = Field(default=None, ge=-180, le=180)
     purpose: Optional[str] = None
-    preferred_amenity_ids: Optional[List[int]] = Field(default=None, max_length=50)
-    budget_max: Optional[float] = Field(default=None, ge=0, le=100_000_000)
     # Chủ sân
     company_name: Optional[str] = Field(default=None, max_length=160)
     bank_account: Optional[str] = Field(default=None, max_length=160)
