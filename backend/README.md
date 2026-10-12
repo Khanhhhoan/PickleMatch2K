@@ -121,9 +121,10 @@ giờ, đóng phòng đấu đã qua giờ. Một tác vụ lỗi không chặn 
 ## Mô hình ghép cặp
 
 ```powershell
-python manage.py seed --feedback        # nạp 3.000 phiếu ghép cặp mô phỏng vào bảng pair_feedback (bỏ qua nếu đã có)
-python manage.py train-model            # huấn luyện từ bảng pair_feedback, ghi app/ml/match_rf_model.pkl + model_meta.json
-python manage.py train-model --report   # chỉ in bảng đánh giá, không ghi file
+python manage.py seed --feedback                # nạp 3.000 phiếu ghép cặp mô phỏng vào bảng pair_feedback (bỏ qua nếu đã có)
+python manage.py seed --feedback --regenerate   # thay các phiếu mô phỏng bằng bộ sinh theo quy tắc hiện tại
+python manage.py train-model                    # huấn luyện từ bảng pair_feedback, ghi app/ml/match_rf_model.pkl + model_meta.json
+python manage.py train-model --report           # chỉ in bảng đánh giá, không ghi file
 ```
 
 File `.pkl` phụ thuộc đúng phiên bản scikit-learn ghim trong `requirements.txt`; đổi phiên bản thì huấn luyện lại.

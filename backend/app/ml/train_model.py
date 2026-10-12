@@ -5,13 +5,14 @@ Huấn luyện mô hình ghép cặp người chơi (Random Forest) và lưu kè
     python -m app.ml.train_model --report     # chỉ in bảng đánh giá, không ghi file
     python -m app.ml.train_model --synthetic  # buộc dùng dữ liệu tổng hợp (bỏ qua dữ liệu khảo sát)
 
-Nguồn dữ liệu, theo thứ tự ưu tiên:
-1. "survey": câu trả lời khảo sát thật trong bảng pair_feedback, khi có từ MIN_REAL_SAMPLES nhãn trở lên.
-2. "simulated": các dòng của bảng pair_feedback khi phần lớn là PHIẾU MÔ PHỎNG nạp sẵn
-   (python manage.py seed --feedback) - dữ liệu nằm trong CSDL, nhãn sinh từ quy tắc viết tay có cộng nhiễu.
+Nguồn dữ liệu:
+1. "simulated" (đang dùng): các PHIẾU MÔ PHỎNG nạp sẵn trong bảng pair_feedback (python manage.py seed --feedback) -
+   dữ liệu nằm trong CSDL, nhãn sinh từ quy tắc viết tay có cộng nhiễu.
+2. "survey" (hướng phát triển): câu trả lời khảo sát thật trong cùng bảng. Chúng được lưu riêng và chưa tham gia
+   huấn luyện cho tới khi có từ MIN_REAL_SAMPLES nhãn trở lên; từ lúc đó mô hình chỉ học từ nhãn thật.
 3. "synthetic_prior": dữ liệu tổng hợp sinh trong bộ nhớ từ cùng quy tắc đó, dùng khi CSDL chưa có đủ dòng.
 Dữ liệu lấy từ CSDL (1 và 2) được đánh giá bằng GroupKFold theo người trả lời, để phiếu của cùng một người không
-nằm ở cả hai phía. Với nguồn 2 và 3, độ chính xác chỉ cho biết mô hình học lại quy tắc tốt đến đâu, KHÔNG chứng
+nằm ở cả hai phía. Với nguồn 1 và 3, độ chính xác chỉ cho biết mô hình học lại quy tắc tốt đến đâu, KHÔNG chứng
 minh chất lượng ghép cặp ngoài thực tế; quy tắc gốc (không nhiễu) luôn được in ra làm mốc trần so sánh.
 """
 import argparse
@@ -51,7 +52,11 @@ META_PATH = ML_DIR / "model_meta.json"
 MIN_REAL_SAMPLES = 300
 SYNTHETIC_SAMPLES = 60000
 RANDOM_STATE = 42
-LABEL_NOISE_SD = 0.08   # độ lệch chuẩn của nhiễu cộng vào điểm quy tắc khi sinh nhãn mô phỏng
+# Độ lệch chuẩn của nhiễu cộng vào điểm quy tắc khi sinh nhãn mô phỏng: mức dao động giữa những người trả lời.
+# Nhiễu quá nhỏ thì hai người cùng trình độ, ở gần luôn được trả lời "muốn ghép" và mô hình học ra độ phù hợp 100%.
+LABEL_NOISE_SD = 0.15
+# Số phiếu tối thiểu trong mỗi lá của rừng (xem build_model).
+MIN_SAMPLES_LEAF = 25
 
 
 # ---------------------------------------------------------------------------
@@ -116,12 +121,16 @@ def metrics(y_true, y_pred, y_prob=None) -> Dict[str, float]:
     return result
 
 
-def build_model(n_samples: int) -> RandomForestClassifier:
+def build_model() -> RandomForestClassifier:
+    """
+    Xác suất của mô hình được hiện cho người chơi dưới dạng "độ phù hợp", nên rừng được cấu hình để xác suất đó là
+    một tỉ lệ đáng tin: mỗi lá gom ít nhất MIN_SAMPLES_LEAF phiếu (lá vài phiếu dễ ra 0% hoặc 100%), và không cân lại
+    trọng số hai lớp (cân lại làm xác suất lệch khỏi tỉ lệ "muốn ghép" có thật trong dữ liệu).
+    """
     return RandomForestClassifier(
         n_estimators=200,
         max_depth=8,
-        min_samples_leaf=20 if n_samples >= 5000 else 5,
-        class_weight="balanced",
+        min_samples_leaf=MIN_SAMPLES_LEAF,
         random_state=RANDOM_STATE,
         n_jobs=-1,
     )
@@ -135,7 +144,7 @@ def evaluate_split(X_train, y_train, X_test, y_test, include_rule: bool) -> Dict
     report["Luật: chênh trình độ <= 0.5"] = metrics(y_test, (X_test["level_diff"] <= 0.5).astype(int))
     logistic = LogisticRegression(max_iter=1000).fit(X_train, y_train)
     report["Hồi quy logistic"] = metrics(y_test, logistic.predict(X_test), logistic.predict_proba(X_test)[:, 1])
-    forest = build_model(len(X_train)).fit(X_train, y_train)
+    forest = build_model().fit(X_train, y_train)
     report["Random Forest"] = metrics(y_test, forest.predict(X_test), forest.predict_proba(X_test)[:, 1])
     if include_rule:
         rule = (synthetic_rule_score(X_test) >= 0.5).astype(int)
@@ -164,24 +173,27 @@ def print_report(report: Dict[str, Dict[str, float]]) -> None:
 # ---------------------------------------------------------------------------
 def choose_dataset(force_synthetic: bool) -> Tuple[pd.DataFrame, str, Optional[pd.Series]]:
     """
-    Trả về (dữ liệu, nguồn, người trả lời của từng dòng). Số dòng thật và mô phỏng nằm trong data.attrs.
-    Nhãn khảo sát thật luôn được ưu tiên: đủ MIN_REAL_SAMPLES nhãn thật thì phiếu mô phỏng bị bỏ ra ngoài.
+    Trả về (dữ liệu, nguồn, người trả lời của từng dòng). Số dòng thật và mô phỏng ĐƯỢC DÙNG nằm trong data.attrs.
+    Hai nguồn trong CSDL không bị trộn: mô hình học từ phiếu mô phỏng cho tới khi có đủ MIN_REAL_SAMPLES nhãn khảo
+    sát thật, từ đó chỉ học từ nhãn thật. Nhờ vậy vài câu trả lời khảo sát lẻ không làm mô hình khác đi giữa các máy.
     """
     feedback = pd.DataFrame() if force_synthetic else load_real_feedback()
     if len(feedback):
         sources = feedback["source"] if "source" in feedback else pd.Series("survey", index=feedback.index)
-        real = feedback[sources != SIMULATED_SOURCE]
+        real, simulated = feedback[sources != SIMULATED_SOURCE], feedback[sources == SIMULATED_SOURCE]
         if len(real) >= MIN_REAL_SAMPLES and real["label"].nunique() == 2:
             chosen, name = real, "survey"
-        elif len(feedback) >= MIN_REAL_SAMPLES and feedback["label"].nunique() == 2:
-            chosen, name = feedback, "simulated"
+        elif len(simulated) >= MIN_REAL_SAMPLES and simulated["label"].nunique() == 2:
+            chosen, name = simulated, "simulated"
+            if len(real):
+                print(f"Có {len(real)} câu trả lời khảo sát thật trong CSDL: chưa đủ {MIN_REAL_SAMPLES} nên chưa đưa vào huấn luyện.")
         else:
             chosen, name = None, ""
             print(f"Mới có {len(feedback)} nhãn trong CSDL (cần >= {MIN_REAL_SAMPLES}); tạm dùng dữ liệu tổng hợp khởi tạo.")
         if chosen is not None:
             data = chosen[FEATURE_NAMES + ["label"]].astype(float)
-            n_survey = int(len(real)) if name == "simulated" else int(len(chosen))
-            data.attrs.update(n_survey=n_survey, n_simulated=int(len(chosen)) - n_survey)
+            data.attrs.update(n_survey=int(len(chosen)) if name == "survey" else 0,
+                              n_simulated=int(len(chosen)) if name == "simulated" else 0)
             return data, name, chosen["rater_id"]
     return generate_synthetic_pairs(SYNTHETIC_SAMPLES), "synthetic_prior", None
 
@@ -195,8 +207,8 @@ def train(report_only: bool = False, force_synthetic: bool = False) -> dict:
     if source == "synthetic_prior":
         print("LƯU Ý: nhãn sinh từ quy tắc viết tay + nhiễu; các số dưới đây không phản ánh hành vi người chơi thật.")
     elif source == "simulated":
-        print(f"LƯU Ý: {data.attrs.get('n_simulated', 0):,} dòng là PHIẾU MÔ PHỎNG nạp trong CSDL (nhãn sinh từ quy tắc "
-              "viết tay + nhiễu); các số dưới đây không phản ánh hành vi người chơi thật.")
+        print("LƯU Ý: đây là PHIẾU MÔ PHỎNG nạp trong CSDL (nhãn sinh từ quy tắc viết tay + nhiễu); "
+              "các số dưới đây không phản ánh hành vi người chơi thật.")
     print("=" * 88)
 
     if source in ("survey", "simulated"):
@@ -217,7 +229,7 @@ def train(report_only: bool = False, force_synthetic: bool = False) -> dict:
     print(f"Cách đánh giá: {protocol}\n")
     print_report(report)
 
-    model = build_model(len(X)).fit(X, y)
+    model = build_model().fit(X, y)
     importances = {f: round(float(v), 4) for f, v in zip(FEATURE_NAMES, model.feature_importances_)}
     print("\nMức đóng góp của đặc trưng:", importances)
 

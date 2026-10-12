@@ -6,6 +6,7 @@ Nạp bộ dữ liệu demo của đồ án PickleMatch2K.
     python scripts/seed.py --reset       # XÓA toàn bộ dữ liệu rồi nạp lại (phải xác nhận, hoặc thêm --yes)
     python scripts/seed.py --preferences # chỉ bổ sung mục đích chơi mẫu cho các tài khoản demo đang để trống
     python scripts/seed.py --feedback    # chỉ nạp phiếu ghép cặp MÔ PHỎNG để huấn luyện mô hình từ CSDL
+                                         # (thêm --regenerate: sinh lại các phiếu mô phỏng theo quy tắc hiện tại)
     python scripts/seed.py --matches     # nạp THÊM người chơi và phòng đấu mẫu để thử chức năng ghép trận
     python scripts/seed.py --activity    # nạp THÊM hoạt động mẫu cho cụm sân mới chưa có đơn nào (--venue ID: chỉ một cụm sân)
 
@@ -323,7 +324,7 @@ SIMULATED_FEEDBACK_PER_PLAYER = 150
 SIMULATED_FEEDBACK_SEED = 2026
 
 
-def seed_simulated_feedback(db: Session, per_player: int = SIMULATED_FEEDBACK_PER_PLAYER) -> int:
+def seed_simulated_feedback(db: Session, per_player: int = SIMULATED_FEEDBACK_PER_PLAYER, replace: bool = False) -> int:
     """
     Nạp phiếu ghép cặp MÔ PHỎNG (source = "simulated") để mô hình có dữ liệu huấn luyện nằm trong CSDL.
 
@@ -332,15 +333,20 @@ def seed_simulated_feedback(db: Session, per_player: int = SIMULATED_FEEDBACK_PE
     "muốn ghép / không" sinh từ quy tắc viết tay có cộng nhiễu của app/ml/train_model.py. Bộ sinh số ngẫu nhiên cố
     định hạt giống nên chạy ở đâu cũng ra cùng một bộ dữ liệu.
 
-    Bỏ qua nếu CSDL đã có phiếu mô phỏng; không đụng tới câu trả lời khảo sát thật. Trả về số phiếu vừa nạp.
+    Bỏ qua nếu CSDL đã có phiếu mô phỏng, trừ khi replace=True: khi đó các phiếu mô phỏng cũ được thay bằng bộ sinh
+    theo quy tắc hiện tại, trong cùng một giao dịch (dùng sau khi đổi quy tắc sinh nhãn). Câu trả lời khảo sát thật
+    không bao giờ bị đụng tới. Trả về số phiếu vừa nạp.
     """
     import numpy as np
     import pandas as pd
 
     from app.ml.train_model import noisy_rule_labels
 
-    if db.query(PairFeedback).filter(PairFeedback.source == SIMULATED_SOURCE).count():
-        return 0
+    existing = db.query(PairFeedback).filter(PairFeedback.source == SIMULATED_SOURCE)
+    if existing.count():
+        if not replace:
+            return 0
+        existing.delete(synchronize_session=False)   # chưa commit: nếu không sinh được bộ mới thì phiếu cũ còn nguyên
 
     rows = []
     for index, player in enumerate(PLAYERS):
@@ -353,6 +359,7 @@ def seed_simulated_feedback(db: Session, per_player: int = SIMULATED_FEEDBACK_PE
             candidate, distance = ml_service.hypothetical_candidate(rng, me)
             rows.append({"rater_id": user.id, **pair_features(me, candidate, distance_km=distance)})
     if not rows:
+        db.rollback()
         return 0
 
     frame = pd.DataFrame(rows)
@@ -1149,6 +1156,7 @@ def report_simulated_feedback(added: int) -> None:
         print("Huấn luyện mô hình từ dữ liệu này: python manage.py train-model")
     else:
         print("Không nạp thêm: CSDL đã có phiếu mô phỏng, hoặc chưa có tài khoản người chơi demo.")
+        print("Muốn thay các phiếu mô phỏng bằng bộ sinh theo quy tắc hiện tại: python manage.py seed --feedback --regenerate")
 
 
 def main() -> None:
@@ -1161,7 +1169,7 @@ def main() -> None:
     if "--feedback" in args:
         ensure_schema()
         with SessionLocal() as db:
-            report_simulated_feedback(seed_simulated_feedback(db))
+            report_simulated_feedback(seed_simulated_feedback(db, replace="--regenerate" in args))
         return
     if "--matches" in args:
         ensure_schema()

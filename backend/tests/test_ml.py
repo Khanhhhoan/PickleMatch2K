@@ -1,5 +1,6 @@
 """Mô hình ghép cặp: đặc trưng dùng chung, huấn luyện/đánh giá, phục vụ theo lô và khảo sát thu nhãn."""
 import json
+import math
 
 import joblib
 import pandas as pd
@@ -67,6 +68,18 @@ def test_synthetic_prior_is_reproducible_and_balanced():
     assert first.equals(second) and list(first.columns) == FEATURE_NAMES + ["label"]
     assert 0.35 < first["label"].mean() < 0.65
     assert first["distance_km"].between(0, F.MAX_DISTANCE_KM).all()
+
+
+def test_simulated_respondents_find_a_good_pair_likely_but_not_certain():
+    """Câu trả lời mô phỏng có dao động giữa người với người: cặp hợp trình độ, ở gần là "rất có thể", không phải 100%."""
+    pairs = pd.DataFrame([
+        {"level_diff": 0.0, "distance_km": 6.0, "purpose_match": 0, "style_match": 0},    # chỉ hợp trình độ và ở gần
+        {"level_diff": 0.5, "distance_km": 6.0, "purpose_match": 0, "style_match": 0},
+        {"level_diff": 2.0, "distance_km": 25.0, "purpose_match": 0, "style_match": 0},
+    ])
+    margin = (train_model.synthetic_rule_score(pairs) - 0.5) / train_model.LABEL_NOISE_SD
+    same_level, half_level_apart, far_apart = (0.5 * (1 + math.erf(z / math.sqrt(2))) for z in margin)   # P(muốn ghép)
+    assert 0.90 < same_level < 0.97 and 0.70 < half_level_apart < 0.90 and far_apart < 0.01
 
 
 def test_evaluation_reports_baselines_next_to_the_forest():
@@ -163,6 +176,47 @@ def test_training_reads_simulated_feedback_from_the_database_and_says_so(db):
     assert "GroupKFold" in meta["evaluation_protocol"] and RULE_CEILING in meta["baselines"]
 
 
+def test_a_few_survey_answers_are_kept_apart_until_there_are_enough_of_them(db):
+    raters, _ = _load_simulated_feedback(db)
+    db.add_all([
+        PairFeedback(rater_id=raters[0].id, label=1, level_diff=2.0, distance_km=30, purpose_match=0, style_match=0)
+        for _ in range(5)
+    ])
+    db.commit()
+
+    data, source, groups = train_model.choose_dataset(force_synthetic=False)
+    assert (source, len(data), groups.nunique()) == ("simulated", 360, 3)        # 5 câu trả lời thật chưa được trộn vào
+    assert (data.attrs["n_survey"], data.attrs["n_simulated"]) == (0, 360)
+    summary = ml_service.feedback_summary(db)                                    # nhưng vẫn được lưu và đếm riêng
+    assert (summary["labels"], summary["simulated"]) == (5, 360)
+
+
+def test_regenerating_simulated_feedback_replaces_only_the_simulated_sheets(db, monkeypatch):
+    """`python manage.py seed --feedback --regenerate`, dùng sau khi đổi quy tắc sinh nhãn."""
+    from scripts import seed
+
+    def simulated():
+        return [(r.rater_id, r.level_diff, r.distance_km, r.purpose_match, r.style_match, r.label)
+                for r in db.query(PairFeedback).filter_by(source="simulated").order_by(PairFeedback.id)]
+
+    raters, _ = _load_simulated_feedback(db)
+    db.add(PairFeedback(rater_id=raters[0].id, label=1, level_diff=0, distance_km=1, purpose_match=1, style_match=1))
+    db.commit()
+    survey_id = db.query(PairFeedback).filter_by(source="survey").one().id
+    before = simulated()
+
+    monkeypatch.setattr(train_model, "LABEL_NOISE_SD", 0.40)                     # quy tắc sinh nhãn vừa được đổi
+    assert seed.seed_simulated_feedback(db, per_player=120) == 0                 # mặc định: đã có phiếu thì giữ nguyên
+    assert simulated() == before
+    assert seed.seed_simulated_feedback(db, per_player=120, replace=True) == 360
+    db.expire_all()
+    after = simulated()
+    assert [row[:5] for row in after] == [row[:5] for row in before]             # vẫn những cặp được hỏi đó
+    assert [row[5] for row in after] != [row[5] for row in before]               # câu trả lời theo quy tắc mới
+    assert db.query(PairFeedback).filter_by(source="survey").one().id == survey_id   # câu trả lời thật còn nguyên
+    assert db.query(PairFeedback).count() == 361
+
+
 def test_real_survey_answers_replace_simulated_ones_once_there_are_enough(db):
     raters, _ = _load_simulated_feedback(db)
     real = train_model.generate_synthetic_pairs(300, seed=5)
@@ -188,6 +242,24 @@ def test_shipped_model_matches_the_feature_module_and_its_metadata():
     assert info["features"] == FEATURE_NAMES and list(match_predictor.model.feature_names_in_) == FEATURE_NAMES
     assert info["data_source"] in ("synthetic_prior", "simulated", "survey")
     assert info["metrics"]["accuracy"] > 0.8 and info["baselines"]
+
+
+def test_shipped_model_never_scores_a_pair_as_certain():
+    """Độ phù hợp là một ước lượng: với mọi tổ hợp đặc trưng, con số của mô hình không làm tròn thành 100%."""
+    rows = [
+        {"level_diff": level, "distance_km": distance, "purpose_match": purpose, "style_match": style}
+        for level in (0.0, 0.5, 1.0, 1.5, 2.0, 3.0) for distance in (0.2, 1, 2, 3, 5, 8, 12, 18, 25, 35, 50)
+        for purpose in (0, 1) for style in (0, 1)
+    ]
+    scores = match_predictor.predict_proba(rows)
+    assert max(scores) < 0.995
+    assert max(scores) > 0.95 and min(scores) < 0.05          # vẫn tách rõ cặp rất hợp với cặp không hợp
+    # cùng trình độ, cùng khoảng cách: hợp thêm mục đích và lối đánh thì không thể kém hơn
+    plain, matched = match_predictor.predict_proba([
+        {"level_diff": 0.0, "distance_km": 6.0, "purpose_match": 0, "style_match": 0},
+        {"level_diff": 0.0, "distance_km": 6.0, "purpose_match": 1, "style_match": 1},
+    ])
+    assert 0.70 < plain < matched
 
 
 def test_batch_prediction_equals_one_by_one_and_follows_common_sense():

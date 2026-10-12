@@ -3,8 +3,8 @@ Bộ lệnh quản trị PickleMatch2K. Chạy trong thư mục backend/ với m
 
     python manage.py migrate        Sao lưu rồi đưa schema lên phiên bản mới nhất (--check | --no-backup)
     python manage.py show           Báo cáo tổng quan dữ liệu (chỉ đọc)
-    python manage.py seed           Nạp dữ liệu demo vào CSDL trống   (--if-empty | --reset | --preferences | --feedback | --matches
-                                    | --activity [--venue ID])
+    python manage.py seed           Nạp dữ liệu demo vào CSDL trống   (--if-empty | --reset | --preferences | --matches
+                                    | --feedback [--regenerate] | --activity [--venue ID])
     python manage.py reset          Xóa sạch, dựng lại CSDL trống + tài khoản Admin (phải xác nhận)
     python manage.py import-excel   Nhập cụm sân từ file Excel        (--file duong_dan.xlsx, --dry-run)
     python manage.py backup         Sao lưu CSDL ra thư mục backups/
@@ -94,6 +94,8 @@ def main() -> None:
     parser.add_argument("--reset", action="store_true", help="seed: xóa toàn bộ dữ liệu rồi nạp lại")
     parser.add_argument("--preferences", action="store_true", help="seed: chỉ bổ sung mục đích chơi mẫu cho tài khoản demo")
     parser.add_argument("--feedback", action="store_true", help="seed: chỉ nạp phiếu ghép cặp mô phỏng để huấn luyện mô hình")
+    parser.add_argument("--regenerate", action="store_true",
+                        help="seed --feedback: thay phiếu mô phỏng cũ bằng bộ sinh theo quy tắc hiện tại (giữ câu trả lời khảo sát thật)")
     parser.add_argument("--matches", action="store_true", help="seed: nạp thêm người chơi và phòng đấu mẫu để thử ghép trận")
     parser.add_argument("--activity", action="store_true", help="seed: nạp thêm hoạt động mẫu cho cụm sân mới chưa có đơn nào")
     parser.add_argument("--venue", type=int, default=None, help="seed --activity: chỉ nạp cho cụm sân mang id này")
@@ -128,7 +130,7 @@ def main() -> None:
 
             ensure_schema()
             with SessionLocal() as db:
-                seed.report_simulated_feedback(seed.seed_simulated_feedback(db))
+                seed.report_simulated_feedback(seed.seed_simulated_feedback(db, replace=args.regenerate))
         elif args.matches:
             from app.db.database import SessionLocal
             from scripts._common import ensure_schema

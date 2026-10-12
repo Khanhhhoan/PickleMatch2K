@@ -11,50 +11,50 @@
   "n_raters": 20,
   "n_survey": 0,
   "n_simulated": 3000,
-  "positive_rate": 0.397,
+  "positive_rate": 0.391,
   "evaluation_protocol": "GroupKFold 5 phần theo người trả lời (20 người)",
   "metrics": {
-    "accuracy": 0.9297,
-    "precision": 0.8853,
-    "recall": 0.9445,
-    "f1": 0.9138,
-    "roc_auc": 0.9852,
-    "brier": 0.0484
+    "accuracy": 0.8796,
+    "precision": 0.841,
+    "recall": 0.8534,
+    "f1": 0.8467,
+    "roc_auc": 0.9555,
+    "brier": 0.0827
   },
   "baselines": {
     "Đoán theo lớp đa số": {
-      "accuracy": 0.603,
+      "accuracy": 0.609,
       "precision": 0.0,
       "recall": 0.0,
       "f1": 0.0
     },
     "Luật: chênh trình độ <= 0.5": {
-      "accuracy": 0.8967,
-      "precision": 0.8671,
-      "recall": 0.8736,
-      "f1": 0.8698
+      "accuracy": 0.8613,
+      "precision": 0.8154,
+      "recall": 0.8338,
+      "f1": 0.824
     },
     "Hồi quy logistic": {
-      "accuracy": 0.9297,
-      "precision": 0.9187,
-      "recall": 0.9032,
-      "f1": 0.9109,
-      "roc_auc": 0.9815,
-      "brier": 0.0522
+      "accuracy": 0.8783,
+      "precision": 0.8509,
+      "recall": 0.8344,
+      "f1": 0.8424,
+      "roc_auc": 0.9505,
+      "brier": 0.0862
     },
     "Quy tắc sinh nhãn (không nhiễu, mốc trần)": {
-      "accuracy": 0.934,
-      "precision": 0.9284,
-      "recall": 0.9042,
-      "f1": 0.9159
+      "accuracy": 0.8827,
+      "precision": 0.8537,
+      "recall": 0.844,
+      "f1": 0.8486
     }
   },
   "feature_importances": {
-    "level_diff": 0.8069,
-    "distance_km": 0.1361,
-    "purpose_match": 0.036,
-    "style_match": 0.021
+    "level_diff": 0.8251,
+    "distance_km": 0.1303,
+    "purpose_match": 0.031,
+    "style_match": 0.0136
   },
   "sklearn_version": "1.9.0",
-  "trained_at": "2026-10-11T18:33:39+00:00"
+  "trained_at": "2026-10-12T05:03:29+00:00"
 }

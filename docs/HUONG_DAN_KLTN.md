@@ -181,18 +181,21 @@ với mình không".
 ### 5.2. Dữ liệu huấn luyện
 
 Dữ liệu huấn luyện nằm trong bảng `pair_feedback` của CSDL. Mỗi dòng là một "phiếu ghép cặp": 4 đặc trưng của một cặp,
-người trả lời, nhãn muốn ghép (1) hay không (0), và cột `source` ghi nguồn. Lệnh huấn luyện chọn nguồn theo thứ tự:
+người trả lời, nhãn muốn ghép (1) hay không (0), và cột `source` ghi nguồn. Hệ thống hiện dùng dữ liệu tự nạp; thu
+thập câu trả lời của người chơi thật là hướng phát triển:
 
-1. **Nhãn khảo sát thật** (`source = survey`): người chơi trả lời trên trang `/survey` về các hồ sơ ứng viên giả định xoay
-   quanh hồ sơ của chính mình. Khi có từ 300 nhãn thật trở lên, mô hình chỉ học từ các nhãn này.
-2. **Phiếu ghép cặp mô phỏng** (`source = simulated`, **đang dùng**): 3.000 phiếu nạp bằng
+1. **Phiếu ghép cặp mô phỏng** (`source = simulated`, **đang dùng**): 3.000 phiếu nạp bằng
    `python manage.py seed --feedback`. Mỗi tài khoản trong 20 tài khoản người chơi demo "trả lời" 150 phiếu. Hồ sơ ứng
    viên được sinh bằng đúng hàm mà trang khảo sát dùng (trải các mức chênh trình độ và khoảng cách); câu trả
    lời được sinh từ một quy tắc viết tay (`synthetic_rule_score`: ưu tiên chênh lệch trình độ nhỏ, ở gần, cùng mục
-   đích và phong cách) cộng nhiễu Gauss $\sigma = 0.08$. Hạt giống ngẫu nhiên cố định nên cài ở đâu
-   cũng ra cùng một bộ dữ liệu. Đây là dữ liệu mô phỏng để minh họa quy trình, **không phải** câu trả lời của người
-   chơi thật.
-3. **Dữ liệu tổng hợp trong bộ nhớ**: 60.000 cặp sinh từ cùng quy tắc, chỉ dùng khi CSDL chưa có đủ 300 dòng.
+   đích và phong cách) cộng nhiễu Gauss $\sigma = 0.15$. Nhiễu mô tả sự dao động giữa những người trả lời: một cặp
+   hợp trình độ và ở gần được trả lời "muốn ghép" với xác suất cao nhưng không phải lúc nào cũng vậy. Hạt giống ngẫu
+   nhiên cố định nên cài ở đâu cũng ra cùng một bộ dữ liệu. Đây là dữ liệu mô phỏng để minh họa quy trình, **không
+   phải** câu trả lời của người chơi thật.
+2. **Nhãn khảo sát thật** (`source = survey`, **hướng phát triển**): trang `/survey` cho người chơi trả lời về các hồ sơ
+   ứng viên giả định xoay quanh hồ sơ của chính mình. Các câu trả lời được lưu riêng và chưa tham gia huấn luyện; khi
+   có từ 300 nhãn thật trở lên, lệnh huấn luyện tự chuyển sang chỉ học từ các nhãn này.
+3. **Dữ liệu tổng hợp trong bộ nhớ**: 60.000 cặp sinh từ cùng quy tắc, chỉ dùng khi CSDL chưa có đủ 300 phiếu.
 
 Dữ liệu lấy từ CSDL (nguồn 1 và 2) được đánh giá bằng **GroupKFold theo người trả lời**, để phiếu của cùng một người
 không nằm ở cả tập huấn luyện lẫn tập kiểm tra.
@@ -200,8 +203,9 @@ không nằm ở cả tập huấn luyện lẫn tập kiểm tra.
 Quy trình đầy đủ:
 
 ```text
-python manage.py seed --feedback     # nạp phiếu mô phỏng vào bảng pair_feedback (bỏ qua nếu đã có)
-python manage.py train-model         # đọc bảng pair_feedback, đánh giá, ghi match_rf_model.pkl + model_meta.json
+python manage.py seed --feedback                # nạp phiếu mô phỏng vào bảng pair_feedback (bỏ qua nếu đã có)
+python manage.py seed --feedback --regenerate   # thay phiếu mô phỏng cũ sau khi đổi quy tắc sinh nhãn
+python manage.py train-model                    # đọc bảng pair_feedback, đánh giá, ghi match_rf_model.pkl + model_meta.json
 ```
 
 Giao diện (cổng người chơi lẫn cổng quản trị) chỉ hiện kết quả: độ phù hợp của từng phòng và mục Phòng Đề Xuất, không
@@ -211,31 +215,35 @@ hiện chi tiết kỹ thuật. Thông tin về mô hình đang chạy (nguồn 
 
 ### 5.3. Mô hình
 
-`RandomForestClassifier` của scikit-learn: 200 cây, độ sâu tối đa 8, tối thiểu 5 mẫu mỗi lá (20 khi dữ liệu có từ 5.000
-dòng), `class_weight="balanced"`, `random_state=42`. Mô hình được lưu thành `match_rf_model.pkl`, kèm `model_meta.json`
-ghi nguồn dữ liệu, cách đánh giá và các chỉ số.
+`RandomForestClassifier` của scikit-learn: 200 cây, độ sâu tối đa 8, tối thiểu 25 phiếu mỗi lá, `random_state=42`.
+Xác suất của mô hình được hiện cho người chơi dưới dạng độ phù hợp, nên rừng được cấu hình để xác suất đó là một tỉ lệ
+đáng tin: mỗi lá phải gom đủ 25 phiếu (lá chỉ vài phiếu dễ cho ra 0% hoặc 100%) và hai lớp không bị cân lại trọng số
+(cân lại làm xác suất lệch khỏi tỉ lệ "muốn ghép" có thật trong dữ liệu). Mô hình được lưu thành `match_rf_model.pkl`,
+kèm `model_meta.json` ghi nguồn dữ liệu, cách đánh giá và các chỉ số.
 
 ### 5.4. Kết quả đánh giá hiện tại
 
-3.000 phiếu mô phỏng của 20 tài khoản demo, tỷ lệ nhãn "muốn ghép" 39,7%, GroupKFold 5 phần theo người trả lời (số
+3.000 phiếu mô phỏng của 20 tài khoản demo, tỷ lệ nhãn "muốn ghép" 39,1%, GroupKFold 5 phần theo người trả lời (số
 trong bảng là trung bình của 5 phần):
 
 | Mô hình | Accuracy | Precision | Recall | F1 | ROC-AUC |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| Đoán theo lớp đa số | 0.6030 | 0.0000 | 0.0000 | 0.0000 | - |
-| Luật một ngưỡng: chênh trình độ ≤ 0.5 | 0.8967 | 0.8671 | 0.8736 | 0.8698 | - |
-| Hồi quy logistic | 0.9297 | 0.9187 | 0.9032 | 0.9109 | 0.9815 |
-| **Random Forest** | **0.9297** | **0.8853** | **0.9445** | **0.9138** | **0.9852** |
-| Quy tắc sinh nhãn, không nhiễu (mốc trần) | 0.9340 | 0.9284 | 0.9042 | 0.9159 | - |
+| Đoán theo lớp đa số | 0.6090 | 0.0000 | 0.0000 | 0.0000 | - |
+| Luật một ngưỡng: chênh trình độ ≤ 0.5 | 0.8613 | 0.8154 | 0.8338 | 0.8240 | - |
+| Hồi quy logistic | 0.8783 | 0.8509 | 0.8344 | 0.8424 | 0.9505 |
+| **Random Forest** | **0.8796** | **0.8410** | **0.8534** | **0.8467** | **0.9555** |
+| Quy tắc sinh nhãn, không nhiễu (mốc trần) | 0.8827 | 0.8537 | 0.8440 | 0.8486 | - |
 
-Mức đóng góp của đặc trưng: `level_diff` 0.807, `distance_km` 0.136, `purpose_match` 0.036, `style_match` 0.021.
+Mức đóng góp của đặc trưng: `level_diff` 0.825, `distance_km` 0.130, `purpose_match` 0.031, `style_match` 0.014.
 
 **Cách đọc các con số này.** Nhãn mô phỏng được sinh từ một quy tắc cộng nhiễu, nên:
 
-- Mốc trần 93,40% là độ chính xác của chính quy tắc sinh nhãn; không mô hình nào vượt được vì phần còn lại là nhiễu.
-- Random Forest đạt 92,97%, tức gần như học lại trọn quy tắc và cao hơn luật một ngưỡng (89,67%).
-- Về accuracy, Random Forest ngang hồi quy logistic (92,97%); nó nhỉnh hơn ở recall, F1 và ROC-AUC (0,9852 so với
-  0,9815). Với bốn đặc trưng và một quy tắc sinh nhãn dạng cộng điểm, hai mô hình cho kết quả gần nhau là điều dễ hiểu.
+- Mốc trần 88,27% là độ chính xác của chính quy tắc sinh nhãn; phần còn lại là dao động giữa những người trả lời mô
+  phỏng, không mô hình nào học được.
+- Random Forest đạt 87,96%, tức gần như học lại trọn quy tắc và cao hơn luật một ngưỡng (86,13%).
+- Random Forest nhỉnh hơn hồi quy logistic ở accuracy (87,96% so với 87,83%), recall, F1 và ROC-AUC (0,9555 so với
+  0,9505), còn precision thấp hơn một chút. Với bốn đặc trưng và một quy tắc sinh nhãn dạng cộng điểm, hai mô hình cho
+  kết quả gần nhau là điều dễ hiểu.
 - Các con số cho thấy quy trình dữ liệu → huấn luyện → đánh giá → phục vụ hoạt động đúng. Chúng **không** nói lên mức
   độ mô hình dự đoán đúng mong muốn của người chơi thật; kết luận đó cần nhãn khảo sát thật.
 
@@ -251,6 +259,19 @@ Người xem A ──▶ các phòng đang tuyển người
             ──▶ độ phù hợp của phòng = trung bình các xác suất (0-100%)
             ──▶ phòng đạt từ 70% trở lên được gắn nhãn "mô hình đề xuất" và xếp trước
 ```
+
+Độ phù hợp là một ước lượng nên không bao giờ là 100%: với mô hình hiện tại, xác suất của một cặp nằm trong khoảng
+từ gần 0% đến 99,3%. Vài giá trị điển hình:
+
+| Cặp người chơi | Độ phù hợp |
+| :--- | :---: |
+| Cùng trình độ, sân cách 2 km, cùng mục đích, hợp phong cách | 99% |
+| Cùng trình độ, sân cách 6 km, khác mục đích, khác phong cách | 89% |
+| Cùng trình độ, sân cách 25 km, khác mục đích, khác phong cách | 53% |
+| Lệch 0,5 trình độ, sân cách 6 km, khác mục đích, khác phong cách | 81% |
+| Lệch 1,0 trình độ, sân cách 2 km, cùng mục đích, hợp phong cách | 66% |
+| Lệch 1,0 trình độ, sân cách 6 km, khác mục đích, khác phong cách | 15% |
+| Lệch 2,0 trình độ, sân cách 25 km, khác mục đích, khác phong cách | dưới 1% |
 
 Ngưỡng 70% nằm ở `backend/app/core/matching_policy.py`: bộ phân loại tách hai lớp ở 50%, ngưỡng cao hơn chỉ giữ lại
 những phòng mô hình đánh giá rõ ràng là phù hợp. `GET /api/v1/matches` trả `compatibility` và `is_recommended` cho từng
@@ -275,7 +296,8 @@ Lệnh chạy và cách tổ chức: [README gốc](../README.md) và [backend/t
 
 ## 7. Giới hạn và hướng phát triển
 
-- Thu nhãn khảo sát thật và đánh giá lại mô hình ghép cặp; khi đó mới so sánh được với luật đơn giản một cách có ý nghĩa.
+- Thu thập câu trả lời của người chơi thật (trang `/survey` đã sẵn sàng) rồi huấn luyện và đánh giá lại mô hình ghép cặp
+  trên dữ liệu đó; khi ấy mới so sánh được với luật đơn giản một cách có ý nghĩa.
 - Ngưỡng đề xuất phòng (70%) đang cố định; có thể hiệu chỉnh khi có nhãn thật.
 - Trình độ DUPR do người chơi tự khai, chưa được xác thực.
 - Triển khai nhiều tiến trình cần chuyển kênh WebSocket và tác vụ nền sang hạ tầng dùng chung (ví dụ Redis pub/sub).

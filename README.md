@@ -177,7 +177,7 @@ Chạy trong `backend/` với môi trường ảo đã kích hoạt:
 | :--- | :--- |
 | `python manage.py migrate` | Sao lưu rồi nâng schema lên bản mới nhất (`--check` chỉ xem trạng thái, `--no-backup` bỏ sao lưu) |
 | `python manage.py show` | Báo cáo tổng quan dữ liệu (chỉ đọc) |
-| `python manage.py seed` | Nạp dữ liệu demo vào CSDL trống (`--reset` xóa rồi nạp lại, có hỏi xác nhận; `--feedback` chỉ nạp phiếu ghép cặp mô phỏng cho mô hình; `--matches` nạp thêm người chơi và phòng đấu mẫu để thử ghép trận, dùng được trên CSDL đang có dữ liệu; `--activity` nạp thêm nhân viên, đơn đặt, giao dịch, phòng đấu và đánh giá mẫu cho cụm sân mới chưa có đơn nào) |
+| `python manage.py seed` | Nạp dữ liệu demo vào CSDL trống (`--reset` xóa rồi nạp lại, có hỏi xác nhận; `--feedback` chỉ nạp phiếu ghép cặp mô phỏng cho mô hình, thêm `--regenerate` để thay các phiếu đó bằng bộ sinh theo quy tắc hiện tại; `--matches` nạp thêm người chơi và phòng đấu mẫu để thử ghép trận, dùng được trên CSDL đang có dữ liệu; `--activity` nạp thêm nhân viên, đơn đặt, giao dịch, phòng đấu và đánh giá mẫu cho cụm sân mới chưa có đơn nào) |
 | `python manage.py reset` | Xóa sạch, chỉ giữ danh mục tiện ích và một tài khoản quản trị (có hỏi xác nhận) |
 | `python manage.py import-excel --file x.xlsx` | Nhập cụm sân từ Excel theo mẫu trong `docs/` (`--dry-run` để kiểm tra trước) |
 | `python manage.py backup` | Sao lưu CSDL vào `backups/` |
@@ -225,6 +225,9 @@ Sau khi nâng cấp:
 - Từ revision 0005, mô hình ghép cặp chỉ còn 4 đặc trưng (đã bỏ giờ rảnh). Bước nâng cấp này xóa các phiếu ghép cặp mô
   phỏng cũ và giữ nguyên câu trả lời khảo sát thật; nạp bộ phiếu mô phỏng mới bằng `python manage.py seed --feedback`.
 - Từ revision 0006, hồ sơ người chơi không còn lưu tiện ích ưa thích và ngân sách (hai cột này vốn không còn ô nhập).
+- Phiếu ghép cặp mô phỏng nạp từ bản cũ được sinh với nhiễu 0,08, khiến độ phù hợp của phòng thường hiện 100%. Mô hình
+  đi kèm mã nguồn đã được huấn luyện lại với nhiễu 0,15; để bảng `pair_feedback` khớp với mô hình, sinh lại các phiếu
+  mô phỏng bằng `python manage.py seed --feedback --regenerate` (câu trả lời khảo sát thật được giữ nguyên).
 
 ## 10. Giới hạn đã biết
 
@@ -233,10 +236,11 @@ Sau khi nâng cấp:
 - Số tiền lưu bằng kiểu số thực (`FLOAT`); mọi giá trị trong hệ thống là số nguyên VNĐ.
 - Quét QR bằng camera cần trình duyệt hỗ trợ `BarcodeDetector` và trang chạy trên HTTPS hoặc `localhost`;
   các trường hợp khác nhân viên nhập mã đơn bằng tay.
-- Mô hình ghép cặp đang được huấn luyện trên **3.000 phiếu ghép cặp mô phỏng** lưu trong bảng `pair_feedback`
-  (nạp bằng `python manage.py seed --feedback`), không phải khảo sát người chơi thật. Khi khảo sát trong ứng dụng
-  (`/survey`) thu đủ 300 nhãn thật, lệnh `python manage.py train-model` tự chuyển sang huấn luyện bằng nhãn thật.
-  Xem phần đánh giá trong `docs/HUONG_DAN_KLTN.md`.
+- Mô hình ghép cặp được huấn luyện trên **3.000 phiếu ghép cặp mô phỏng** lưu trong bảng `pair_feedback`
+  (nạp bằng `python manage.py seed --feedback`), không phải khảo sát người chơi thật. Thu thập câu trả lời thật qua
+  trang khảo sát (`/survey`) là hướng phát triển: các câu trả lời được lưu riêng, và khi đủ 300 nhãn thật thì lệnh
+  `python manage.py train-model` tự chuyển sang huấn luyện bằng nhãn thật. Xem phần đánh giá trong
+  `docs/HUONG_DAN_KLTN.md`.
 - Tài liệu Swagger (`/docs`) đang mở công khai; nên tắt hoặc chặn khi triển khai thật.
 
 ## 11. Tài liệu khác
