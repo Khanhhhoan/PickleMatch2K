@@ -20,6 +20,7 @@ import {
 } from "@/lib/booking";
 import { useWebSocket } from "@/lib/use-websocket";
 import { useToast } from "@/components/Toast";
+import { INPUT, LABEL, Line, Modal, PRIMARY, SECONDARY } from "@/components/ManagementUi";
 
 interface Venue {
   id: number;
@@ -55,11 +56,7 @@ interface CreateForm {
 type ListFilter = "date" | "todo" | "all";
 
 const CARD = "bg-white rounded-2xl border border-[#e8edf3] shadow-[0_12px_35px_rgba(29,51,87,0.035)]";
-const INPUT = "w-full h-10 px-3 bg-white border border-[#dde4ef] rounded-xl text-xs font-bold text-[#263b53] outline-none focus:border-[#476cf3]";
-const LABEL = "block text-[11px] font-bold text-[#51627c] mb-1";
-const PRIMARY = "px-4 py-2.5 bg-[#476cf3] text-white rounded-xl text-xs font-bold whitespace-nowrap hover:bg-[#3b61e8] disabled:opacity-50 transition cursor-pointer";
 const ICON_BUTTON = "h-10 w-10 shrink-0 flex items-center justify-center bg-[#f1f4fb] hover:bg-[#e4ebf7] border border-[#d5dfed] rounded-xl text-sm font-bold text-[#405c94] cursor-pointer";
-const SECONDARY = "px-3 py-2 bg-[#f1f4fb] hover:bg-[#e4ebf7] border border-[#d5dfed] rounded-xl text-xs font-bold whitespace-nowrap text-[#405c94] cursor-pointer disabled:opacity-50";
 const DANGER = "px-3 py-2 rounded-xl text-xs font-bold text-rose-600 border border-rose-200 hover:bg-rose-50 cursor-pointer disabled:opacity-50";
 
 const PAYMENT_OPTIONS: { value: CreateForm["payment"]; label: string }[] = [
@@ -75,6 +72,22 @@ const addHours = (time: string, hours: number) => {
 };
 
 const slotKey = (courtId: number, date: string, start: string) => `${courtId}|${date}|${start.slice(0, 5)}`;
+
+/** Khách vào sân được ngay: khung giờ của hôm nay đang diễn ra hoặc bắt đầu trong vòng một giờ tới. */
+const startsSoon = (date: string, start: string) => {
+  if (date !== formatLocalDate()) return false;
+  const [h, m] = start.split(":").map(Number);
+  const begin = new Date();
+  begin.setHours(h, m, 0, 0);
+  return begin.getTime() - Date.now() <= 60 * 60 * 1000;
+};
+
+/**
+ * Lựa chọn mặc định của đơn tại quầy theo giờ bắt đầu: khách vào sân ngay thì đã nhận sân và trả đủ tiền mặt;
+ * đơn đặt trước cho giờ sau thì chưa thu và chưa nhận sân, nhân viên chỉ đổi khi thật sự đã nhận tiền.
+ */
+const createDefaults = (date: string, start: string): Pick<CreateForm, "payment" | "walkin"> =>
+  startsSoon(date, start) ? { payment: "CASH", walkin: true } : { payment: "UNPAID", walkin: false };
 
 /** Đơn còn chiếm khung giờ trên lịch (đơn chờ cọc đã quá hạn không còn giữ chỗ). */
 const occupiesSlot = (b: Booking) =>
@@ -187,7 +200,7 @@ export default function BookingDesk({ heading }: { heading: string }) {
   };
 
   const openCreate = (courtId: number, start: string) =>
-    setCreateForm({ court_id: courtId, start_time: start.slice(0, 5), hours: 1, customer_name: "", customer_phone: "", price: "", payment: "CASH", walkin: date === today });
+    setCreateForm({ court_id: courtId, start_time: start.slice(0, 5), hours: 1, customer_name: "", customer_phone: "", price: "", ...createDefaults(date, start) });
 
   /** Số giờ liên tiếp còn trống tính từ khung bắt đầu, và tổng tiền theo bảng giá. */
   const createInfo = useMemo(() => {
@@ -449,7 +462,7 @@ export default function BookingDesk({ heading }: { heading: string }) {
               </div>
               <div>
                 <label className={LABEL}>Bắt đầu</label>
-                <select className={INPUT} value={createForm.start_time} onChange={(e) => setCreateForm({ ...createForm, start_time: e.target.value, hours: 1 })}>
+                <select className={INPUT} value={createForm.start_time} onChange={(e) => setCreateForm({ ...createForm, start_time: e.target.value, hours: 1, ...createDefaults(date, e.target.value) })}>
                   {(grid?.courts.find((c) => c.court_id === createForm.court_id)?.slots || [])
                     .filter((s) => s.is_available && !s.is_held)
                     .map((s) => <option key={s.start_time} value={s.start_time.slice(0, 5)}>{s.start_time.slice(0, 5)}</option>)}
@@ -521,29 +534,6 @@ function Legend({ className, label }: { className: string; label: string }) {
       <span className={`w-3 h-3 rounded border inline-block ${className}`} />
       {label}
     </span>
-  );
-}
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-50 bg-[#081b34]/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl border border-[#e8edf3] my-auto">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-black text-[#17253d] m-0">{title}</h3>
-          <button type="button" onClick={onClose} aria-label="Đóng" className="w-8 h-8 rounded-lg hover:bg-[#f1f4fb] text-[#718096] cursor-pointer">✕</button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function Line({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex justify-between gap-4 text-xs">
-      <span className="text-[#718096]">{label}</span>
-      <span className="font-bold text-[#17253d] text-right">{value}</span>
-    </div>
   );
 }
 

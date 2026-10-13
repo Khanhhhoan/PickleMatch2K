@@ -223,7 +223,13 @@ def test_staff_shift_stats_cover_only_today_at_their_venue(client, world, clock)
     stats = client.get(f"{BOOKINGS}/staff/stats", headers=auth(world.staff_a)).json()
     assert stats["venue_name"] == "Sân A" and stats["today_date"] == today.isoformat()
     assert stats["today_cash_collected"] == 100000
-    assert stats["today_deposit_online"] == 75000
+    assert stats["today_deposit_online"] == stats["today_transfer_collected"] == 75000
     assert stats["today_revenue"] == 175000
     assert (stats["today_total_bookings"], stats["today_completed_bookings"], stats["today_pending_bookings"]) == (2, 1, 1)
     assert stats["today_courts_count"] == 2
+
+    # Phần còn lại khách chuyển khoản tại quầy cũng là tiền chuyển khoản: tiền mặt + chuyển khoản luôn bằng tổng thu
+    client.post(f"{BOOKINGS}/{online['id']}/checkin", json={"payment_method": "BANK_TRANSFER"}, headers=auth(world.staff_a))
+    stats = client.get(f"{BOOKINGS}/staff/stats", headers=auth(world.staff_a)).json()
+    assert (stats["today_deposit_online"], stats["today_transfer_collected"]) == (75000, 150000)
+    assert stats["today_cash_collected"] + stats["today_transfer_collected"] == stats["today_revenue"] == 250000

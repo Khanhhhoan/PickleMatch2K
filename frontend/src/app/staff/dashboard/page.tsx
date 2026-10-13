@@ -13,8 +13,8 @@ interface ShiftStats {
   staff_name: string;
   today_date: string;
   today_revenue: number;
-  today_deposit_online: number;
   today_cash_collected: number;
+  today_transfer_collected: number;
   today_total_bookings: number;
   today_completed_bookings: number;
   today_pending_bookings: number;
@@ -103,7 +103,7 @@ export default function StaffDashboardPage() {
   const kpis = [
     { label: "Thu trong ngày", value: formatVND(stats.today_revenue), hint: "Mọi khoản thu ghi nhận hôm nay", dot: "bg-[#476cf3]" },
     { label: "Tiền mặt tại quầy", value: formatVND(stats.today_cash_collected), hint: "Cần đối chiếu cuối ca", dot: "bg-emerald-500" },
-    { label: "Cọc chuyển khoản", value: formatVND(stats.today_deposit_online), hint: "Khách chuyển qua VietQR", dot: "bg-sky-500" },
+    { label: "Chuyển khoản", value: formatVND(stats.today_transfer_collected), hint: "Cọc qua VietQR và chuyển khoản tại quầy", dot: "bg-sky-500" },
     {
       label: "Lượt hôm nay",
       value: `${stats.today_completed_bookings}/${stats.today_total_bookings}`,

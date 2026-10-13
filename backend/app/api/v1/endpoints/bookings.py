@@ -351,6 +351,8 @@ def get_staff_shift_stats(db: Session = Depends(deps.get_db), current_user: User
         "today_revenue": collected(kinds=ledger.INCOMING_KINDS),
         "today_deposit_online": collected(kinds=(PaymentKind.DEPOSIT.value,), method=PaymentMethod.BANK_TRANSFER.value),
         "today_cash_collected": collected(kinds=ledger.INCOMING_KINDS, method=PaymentMethod.CASH.value),
+        # Mọi khoản nhận bằng chuyển khoản (cọc qua VietQR và khoản khách chuyển tại quầy): tiền mặt + chuyển khoản = tổng thu
+        "today_transfer_collected": collected(kinds=ledger.INCOMING_KINDS, method=PaymentMethod.BANK_TRANSFER.value),
         "today_total_bookings": checked_in + waiting,
         "today_completed_bookings": checked_in,
         "today_pending_bookings": waiting,

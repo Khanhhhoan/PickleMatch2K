@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { fetchApi } from "@/lib/api";
 import { useWebSocket } from "@/lib/use-websocket";
+import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 
 const navItems = [
   { href: "/staff/dashboard", label: "Bảng Ca Trực" },
@@ -19,6 +20,7 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
   const { user, logout, isLoading } = useAuth();
   const [mobileDrawer, setMobileDrawer] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   const [venueName, setVenueName] = useState("");
   const [pendingRefundCount, setPendingRefundCount] = useState(0);
   const isStaff = user?.role === "STAFF" || user?.role === "ADMIN";
@@ -168,6 +170,15 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
                   <p className="text-[10px] text-[#91a3bd] truncate">{roleLabel}</p>
                 </div>
               </div>
+              <button
+                onClick={() => {
+                  setMobileDrawer(false);
+                  setChangingPassword(true);
+                }}
+                className="w-full text-center py-2 mb-2 text-xs font-bold bg-[#1a2b47] text-slate-200 rounded-lg hover:text-white cursor-pointer"
+              >
+                Đổi mật khẩu
+              </button>
               <div className="flex gap-2">
                 <Link
                   href="/"
@@ -274,6 +285,13 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
             </div>
 
             <button
+              onClick={() => setChangingPassword(true)}
+              className="hidden sm:block px-3 py-1.5 text-xs font-bold text-[#51627c] hover:text-[#17253d] hover:bg-[#f1f4fb] rounded-lg transition cursor-pointer"
+            >
+              Đổi mật khẩu
+            </button>
+
+            <button
               onClick={logout}
               className="px-3 py-1.5 text-xs font-bold text-rose-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
               title="Đăng xuất"
@@ -290,6 +308,8 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
           </div>
         </main>
       </div>
+
+      {changingPassword && <ChangePasswordDialog onClose={() => setChangingPassword(false)} />}
     </div>
   );
 }
