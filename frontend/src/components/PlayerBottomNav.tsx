@@ -9,8 +9,8 @@ export default function PlayerBottomNav() {
   const pathname = usePathname();
   const { user } = useAuth();
 
-  // Don't show bottom nav in owner or admin portals
-  if (pathname.startsWith("/owner") || pathname.startsWith("/admin")) {
+  // Don't show bottom nav in owner, staff or admin portals
+  if (pathname.startsWith("/owner") || pathname.startsWith("/staff") || pathname.startsWith("/admin")) {
     return null;
   }
 
