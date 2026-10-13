@@ -9,7 +9,7 @@ import { useWebSocket } from "@/lib/use-websocket";
 
 const navItems = [
   { href: "/staff/dashboard", label: "Bảng Ca Trực" },
-  { href: "/staff/bookings", label: "Lịch Đặt & Check-in" },
+  { href: "/staff/bookings", label: "Lịch Đặt Sân" },
 ];
 
 const LIVE_EVENTS = ["PAYMENT_CONFIRMED", "SLOT_BOOKED", "BOOKING_STATUS_CHANGED", "SLOT_RELEASED", "BOOKING_RESCHEDULED"];

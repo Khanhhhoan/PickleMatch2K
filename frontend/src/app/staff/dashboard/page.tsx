@@ -126,7 +126,7 @@ export default function StaffDashboardPage() {
           href="/staff/bookings"
           className="px-4 py-2.5 bg-[#476cf3] text-white rounded-xl text-xs font-bold hover:bg-[#3b61e8] whitespace-nowrap self-start sm:self-auto"
         >
-          Mở quầy: lịch đặt & check-in →
+          Mở lịch đặt sân →
         </Link>
       </div>
 
