@@ -30,10 +30,10 @@ NEXT_PUBLIC_ADMIN_URL=https://admin.ten-mien.vn
 | `/matches`, `/matches/create` | Người chơi | Phòng do mô hình đề xuất (độ phù hợp từ 70%), mọi phòng đang mở, phòng của tôi; mở phòng trên đơn đã cọc |
 | `/survey` | Người chơi | Khảo sát thu nhãn cho mô hình ghép cặp |
 | `/profile` | Người chơi | Hồ sơ và 5 thông tin mô hình ghép cặp dùng: trình độ, phong cách, mục đích, khu vực thường chơi, ngày sinh |
-| `/owner/dashboard` | Chủ sân | Doanh thu và hoạt động của cụm sân |
+| `/owner/dashboard` | Chủ sân | Doanh thu và hoạt động của cụm sân, kết ca |
 | `/owner/venues` | Chủ sân | Thông tin và tài khoản nhận tiền, sân con và bảng giá, giờ mở cửa, nhân viên |
 | `/owner/bookings` | Chủ sân | Quầy đặt sân |
-| `/staff/dashboard`, `/staff/bookings` | Nhân viên | Tổng quan ca trực và quầy đặt sân của cụm sân được phân công |
+| `/staff/dashboard`, `/staff/bookings` | Nhân viên | Tổng quan ca trực (kèm kết ca) và quầy đặt sân của cụm sân được phân công |
 | `/login`, `/register` | | Đăng nhập, đăng ký người chơi |
 
 Các trang `/owner/courts`, `/owner/pricing`, `/owner/staff`… chỉ chuyển hướng về `/owner/venues`.
@@ -47,6 +47,9 @@ src/
 ├── components/
 │   ├── BookingDesk.tsx     Quầy đặt sân dùng chung cho chủ sân và nhân viên: lưới lịch, tạo đơn tại quầy,
 │   │                       tra mã / quét QR, check-in, thu tiền, dời lịch, hủy, xác nhận hoàn tiền
+│   ├── ShiftClosingDialog.tsx   Kết ca trong ngày: nhập tiền vốn và tiền mặt đếm được, đối chiếu với sổ giao dịch
+│   ├── ChangePasswordDialog.tsx Đổi mật khẩu ngay trong cổng nhân viên
+│   ├── ManagementUi.tsx    Khung hộp thoại và kiểu ô nhập dùng chung của các cổng quản lý
 │   ├── SepayCheckoutModal.tsx   Thanh toán cọc VietQR, theo dõi trạng thái từ máy chủ
 │   └── …                   Navbar, Footer, Toast, LocationPickerModal, VenueImageHoverSlider…
 └── lib/

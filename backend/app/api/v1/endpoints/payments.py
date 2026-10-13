@@ -6,23 +6,28 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.api import deps
-from app.api.permissions import managed_venue_ids, require_booking_staff
+from app.api.permissions import managed_venue_ids, require_booking_staff, require_venue_staff
 from app.core.config import settings
 from app.models.booking import Booking
 from app.models.payment import PaymentTransaction
 from app.models.user import User, UserRole
+from app.models.venue import Venue
 from app.schemas.payment import (
     CheckoutResponse,
     PaymentConfigResponse,
     PaymentTransactionResponse,
     SepayWebhookPayload,
+    ShiftClosingCreate,
+    ShiftClosingResponse,
+    ShiftSummaryResponse,
 )
-from app.services import booking_service, ledger, payment_service
+from app.services import booking_service, ledger, payment_service, shift_service
 
 router = APIRouter()
 logger = logging.getLogger("pickleball.sepay")
 
 MANAGER_ROLES = (UserRole.ADMIN.value, UserRole.OWNER.value, UserRole.STAFF.value)
+venue_staff = deps.RoleChecker(list(MANAGER_ROLES))
 
 
 def _get_accessible_booking(db: Session, booking_id: int, user: User) -> Booking:
@@ -115,8 +120,6 @@ def get_payment_transactions(
     if current_user.role in MANAGER_ROLES:
         venue_ids = managed_venue_ids(db, current_user)
         if current_user.role == UserRole.ADMIN.value and owner_id:
-            from app.models.venue import Venue
-
             venue_ids = [row[0] for row in db.query(Venue.id).filter(Venue.owner_id == owner_id).all()]
         if venue_ids is not None:
             if not venue_ids:
@@ -128,3 +131,51 @@ def get_payment_transactions(
         query = query.filter(PaymentTransaction.booking_id.in_(my_bookings))
 
     return query.order_by(PaymentTransaction.id.desc()).limit(500).all()
+
+
+# ==========================================
+# KẾT CA TẠI QUẦY (chủ sân, nhân viên, admin)
+# ==========================================
+
+def _shift_venue(db: Session, user: User, venue_id: Optional[int]) -> Venue:
+    """Cụm sân được kết ca: cụm sân chỉ định (phải thuộc quyền người dùng), hoặc cụm sân đầu tiên họ quản lý."""
+    if venue_id is not None:
+        return require_venue_staff(db, user, venue_id)
+    query = db.query(Venue)
+    managed = managed_venue_ids(db, user)
+    if managed is not None:
+        if not managed:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tài khoản chưa được gán cụm sân.")
+        query = query.filter(Venue.id.in_(managed))
+    venue = query.order_by(Venue.id.asc()).first()
+    if not venue:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy cụm sân")
+    return venue
+
+
+@router.get("/shift-closings", response_model=ShiftSummaryResponse)
+def get_shift_summary(
+    venue_id: Optional[int] = None,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(venue_staff),
+):
+    """Các khoản của hôm nay chưa kết ca tại một cụm sân, kèm những lần kết ca gần đây."""
+    return shift_service.summary(db, _shift_venue(db, current_user, venue_id))
+
+
+@router.post("/shift-closings", response_model=ShiftClosingResponse)
+def close_shift(
+    payload: ShiftClosingCreate,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(venue_staff),
+):
+    """
+    Kết ca: lưu tiền vốn đầu ca, tiền mặt đếm được và các khoản sổ giao dịch đã ghi trong hôm nay mà chưa nằm
+    trong lần kết ca nào. Trả về lần kết ca vừa lưu kèm chênh lệch giữa tiền đếm được và tiền phải có trong két.
+    """
+    venue = _shift_venue(db, current_user, payload.venue_id)
+    closing = shift_service.close_shift(
+        db, venue, current_user,
+        opening_float=payload.opening_float, counted_cash=payload.counted_cash, note=payload.note,
+    )
+    return shift_service.describe(closing)

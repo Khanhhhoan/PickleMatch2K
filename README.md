@@ -9,8 +9,8 @@ PickleMatch2K gồm một API và hai ứng dụng web phục vụ bốn vai tr�
 | Vai trò | Cổng | Việc chính |
 | :--- | :--- | :--- |
 | **Người chơi** | `http://localhost:3000` | Tìm sân theo vị trí, xem lịch trống theo thời gian thực, đặt sân và cọc 50% qua VietQR, nhận vé QR, hủy/hoàn tiền theo chính sách, mở phòng đấu trên đơn đã cọc, tham gia các phòng đấu do mô hình đề xuất |
-| **Chủ sân** | `http://localhost:3000/owner` | Thông tin cụm sân, sân con, bảng giá theo khung giờ, giờ mở cửa, nhân viên, quầy đặt sân, doanh thu |
-| **Nhân viên** | `http://localhost:3000/staff` | Quầy đặt sân của cụm sân được phân công: tạo đơn tại quầy, tra mã/quét QR, check-in, thu tiền, dời lịch, xác nhận hoàn tiền |
+| **Chủ sân** | `http://localhost:3000/owner` | Thông tin cụm sân, sân con, bảng giá theo khung giờ, giờ mở cửa, nhân viên, quầy đặt sân, doanh thu, kết ca |
+| **Nhân viên** | `http://localhost:3000/staff` | Quầy đặt sân của cụm sân được phân công: tạo đơn tại quầy, tra mã/quét QR, check-in, thu tiền, dời lịch, xác nhận hoàn tiền, kết ca và đối chiếu tiền mặt |
 | **Quản trị viên** | `http://localhost:3001` | Duyệt cụm sân, quản lý tài khoản, giám sát đơn đặt, giao dịch và phòng đấu, xem thống kê doanh thu và đơn đặt theo ngày/tháng/năm |
 
 Hai trọng tâm của hệ thống:
@@ -54,7 +54,7 @@ KLTN/
 ├── .github/workflows/      Kiểm tra tự động (CI)
 ├── backend/                API FastAPI
 │   ├── app/                api, core, db, ml, models, schemas, services, utils
-│   ├── alembic/            Các phiên bản schema (0001 → 0007)
+│   ├── alembic/            Các phiên bản schema (0001 → 0008)
 │   ├── scripts/            Script quản trị CSDL (xem backend/scripts/README.md)
 │   ├── tests/              Bộ kiểm thử pytest (xem backend/tests/README.md)
 │   └── manage.py           Bộ lệnh quản trị
@@ -195,7 +195,7 @@ python -m pytest                                  # từ thư mục gốc, kho�
 python -m pytest backend/tests/test_payments.py -q
 ```
 
-**Kiểm thử đầu-cuối qua trình duyệt** - 22 bước cho cả bốn vai trò. Script tạo và hủy đơn nên chỉ chạy trên
+**Kiểm thử đầu-cuối qua trình duyệt** - 23 bước cho cả bốn vai trò. Script tạo và hủy đơn nên chỉ chạy trên
 CSDL demo, với `SEPAY_SIMULATOR_ENABLED=true` và hai ứng dụng web đã build (`npm run build && npm start`):
 
 ```powershell
@@ -233,6 +233,8 @@ Sau khi nâng cấp:
   cặp mô phỏng cũ và giữ nguyên câu trả lời khảo sát thật (các câu cũ không có chênh lệch tuổi nên không được tính).
   Sau khi nâng cấp: nạp bộ 10.000 phiếu mô phỏng mới bằng `python manage.py seed --feedback`, và bổ sung ngày sinh mẫu
   cho các tài khoản demo đang để trống bằng `python manage.py seed --preferences`.
+- Từ revision 0008 có thêm bảng `shift_closings` (sổ kết ca tại quầy). Bước nâng cấp này chỉ thêm bảng mới, không
+  đổi dữ liệu đang có.
 - Phiếu ghép cặp mô phỏng nạp từ bản cũ được sinh với nhiễu 0,08, khiến độ phù hợp của phòng thường hiện 100%. Mô hình
   đi kèm mã nguồn đã được huấn luyện lại với nhiễu 0,15; để bảng `pair_feedback` khớp với mô hình, sinh lại các phiếu
   mô phỏng bằng `python manage.py seed --feedback --regenerate` (câu trả lời khảo sát thật được giữ nguyên).

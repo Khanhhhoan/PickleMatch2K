@@ -467,6 +467,24 @@ async function main() {
     await waitForText(page, "Đã tạo đơn tại quầy");
     await waitForText(page, "Khách kiểm thử");
   });
+  await step(staff, "kết ca: nhập tiền vốn và tiền mặt đếm được, xem đối chiếu rồi xác nhận", async (page) => {
+    await page.goto(`${WEB}/staff/dashboard`, { waitUntil: "networkidle2" });
+    await waitForText(page, "Thu trong ngày");
+    await clickText(page, "button", "Kết ca", { exact: true });
+    await waitForText(page, "Kết ca trong ngày");
+    await page.waitForSelector("#shift-opening-float", { timeout: TIMEOUT });
+    // số âm bị từ chối ngay, chưa có gì được lưu
+    await page.type("#shift-opening-float", "-5");
+    await page.type("#shift-counted-cash", "200000");
+    await clickText(page, 'button[type="submit"]', "Đối chiếu", { exact: true });
+    await waitForText(page, "Số tiền phải là số nguyên, không âm");
+    await page.click("#shift-opening-float", { clickCount: 3 });
+    await page.type("#shift-opening-float", "200000");
+    await clickText(page, 'button[type="submit"]', "Đối chiếu", { exact: true });
+    await waitForText(page, "Tiền mặt phải có trong két");
+    await clickText(page, "button", "Xác nhận kết ca", { exact: true });
+    await waitForText(page, "Số liệu đã được lưu");
+  });
   await step(staff, "nhân viên không vào được cổng chủ sân", async (page) => {
     await page.goto(`${WEB}/owner/venues`, { waitUntil: "networkidle2" });
     await page.waitForFunction(() => location.pathname.startsWith("/staff"), { timeout: TIMEOUT });

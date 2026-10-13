@@ -54,14 +54,14 @@ def create_user(
 def user_has_history(db: Session, user_id: int) -> bool:
     """
     Tài khoản đã phát sinh dữ liệu (đơn đặt, phòng đấu, đánh giá, cụm sân sở hữu, thao tác tại quầy,
-    nhãn khảo sát) thì không được xóa vật lý.
+    lần kết ca, nhãn khảo sát) thì không được xóa vật lý.
     """
     from sqlalchemy import or_
 
     from app.models.booking import Booking
     from app.models.match import Match, MatchParticipant
     from app.models.ml import PairFeedback
-    from app.models.payment import PaymentTransaction
+    from app.models.payment import PaymentTransaction, ShiftClosing
     from app.models.venue import Review, Venue
 
     checks = (
@@ -70,6 +70,7 @@ def user_has_history(db: Session, user_id: int) -> bool:
             Booking.cancelled_by_id == user_id, Booking.refunded_by_id == user_id,
         )),
         db.query(PaymentTransaction.id).filter(PaymentTransaction.created_by_id == user_id),
+        db.query(ShiftClosing.id).filter(ShiftClosing.closed_by_id == user_id),
         db.query(Match.id).filter(Match.creator_id == user_id),
         db.query(MatchParticipant.id).filter(MatchParticipant.user_id == user_id),
         db.query(Review.id).filter(Review.user_id == user_id),

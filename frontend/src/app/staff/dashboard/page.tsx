@@ -5,6 +5,7 @@ import Link from "next/link";
 import { fetchApi, formatLocalDate, formatVND } from "@/lib/api";
 import { Booking, bookingCode, bookingStatusLabel, bookingStatusTone, formatDisplayDate, mergeSlots } from "@/lib/booking";
 import { useWebSocket } from "@/lib/use-websocket";
+import ShiftClosingDialog from "@/components/ShiftClosingDialog";
 
 interface ShiftStats {
   venue_id: number;
@@ -53,6 +54,7 @@ export default function StaffDashboardPage() {
   const [statsError, setStatsError] = useState<string | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [closingShift, setClosingShift] = useState(false);
   const { lastMessage } = useWebSocket("/api/v1/ws/live");
   const today = formatLocalDate();
 
@@ -122,12 +124,18 @@ export default function StaffDashboardPage() {
             {stats.venue_address} • {stats.today_courts_count} sân • Nhân viên: {stats.staff_name}
           </p>
         </div>
-        <Link
-          href="/staff/bookings"
-          className="px-4 py-2.5 bg-[#476cf3] text-white rounded-xl text-xs font-bold hover:bg-[#3b61e8] whitespace-nowrap self-start sm:self-auto"
-        >
-          Mở lịch đặt sân →
-        </Link>
+        <div className="flex gap-2 shrink-0 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() => setClosingShift(true)}
+            className="px-3.5 py-2.5 bg-white hover:bg-[#f1f4fb] border border-[#d5dfed] rounded-xl text-xs font-bold text-[#405c94] whitespace-nowrap cursor-pointer"
+          >
+            Kết ca
+          </button>
+          <Link href="/staff/bookings" className="px-4 py-2.5 bg-[#476cf3] text-white rounded-xl text-xs font-bold hover:bg-[#3b61e8] whitespace-nowrap">
+            Mở lịch đặt sân →
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -189,6 +197,8 @@ export default function StaffDashboardPage() {
           )}
         </section>
       </div>
+
+      {closingShift && <ShiftClosingDialog onClose={() => setClosingShift(false)} />}
     </div>
   );
 }

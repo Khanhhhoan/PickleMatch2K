@@ -5,6 +5,7 @@ import Link from "next/link";
 import { fetchApi, formatLocalDate, formatVND, parseUtcDate } from "@/lib/api";
 import { Booking, bookingCode, bookingStatusLabel, bookingStatusTone, mergeSlots, paymentStatusLabel } from "@/lib/booking";
 import { useWebSocket } from "@/lib/use-websocket";
+import ShiftClosingDialog from "@/components/ShiftClosingDialog";
 
 interface Stats {
   total_revenue: number;
@@ -40,6 +41,7 @@ export default function OwnerOverviewDashboard() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [closingShift, setClosingShift] = useState(false);
   const { lastMessage } = useWebSocket("/api/v1/ws/live");
 
   const today = formatLocalDate();
@@ -166,6 +168,13 @@ export default function OwnerOverviewDashboard() {
             className="px-3.5 py-2.5 bg-white hover:bg-[#f1f4fb] border border-[#d5dfed] rounded-xl text-xs font-bold text-[#405c94] whitespace-nowrap cursor-pointer"
           >
             Xuất danh sách đơn
+          </button>
+          <button
+            type="button"
+            onClick={() => setClosingShift(true)}
+            className="px-3.5 py-2.5 bg-white hover:bg-[#f1f4fb] border border-[#d5dfed] rounded-xl text-xs font-bold text-[#405c94] whitespace-nowrap cursor-pointer"
+          >
+            Kết ca
           </button>
           <Link href="/owner/bookings" className="px-4 py-2.5 bg-[#476cf3] text-white rounded-xl text-xs font-bold hover:bg-[#3b61e8] whitespace-nowrap">
             + Tạo đơn tại quầy
@@ -317,6 +326,8 @@ export default function OwnerOverviewDashboard() {
           )}
         </section>
       </div>
+
+      {closingShift && <ShiftClosingDialog onClose={() => setClosingShift(false)} />}
     </div>
   );
 }

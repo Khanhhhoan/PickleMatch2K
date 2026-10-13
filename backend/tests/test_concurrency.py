@@ -12,11 +12,12 @@ from sqlalchemy import text
 from app.db.database import SessionLocal
 from app.models.booking import Booking, BookingDetail
 from app.models.match import Match, MatchParticipant
-from app.models.payment import PaymentTransaction
+from app.models.payment import PaymentTransaction, ShiftClosing
 from app.models.user import User
+from app.models.venue import Venue
 from app.schemas.match import MatchCreate
 from app.schemas.payment import SepayWebhookPayload
-from app.services import booking_service, ledger, match_service, payment_service
+from app.services import booking_service, ledger, match_service, payment_service, shift_service
 from app.services.booking_service import SlotRequest
 from helpers import TEST_BANK_ACCOUNT, auth, confirmed_booking, create_booking, make_user, slot
 from datetime import time
@@ -246,3 +247,33 @@ def test_cancel_and_payment_racing_on_one_booking_leave_consistent_money(client,
     else:
         # Tiền đến trước: đơn được xác nhận, lệnh hủy bị từ chối vì thiếu thông tin nhận tiền hoàn
         assert stored.status == "CONFIRMED" and all(d.is_active for d in stored.details)
+
+
+def test_closings_sent_at_the_same_moment_count_each_payment_once(client, db, world, clock, monkeypatch):
+    from time import sleep
+
+    walk_in = {"court_id": world.court.id, "date": clock.today.isoformat(), "start_time": "09:00:00", "end_time": "10:00:00"}
+    assert client.post("/api/v1/bookings/staff/walkin", json=walk_in, headers=auth(world.staff_a)).status_code == 200  # 100k tiền mặt
+    venue_id, staff_id = world.venue_a.id, world.staff_a.id
+
+    # Kéo dài khoảng hở giữa lúc đọc số chưa kết và lúc ghi lần kết ca, để các luồng chắc chắn chồng lên nhau
+    read_open_figures = shift_service.open_figures
+
+    def slow_open_figures(*args):
+        figures = read_open_figures(*args)
+        sleep(0.2)
+        return figures
+
+    monkeypatch.setattr(shift_service, "open_figures", slow_open_figures)
+
+    def close_shift(_: int) -> float:
+        with SessionLocal() as session:
+            closing = shift_service.close_shift(
+                session, session.get(Venue, venue_id), session.get(User, staff_id), opening_float=0, counted_cash=100000)
+            return closing.cash_collected
+
+    results = run_together(8, close_shift)
+
+    # Đúng một lần kết ca nhận khoản 100k; các lần còn lại thấy không còn gì chưa kết
+    assert sorted(results) == [0.0] * 7 + [100000.0]
+    assert db.query(ShiftClosing).count() == 8

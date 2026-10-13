@@ -13,13 +13,13 @@ backend/
 │   ├── core/               config (biến môi trường), security (JWT, bcrypt), booking_policy, matching_policy, recommendation_config,
 │   │                       rate_limit, redis_client, websocket_manager
 │   ├── db/                 database (engine, phiên làm việc), base (đăng ký model), migrations (trạng thái schema)
-│   ├── models/             user, venue, booking, payment, match, ml (nhãn khảo sát)
+│   ├── models/             user, venue, booking, payment (sổ giao dịch, sổ kết ca), match, ml (nhãn khảo sát)
 │   ├── schemas/            Kiểu dữ liệu vào/ra của API (Pydantic)
-│   ├── services/           Nghiệp vụ: booking, ledger (sổ giao dịch), payment, availability, slot_lock, venue,
+│   ├── services/           Nghiệp vụ: booking, ledger (sổ giao dịch), shift (kết ca), payment, availability, slot_lock, venue,
 │   │                       user, search, match, venue_recommendation, ml, maintenance (tác vụ nền), storage
 │   ├── ml/                 features (đặc trưng dùng chung), train_model, mô hình .pkl và model_meta.json
 │   └── utils/              timeutils (giờ Việt Nam, đồng hồ nghiệp vụ), geo (Haversine)
-├── alembic/versions/       0001 schema gốc → 0002 chỉnh lệch CSDL cũ → 0003 lõi đặt sân → 0004 nhãn khảo sát → 0005 bỏ giờ rảnh → 0006 bỏ tiện ích ưa thích, ngân sách → 0007 thêm chênh lệch tuổi
+├── alembic/versions/       0001 schema gốc → 0002 chỉnh lệch CSDL cũ → 0003 lõi đặt sân → 0004 nhãn khảo sát → 0005 bỏ giờ rảnh → 0006 bỏ tiện ích ưa thích, ngân sách → 0007 thêm chênh lệch tuổi → 0008 sổ kết ca
 ├── scripts/                Script quản trị (seed, reset, import_excel, backup_db, show_db)
 ├── tests/                  Bộ kiểm thử pytest
 ├── manage.py               Bộ lệnh quản trị
@@ -62,7 +62,7 @@ python -m pytest tests/test_infrastructure.py          # kiểm tra schema khớ
 
 ## Nhóm API
 
-85 thao tác dưới tiền tố `/api/v1`; mô tả chi tiết từng tham số ở `http://localhost:8000/docs`.
+87 thao tác dưới tiền tố `/api/v1`; mô tả chi tiết từng tham số ở `http://localhost:8000/docs`.
 
 | Nhóm | Số thao tác | Nội dung |
 | :--- | :---: | :--- |
@@ -71,7 +71,7 @@ python -m pytest tests/test_infrastructure.py          # kiểm tra schema khớ
 | `venues` | 24 | Cụm sân, sân con, bảng giá, giờ mở cửa, ảnh, đánh giá, duyệt cụm sân |
 | `search` | 2 | Tìm cụm sân, lịch trống theo ngày |
 | `bookings` | 20 | Giữ chỗ tạm, tạo đơn, hủy, đơn tại quầy, check-in, thu tiền, dời lịch, hoàn tiền, thống kê |
-| `payments` | 5 | Thông tin chuyển khoản, webhook SePay, giả lập, sổ giao dịch |
+| `payments` | 7 | Thông tin chuyển khoản, webhook SePay, giả lập, sổ giao dịch, kết ca tại quầy |
 | `matches` | 11 | Phòng đấu: tạo trên đơn đã cọc, tham gia, rời, quản trị; mỗi phòng kèm độ phù hợp và cờ "mô hình đề xuất" cho người xem |
 | `recommendations` | 1 | Gợi ý cụm sân, thang 100: gần 40, giá 35, giờ còn trống 25 (trang chủ dùng để xếp danh sách cho người chơi đã đăng nhập) |
 | `ml` | 5 | Thông tin mô hình và ngưỡng đề xuất, dự đoán độ phù hợp, xếp hạng người chơi, khảo sát thu nhãn |
