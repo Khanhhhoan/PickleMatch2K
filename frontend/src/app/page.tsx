@@ -165,6 +165,14 @@ export default function HomePage() {
     return [...filteredVenues].sort((a, b) => (ranking.get(a.id) ?? Infinity) - (ranking.get(b.id) ?? Infinity));
   }, [filteredVenues, sortBy, ranking]);
 
+  // Nhãn "Top 1, Top 2…" theo thứ tự trong chính danh sách đang hiển thị (sau khi lọc khu vực, từ khóa)
+  const rankOf = useMemo(() => {
+    const ranks = new Map<number, number>();
+    if (sortBy !== "best" || !ranking) return ranks;
+    sortedVenues.filter((v) => ranking.has(v.id)).forEach((v, index) => ranks.set(v.id, index + 1));
+    return ranks;
+  }, [sortedVenues, sortBy, ranking]);
+
   const handleResetFilters = () => {
     setSelectedDistrict("all");
     setKeyword("");
@@ -349,6 +357,7 @@ export default function HomePage() {
                     showBadges={true}
                     showDistance={true}
                     isLoggedIn={!!user}
+                    rank={rankOf.get(venue.id)}
                   />
 
                   <div className="p-6 sm:p-7 flex-1 flex flex-col justify-between">

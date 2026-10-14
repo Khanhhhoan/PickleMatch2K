@@ -224,6 +224,7 @@ async function main() {
       return pressed.includes("Phù hợp nhất");
     }, { timeout: TIMEOUT });
     await waitForText(page, "RUDAL Pickleball & Academy");
+    await waitForText(page, "Top 1");
     const after = await cards();
     if (before === 0 || after !== before) throw new Error(`Số thẻ cụm sân đổi khi xếp lại: ${before} -> ${after}`);
   });

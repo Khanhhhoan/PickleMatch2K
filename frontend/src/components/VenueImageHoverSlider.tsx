@@ -16,6 +16,8 @@ interface VenueImageHoverSliderProps {
   showBadges?: boolean;
   showDistance?: boolean;
   isLoggedIn?: boolean;
+  /** Thứ hạng khi danh sách xếp theo "Phù hợp nhất" (1 = phù hợp nhất); không truyền thì không hiện. */
+  rank?: number;
 }
 
 export default function VenueImageHoverSlider({
@@ -24,6 +26,7 @@ export default function VenueImageHoverSlider({
   showBadges = true,
   showDistance = true,
   isLoggedIn = false,
+  rank,
 }: VenueImageHoverSliderProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
@@ -165,6 +168,15 @@ export default function VenueImageHoverSlider({
       {/* Badges on Image */}
       {showBadges && (
         <div className="absolute top-5 left-3 z-10 flex items-center gap-1.5 flex-wrap pointer-events-none">
+          {rank !== undefined && (
+            <span
+              className={`px-2.5 py-1 rounded-xl text-[11px] font-black shadow-xs ${
+                rank === 1 ? "bg-amber-400 text-zinc-950" : "bg-white/95 text-zinc-950 border border-zinc-200"
+              }`}
+            >
+              Top {rank}
+            </span>
+          )}
           <span className="px-2.5 py-1 rounded-xl bg-zinc-950/80 backdrop-blur-md text-white text-[11px] font-black shadow-xs border border-white/10">
             {venue.courts?.length || 0} sân thi đấu
           </span>
