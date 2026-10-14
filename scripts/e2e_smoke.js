@@ -207,11 +207,25 @@ async function main() {
   // ------------------------------------------------------------------ Người chơi 1
   console.log("\nNgười chơi 1: đặt sân, thanh toán cọc, mở phòng đấu");
   const p1 = await newSession("player01");
-  await step(p1, "đăng nhập và xem trang chủ chỉ có danh sách cụm sân (không còn khối gợi ý sân)", async (page) => {
+  await step(p1, "đăng nhập, xem danh sách cụm sân và xếp lại theo mức phù hợp", async (page) => {
     await login(p1, WEB, "player01@gmail.com");
     await waitForText(page, "Danh Sách Cụm Sân");
     await waitForText(page, "RUDAL Pickleball & Academy");
     if (await hasText(page, "Gợi Ý Cho Bạn")) throw new Error("Trang chủ vẫn còn khối gợi ý cụm sân");
+    // "Phù hợp nhất" xếp lại cùng danh sách theo mô-đun gợi ý cụm sân, không thêm khối nào
+    const cards = () => page.evaluate(() => [...document.querySelectorAll("button")].filter((b) => b.innerText.trim() === "Chi Tiết").length);
+    const before = await cards();
+    await Promise.all([
+      page.waitForResponse((res) => res.url().includes("/recommendations/venues") && res.status() === 200, { timeout: TIMEOUT }),
+      clickText(page, "button", "Phù hợp nhất", { exact: true }),
+    ]);
+    await page.waitForFunction(() => {
+      const pressed = [...document.querySelectorAll('button[aria-pressed="true"]')].map((b) => b.innerText.trim());
+      return pressed.includes("Phù hợp nhất");
+    }, { timeout: TIMEOUT });
+    await waitForText(page, "RUDAL Pickleball & Academy");
+    const after = await cards();
+    if (before === 0 || after !== before) throw new Error(`Số thẻ cụm sân đổi khi xếp lại: ${before} -> ${after}`);
   });
 
   await step(p1, "bấm đúp một khung giờ không bị tính hai lần; lịch khóa các ngày ngoài 60 ngày", async (page) => {

@@ -17,6 +17,13 @@ import {
 
 const WEEKDAY_INDEX = (new Date().getDay() + 6) % 7; // 0 = Thứ Hai, khớp day_of_week của máy chủ
 
+type SortOption = "near" | "best";
+
+const SORT_OPTIONS: { id: SortOption; label: string; hint: string }[] = [
+  { id: "near", label: "Gần nhất", hint: "Xếp từ gần đến xa theo vị trí bạn chọn" },
+  { id: "best", label: "Phù hợp nhất", hint: "Kết hợp khoảng cách, giá thuê, giờ còn trống hôm nay và đánh giá" },
+];
+
 export default function HomePage() {
   const { user } = useAuth();
   const [keyword, setKeyword] = useState("");
@@ -24,6 +31,29 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [sortBy, setSortBy] = useState<SortOption>("near");
+  const [ranking, setRanking] = useState<Map<number, number> | null>(null);
+
+  // "Phù hợp nhất": thứ tự do mô-đun gợi ý cụm sân tính (khoảng cách, giá, giờ còn trống hôm nay, đánh giá)
+  useEffect(() => {
+    if (sortBy !== "best") return;
+    let cancelled = false;
+    const params = new URLSearchParams({ top_n: "20" });
+    if (userLocation) {
+      params.append("latitude", userLocation.lat.toString());
+      params.append("longitude", userLocation.lng.toString());
+    }
+    fetchApi(`/recommendations/venues?${params.toString()}`)
+      .then((items: { venue: { id: number } }[]) => {
+        if (!cancelled) setRanking(new Map(items.map((item, index) => [item.venue.id, index])));
+      })
+      .catch(() => {
+        if (!cancelled) setRanking(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sortBy, userLocation]);
 
   // Load venues based on keyword and coordinates
   const loadVenues = async (searchKeyword = "", coords?: { lat: number; lng: number }) => {
@@ -129,6 +159,12 @@ export default function HomePage() {
     });
   }, [venues, selectedDistrict]);
 
+  // Cụm sân không có trong kết quả gợi ý giữ thứ tự gần đến xa và đứng sau
+  const sortedVenues = useMemo(() => {
+    if (sortBy !== "best" || !ranking) return filteredVenues;
+    return [...filteredVenues].sort((a, b) => (ranking.get(a.id) ?? Infinity) - (ranking.get(b.id) ?? Infinity));
+  }, [filteredVenues, sortBy, ranking]);
+
   const handleResetFilters = () => {
     setSelectedDistrict("all");
     setKeyword("");
@@ -207,6 +243,24 @@ export default function HomePage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Thứ tự danh sách: gần nhất theo vị trí, hoặc phù hợp nhất theo mô-đun gợi ý cụm sân */}
+            <div className="flex items-center bg-white border border-zinc-200 rounded-xl p-1" role="group" aria-label="Sắp xếp cụm sân">
+              {SORT_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={sortBy === option.id}
+                  title={option.hint}
+                  onClick={() => setSortBy(option.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition cursor-pointer ${
+                    sortBy === option.id ? "bg-zinc-950 text-white" : "text-zinc-600 hover:text-zinc-950"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
             {/* Có vị trí thì danh sách xếp từ gần đến xa */}
             <button
               type="button"
@@ -279,7 +333,7 @@ export default function HomePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
-            {filteredVenues.map((venue) => {
+            {sortedVenues.map((venue) => {
               const baseRule = venue.price_rules?.find((r: any) => r.rule_type === "BASE");
               const mapDirUrl = getGoogleMapsUrl(venue);
 

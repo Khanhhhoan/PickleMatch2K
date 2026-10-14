@@ -20,8 +20,8 @@ Hai trọng tâm của hệ thống:
 - **Ghép trận bằng Random Forest**: mô hình ước lượng độ phù hợp giữa người chơi và từng phòng đấu đã mở, rồi đề xuất
   những phòng có độ phù hợp cao (từ 70%).
 
-Thuật toán gợi ý cụm sân theo điểm đa tiêu chí vẫn có ở backend (`GET /api/v1/recommendations/venues`) nhưng giao diện
-không dùng; trang chủ liệt kê cụm sân từ gần đến xa.
+Gợi ý cụm sân theo điểm đa tiêu chí (`GET /api/v1/recommendations/venues`: khoảng cách, giá thuê, giờ còn trống, đánh
+giá) được dùng cho lựa chọn "Phù hợp nhất" trên trang chủ; mặc định danh sách xếp từ gần đến xa.
 
 Mô hình ghép trận dùng 5 đặc trưng của một cặp người chơi: chênh lệch trình độ, khoảng cách tới sân, cùng mục đích
 chơi, hợp phong cách và chênh lệch tuổi. Đặc trưng nằm ở `backend/app/ml/features.py`, quy tắc sinh phiếu mô phỏng và
