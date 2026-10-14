@@ -92,16 +92,20 @@ def vn_day(column):
     return func.date(func.timezone(VN_TZ_NAME, column))
 
 
+def _signed_amount():
+    """Biểu thức SQL: số tiền của giao dịch, khoản hoàn mang dấu âm."""
+    return case(
+        (PaymentTransaction.kind == PaymentKind.REFUND.value, -PaymentTransaction.amount_in),
+        else_=PaymentTransaction.amount_in,
+    )
+
+
 def daily_net_revenue(db: Session, *, venue_ids: Optional[List[int]]) -> Dict[date, float]:
     """Thực thu từng ngày (khoản thu trừ khoản hoàn) của các giao dịch thành công thuộc phạm vi cụm sân."""
     booking_ids = venue_booking_ids_subquery(db, venue_ids)
     day = vn_day(PaymentTransaction.created_at)
-    signed_amount = case(
-        (PaymentTransaction.kind == PaymentKind.REFUND.value, -PaymentTransaction.amount_in),
-        else_=PaymentTransaction.amount_in,
-    )
     rows = (
-        db.query(day, func.sum(signed_amount))
+        db.query(day, func.sum(_signed_amount()))
         .filter(
             PaymentTransaction.status == "SUCCESS",
             PaymentTransaction.created_at.isnot(None),
@@ -111,3 +115,39 @@ def daily_net_revenue(db: Session, *, venue_ids: Optional[List[int]]) -> Dict[da
         .all()
     )
     return {row[0]: float(row[1] or 0.0) for row in rows}
+
+
+def booking_venue_subquery(db: Session):
+    """Subquery (booking_id, venue_id): cụm sân của từng đơn.
+
+    Một đơn chỉ gồm các sân của cùng một cụm sân (kể cả sau khi dời lịch). Nếu dữ liệu cũ có đơn trải trên nhiều cụm
+    sân thì lấy cụm sân có id nhỏ nhất, để khi tách theo cụm sân không đơn nào bị tính hai lần.
+    """
+    return (
+        db.query(BookingDetail.booking_id.label("booking_id"), func.min(Court.venue_id).label("venue_id"))
+        .join(Court, Court.id == BookingDetail.court_id)
+        .group_by(BookingDetail.booking_id)
+        .subquery()
+    )
+
+
+def daily_net_revenue_by_venue(db: Session, *, venue_ids: List[int]) -> Dict[int, Dict[date, float]]:
+    """Như daily_net_revenue nhưng tách theo cụm sân của đơn: {venue_id: {ngày: thực thu}}."""
+    booking_venue = booking_venue_subquery(db)
+    day = vn_day(PaymentTransaction.created_at)
+    rows = (
+        db.query(booking_venue.c.venue_id, day, func.sum(_signed_amount()))
+        .select_from(PaymentTransaction)
+        .join(booking_venue, booking_venue.c.booking_id == PaymentTransaction.booking_id)
+        .filter(
+            PaymentTransaction.status == "SUCCESS",
+            PaymentTransaction.created_at.isnot(None),
+            booking_venue.c.venue_id.in_(venue_ids or [0]),
+        )
+        .group_by(booking_venue.c.venue_id, day)
+        .all()
+    )
+    result: Dict[int, Dict[date, float]] = {}
+    for venue_id, day_value, amount in rows:
+        result.setdefault(venue_id, {})[day_value] = float(amount or 0.0)
+    return result

@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { formatLocalDate, formatVND } from "@/lib/api";
 import { StatsBucket, StatsUnit, availableYears, buildBuckets } from "@/lib/stats";
-import { DailyActivity, TabProps } from "@/lib/types";
+import { DailyActivity, TabProps, VenueActivity } from "@/lib/types";
 import { Card, Chips } from "@/components/ui";
 
 function countBy<T>(items: T[], key: (item: T) => string): Record<string, number> {
@@ -74,8 +74,87 @@ function BarChart({
   );
 }
 
-/** Thực thu và số đơn đặt sân theo từng ngày của một tháng, từng tháng của một năm, hoặc từng năm. */
-function Statistics({ daily }: { daily: DailyActivity[] }) {
+/**
+ * Thực thu và số đơn của từng cụm sân trong đúng khoảng thời gian đang chọn, cao nhất trước.
+ * Cụm sân chưa hoạt động (chờ duyệt, tạm ngưng...) chỉ hiện khi có phát sinh trong khoảng đó.
+ */
+function VenueBreakdown({
+  byVenue,
+  activeVenueIds,
+  unit,
+  year,
+  month,
+  today,
+  period,
+}: {
+  byVenue: VenueActivity[];
+  activeVenueIds: Set<number>;
+  unit: StatsUnit;
+  year: number;
+  month: number;
+  today: string;
+  period: string;
+}) {
+  const rows = byVenue
+    .map((venue) => {
+      const buckets = buildBuckets(venue.daily, unit, year, month, today);
+      return {
+        id: venue.venue_id,
+        name: venue.venue_name,
+        revenue: buckets.reduce((sum, bucket) => sum + bucket.revenue, 0),
+        bookings: buckets.reduce((sum, bucket) => sum + bucket.bookings, 0),
+      };
+    })
+    .filter((row) => row.revenue !== 0 || row.bookings !== 0 || activeVenueIds.has(row.id))
+    .sort((a, b) => b.revenue - a.revenue || b.bookings - a.bookings || a.name.localeCompare(b.name, "vi"));
+  const max = Math.max(1, ...rows.map((row) => Math.abs(row.revenue)));
+  const hasData = rows.some((row) => row.revenue !== 0 || row.bookings !== 0);
+
+  return (
+    <div className="mt-6 pt-5 border-t border-[#e8edf3]">
+      <p className="text-xs font-black text-[#17253d]">
+        Theo cụm sân <span className="font-bold text-[#718096]">· {period}</span>
+      </p>
+      {hasData ? (
+        <ul className="mt-4 space-y-3.5">
+          {rows.map((row) => (
+            <li
+              key={row.id}
+              className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,16rem)_minmax(0,1fr)_11rem] items-center gap-x-4 gap-y-1.5"
+            >
+              <span className="truncate text-xs font-bold text-[#263b53]" title={row.name}>
+                {row.name}
+              </span>
+              <span className="sm:order-last text-right text-xs whitespace-nowrap">
+                <span className="font-black text-[#17253d]">{formatVND(row.revenue)}</span>
+                <span className="font-bold text-[#8a97ab]"> · {row.bookings} đơn</span>
+              </span>
+              <div className="col-span-2 sm:col-span-1 h-2.5 rounded-full bg-[#eef2f8] overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${row.revenue < 0 ? "bg-rose-300" : "bg-[#476cf3]"}`}
+                  style={{ width: `${(Math.abs(row.revenue) / max) * 100}%` }}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-xs text-[#8a97ab]">Chưa có cụm sân nào phát sinh khoản thu hay đơn đặt sân trong thời gian này.</p>
+      )}
+    </div>
+  );
+}
+
+/** Thực thu và số đơn đặt sân theo từng ngày của một tháng, từng tháng của một năm, hoặc từng năm; bên dưới là phần tách theo cụm sân. */
+function Statistics({
+  daily,
+  byVenue,
+  activeVenueIds,
+}: {
+  daily: DailyActivity[];
+  byVenue: VenueActivity[];
+  activeVenueIds: Set<number>;
+}) {
   const today = formatLocalDate();
   const [unit, setUnit] = useState<StatsUnit>("day");
   const [year, setYear] = useState(Number(today.slice(0, 4)));
@@ -151,6 +230,16 @@ function Statistics({ daily }: { daily: DailyActivity[] }) {
           />
         </div>
       </div>
+
+      <VenueBreakdown
+        byVenue={byVenue}
+        activeVenueIds={activeVenueIds}
+        unit={unit}
+        year={year}
+        month={month}
+        today={today}
+        period={period}
+      />
     </Card>
   );
 }
@@ -161,6 +250,7 @@ export default function OverviewTab({ data }: TabProps) {
   const venueStatus = countBy(venues, (v) => v.status);
   const matchStatus = countBy(matches, (m) => m.status);
   const pendingVenues = venues.filter((v) => v.status === "PENDING");
+  const activeVenueIds = new Set(venues.filter((v) => v.status === "ACTIVE").map((v) => v.id));
 
   const kpis = [
     { dot: "bg-[#476cf3]", label: "Thực thu toàn hệ thống", value: formatVND(stats?.total_revenue), hint: `Đã thu ${formatVND(stats?.collected_amount)} • đã hoàn ${formatVND(stats?.refunded_amount)}` },
@@ -194,7 +284,7 @@ export default function OverviewTab({ data }: TabProps) {
         </Card>
       )}
 
-      <Statistics daily={stats?.daily || []} />
+      <Statistics daily={stats?.daily || []} byVenue={stats?.by_venue || []} activeVenueIds={activeVenueIds} />
     </div>
   );
 }

@@ -125,6 +125,14 @@ export interface Stats {
   total_courts: number;
   /** Chỉ gồm những ngày có phát sinh, cũ trước mới sau. */
   daily?: DailyActivity[];
+  /** Cùng chuỗi theo ngày, tách theo từng cụm sân; cộng các cụm sân lại ra đúng `daily`. */
+  by_venue?: VenueActivity[];
+}
+
+export interface VenueActivity {
+  venue_id: number;
+  venue_name: string;
+  daily: DailyActivity[];
 }
 
 export interface AdminData {

@@ -5,7 +5,7 @@ import pytest
 
 from app.models.booking import Booking
 from app.models.payment import PaymentTransaction
-from helpers import auth, confirmed_booking, create_booking, sepay, slot
+from helpers import auth, confirmed_booking, create_booking, make_venue, sepay, slot
 
 BOOKINGS = "/api/v1/bookings"
 
@@ -210,6 +210,33 @@ def test_owner_stats_come_from_the_ledger(client, db, world, clock):
     daily = client.get(f"{BOOKINGS}/owner/stats", headers=auth(world.owner_a)).json()["daily"]
     assert daily[0] == {"date": "2026-01-02", "revenue": 100000, "bookings": 0}
     assert sum(d["revenue"] for d in daily) == 200000 and [d["date"] for d in daily] == sorted(d["date"] for d in daily)
+
+
+def test_stats_split_by_venue_add_up_to_the_totals(client, db, world, clock):
+    day = clock.day(1)
+    confirmed_booking(client, world.p1, world.court, day, hours=(9,))                         # Sân A: cọc 50k
+    refunded = confirmed_booking(client, world.p2, world.venue_a.courts[1], day, hours=(9,))  # Sân A: cọc 50k rồi hoàn
+    desk(client, world.staff_a, desk_payload(world.court, day, "11:00:00", "12:00:00", payment_method="CASH"))  # Sân A: 100k
+    confirmed_booking(client, world.p3, world.venue_b.courts[0], day, hours=(9,))             # Sân B: cọc 100k
+    client.post(f"{BOOKINGS}/{refunded['id']}/cancel", headers=auth(world.p2),
+                json={"bank_account": "1", "bank_name": "MB", "account_holder": "B"})
+    client.post(f"{BOOKINGS}/{refunded['id']}/confirm-refund", headers=auth(world.owner_a))
+    make_venue(db, world.owner_b, name="Sân C")                                               # chưa có đơn nào
+
+    everything = client.get(f"{BOOKINGS}/owner/stats", headers=auth(world.admin)).json()
+    totals = {v["venue_name"]: (sum(d["revenue"] for d in v["daily"]), sum(d["bookings"] for d in v["daily"]))
+              for v in everything["by_venue"]}
+    assert totals == {"Sân A": (150000, 3), "Sân B": (100000, 1), "Sân C": (0, 0)}
+
+    # Ngày nào cũng vậy: cộng các cụm sân lại đúng bằng chuỗi tổng
+    for total in everything["daily"]:
+        parts = [d for v in everything["by_venue"] for d in v["daily"] if d["date"] == total["date"]]
+        assert (sum(d["revenue"] for d in parts), sum(d["bookings"] for d in parts)) == (total["revenue"], total["bookings"])
+
+    # Chủ sân và nhân viên chỉ thấy cụm sân của mình
+    for user in (world.owner_a, world.staff_a):
+        own = client.get(f"{BOOKINGS}/owner/stats", headers=auth(user)).json()
+        assert [(v["venue_id"], v["venue_name"]) for v in own["by_venue"]] == [(world.venue_a.id, "Sân A")]
 
 
 def test_staff_shift_stats_cover_only_today_at_their_venue(client, world, clock):

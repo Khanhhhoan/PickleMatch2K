@@ -18,7 +18,7 @@ npx tsc --noEmit
 
 | Thẻ | Nội dung | API chính |
 | :--- | :--- | :--- |
-| Tổng quan | Số liệu toàn hệ thống; thống kê thực thu và số đơn đặt theo từng ngày, từng tháng hoặc từng năm | `/bookings/owner/stats` |
+| Tổng quan | Số liệu toàn hệ thống; thống kê thực thu và số đơn đặt theo từng ngày, từng tháng hoặc từng năm, kèm phần tách theo từng cụm sân trong cùng khoảng thời gian | `/bookings/owner/stats` |
 | Cụm sân | Duyệt / từ chối cụm sân chờ duyệt, đổi trạng thái, tạo, sửa, xóa | `/venues/admin/*` |
 | Tài khoản | Xem chi tiết, tạo, sửa, khóa / mở khóa, xóa (tài khoản đã có lịch sử thì chỉ bị khóa) | `/users/admin/users` |
 | Đơn đặt sân | Tra cứu toàn bộ đơn và tình trạng hoàn tiền, đổi trạng thái, xóa đơn | `/bookings/admin/all` |
@@ -26,7 +26,9 @@ npx tsc --noEmit
 | Phòng đấu | Tạo, đổi trạng thái, xóa phòng đấu; xem và gỡ người tham gia | `/matches/admin/*` |
 
 Mọi số liệu lấy trực tiếp từ API; cổng không tự tính hay hiển thị số liệu giả. Phần thống kê theo thời gian dùng chuỗi
-theo ngày (`daily`, tính theo giờ Việt Nam) mà API trả về, cổng chỉ gom các ngày thành tháng và năm.
+theo ngày (`daily`, tính theo giờ Việt Nam) mà API trả về, cổng chỉ gom các ngày thành tháng và năm. Phần "Theo cụm
+sân" dùng chuỗi cùng dạng của từng cụm sân (`by_venue`); mỗi đơn chỉ thuộc một cụm sân nên cộng các dòng lại đúng
+bằng con số của cả hệ thống.
 
 ## Mã nguồn
 

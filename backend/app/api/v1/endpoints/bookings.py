@@ -1,4 +1,5 @@
-from typing import List, Optional
+from datetime import date
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
@@ -265,6 +266,13 @@ def _count_bookings(db: Session, venue_ids: Optional[List[int]], *filters) -> in
     return db.query(Booking.id).filter(Booking.id.in_(db.query(booking_ids.c.booking_id)), *filters).count()
 
 
+def _daily_series(revenue: Dict[date, float], created: Dict[date, int]) -> List[dict]:
+    return [
+        {"date": d.isoformat(), "revenue": revenue.get(d, 0.0), "bookings": created.get(d, 0)}
+        for d in sorted(set(revenue) | set(created))
+    ]
+
+
 def _daily_activity(db: Session, venue_ids: Optional[List[int]]) -> List[dict]:
     """Thực thu và số đơn được tạo theo từng ngày (giờ Việt Nam), cũ trước mới sau. Ngày không phát sinh gì thì không có dòng."""
     revenue = ledger.daily_net_revenue(db, venue_ids=venue_ids)
@@ -276,10 +284,29 @@ def _daily_activity(db: Session, venue_ids: Optional[List[int]]) -> List[dict]:
         .group_by(day)
         .all()
     )
-    return [
-        {"date": d.isoformat(), "revenue": revenue.get(d, 0.0), "bookings": int(created.get(d, 0))}
-        for d in sorted(set(revenue) | set(created))
-    ]
+    return _daily_series(revenue, created)
+
+
+def _daily_activity_by_venue(db: Session, venue_ids: List[int]) -> List[List[dict]]:
+    """Như _daily_activity nhưng tách theo cụm sân của đơn: mỗi cụm sân một chuỗi, cùng thứ tự với venue_ids.
+
+    Cộng các cụm sân lại ra đúng chuỗi tổng, vì mỗi đơn chỉ thuộc một cụm sân.
+    """
+    revenue = ledger.daily_net_revenue_by_venue(db, venue_ids=venue_ids)
+    booking_venue = ledger.booking_venue_subquery(db)
+    day = ledger.vn_day(Booking.created_at)
+    rows = (
+        db.query(booking_venue.c.venue_id, day, func.count(Booking.id))
+        .select_from(Booking)
+        .join(booking_venue, booking_venue.c.booking_id == Booking.id)
+        .filter(Booking.created_at.isnot(None), booking_venue.c.venue_id.in_(venue_ids or [0]))
+        .group_by(booking_venue.c.venue_id, day)
+        .all()
+    )
+    created: Dict[int, Dict[date, int]] = {}
+    for venue_id, day_value, count in rows:
+        created.setdefault(venue_id, {})[day_value] = int(count)
+    return [_daily_series(revenue.get(venue_id, {}), created.get(venue_id, {})) for venue_id in venue_ids]
 
 
 @router.get("/owner/stats")
@@ -306,6 +333,10 @@ def get_owner_stats(db: Session = Depends(deps.get_db), current_user: User = Dep
         "total_courts": db.query(Court.id).filter(Court.venue_id.in_(scope or [0])).count(),
         "venue_names": [v.name for v in venues],
         "daily": _daily_activity(db, scope),
+        "by_venue": [
+            {"venue_id": v.id, "venue_name": v.name, "daily": daily}
+            for v, daily in zip(venues, _daily_activity_by_venue(db, scope))
+        ],
     }
 
 

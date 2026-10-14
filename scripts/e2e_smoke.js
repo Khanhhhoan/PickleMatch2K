@@ -533,6 +533,9 @@ async function main() {
     await waitForText(page, "Th12");
     await clickText(page, "button", "Theo năm", { exact: true });
     await page.waitForFunction(() => !document.querySelector('select[aria-label="Năm thống kê"]'), { timeout: TIMEOUT });
+    // bên dưới biểu đồ: cụm sân nào bán được bao nhiêu trong cùng khoảng thời gian
+    await waitForText(page, "Theo cụm sân");
+    await waitForText(page, "D-Joy Pickleball Thủ Thiêm");
   });
   await step(admin, "khóa rồi mở khóa một tài khoản", async (page) => {
     await clickText(page, "nav button", "Tài khoản");
