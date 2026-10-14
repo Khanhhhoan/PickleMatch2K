@@ -521,7 +521,8 @@ async function main() {
   await step(admin, "tổng quan chỉ có số liệu vận hành, không hiển thị chi tiết kỹ thuật của mô hình", async (page) => {
     await login(admin, ADMIN, "admin@example.com");
     await waitForText(page, "Thực thu toàn hệ thống");
-    await waitForText(page, "Phân bố trạng thái");
+    await waitForText(page, "Thống kê doanh thu và đơn đặt sân");
+    if (await hasText(page, "Phân bố trạng thái")) throw new Error("Trang tổng quan vẫn còn khối phân bố trạng thái");
     for (const jargon of ["Random Forest", "Độ chính xác", "phiếu ghép cặp"]) {
       if (await hasText(page, jargon)) throw new Error(`Trang tổng quan còn nội dung kỹ thuật: ${jargon}`);
     }

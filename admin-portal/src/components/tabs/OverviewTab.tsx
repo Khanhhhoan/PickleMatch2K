@@ -2,10 +2,9 @@
 
 import React, { useMemo, useState } from "react";
 import { formatLocalDate, formatVND } from "@/lib/api";
-import { BOOKING_STATUS_LABEL, MATCH_STATUS_LABEL, VENUE_STATUS_LABEL, statusTone } from "@/lib/labels";
 import { StatsBucket, StatsUnit, availableYears, buildBuckets } from "@/lib/stats";
 import { DailyActivity, TabProps } from "@/lib/types";
-import { Badge, Card, Chips } from "@/components/ui";
+import { Card, Chips } from "@/components/ui";
 
 function countBy<T>(items: T[], key: (item: T) => string): Record<string, number> {
   return items.reduce<Record<string, number>>((acc, item) => {
@@ -160,7 +159,6 @@ export default function OverviewTab({ data }: TabProps) {
   const { users, venues, bookings, matches, stats } = data;
   const roles = countBy(users, (u) => u.role);
   const venueStatus = countBy(venues, (v) => v.status);
-  const bookingStatus = countBy(bookings, (b) => b.status);
   const matchStatus = countBy(matches, (m) => m.status);
   const pendingVenues = venues.filter((v) => v.status === "PENDING");
 
@@ -170,12 +168,6 @@ export default function OverviewTab({ data }: TabProps) {
     { dot: "bg-sky-500", label: "Cụm sân", value: String(venues.length), hint: `${venueStatus.ACTIVE || 0} đang hoạt động • ${stats?.total_courts ?? 0} sân` },
     { dot: "bg-violet-500", label: "Tài khoản", value: String(users.length), hint: `${roles.PLAYER || 0} người chơi • ${roles.OWNER || 0} chủ sân • ${roles.STAFF || 0} nhân viên` },
     { dot: "bg-amber-500", label: "Phòng đấu", value: String(matches.length), hint: `${matchStatus.OPEN || 0} đang tuyển người` },
-  ];
-
-  const statusGroups = [
-    { title: "Đơn đặt sân", counts: bookingStatus, labels: BOOKING_STATUS_LABEL, empty: "Chưa có đơn nào." },
-    { title: "Cụm sân", counts: venueStatus, labels: VENUE_STATUS_LABEL, empty: "Chưa có cụm sân nào." },
-    { title: "Phòng đấu", counts: matchStatus, labels: MATCH_STATUS_LABEL, empty: "Chưa có phòng đấu nào." },
   ];
 
   return (
@@ -203,23 +195,6 @@ export default function OverviewTab({ data }: TabProps) {
       )}
 
       <Statistics daily={stats?.daily || []} />
-
-      <Card className="p-5">
-        <h3 className="text-sm font-black text-[#17253d]">Phân bố trạng thái</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-3">
-          {statusGroups.map((group) => (
-            <div key={group.title}>
-              <p className="text-xs font-bold text-[#718096] mb-1.5">{group.title}</p>
-              <div className="flex flex-wrap gap-1.5">
-                {Object.entries(group.counts).map(([status, count]) => (
-                  <Badge key={status} tone={statusTone(status)}>{group.labels[status] || status}: {count}</Badge>
-                ))}
-                {Object.keys(group.counts).length === 0 && <span className="text-xs text-[#718096]">{group.empty}</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
     </div>
   );
 }
