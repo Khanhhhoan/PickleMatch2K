@@ -19,7 +19,6 @@ def recommend_venues(
     target_date: Optional[date] = Query(None, description="Ngày muốn chơi (mặc định hôm nay)"),
     radius_km: Optional[float] = Query(None, gt=0, le=200, description="Chỉ xét sân trong bán kính này"),
     budget_max: Optional[float] = Query(None, gt=0, description="Ngân sách tối đa mỗi giờ (VNĐ)"),
-    amenity_ids: Optional[List[int]] = Query(None, description="Tiện ích mong muốn"),
     time_from: Optional[time] = Query(None, description="Giờ sớm nhất muốn chơi"),
     time_to: Optional[time] = Query(None, description="Giờ muộn nhất muốn chơi"),
     top_n: int = Query(6, ge=1, le=20),
@@ -27,9 +26,9 @@ def recommend_venues(
     current_user: Optional[User] = Depends(deps.get_current_user_optional),
 ):
     """
-    Top-N cụm sân phù hợp theo điểm đa tiêu chí:
-    Score = (0.30·D + 0.25·P + 0.20·T + 0.15·R + 0.10·S) / tổng trọng số các tiêu chí có dữ liệu.
-    Vị trí không truyền thì lấy từ hồ sơ người chơi nếu đã đăng nhập; ngân sách và tiện ích chỉ lấy từ tham số.
+    Top-N cụm sân phù hợp theo điểm đa tiêu chí (thang 100: gần 40, giá 35, giờ còn trống 25):
+    Score = (0.40·D + 0.35·P + 0.25·T) / tổng trọng số các tiêu chí có dữ liệu.
+    Vị trí không truyền thì lấy từ hồ sơ người chơi nếu đã đăng nhập; ngân sách chỉ lấy từ tham số.
     """
     return venue_recommendation_service.get_venue_recommendations(
         db=db,
@@ -39,7 +38,6 @@ def recommend_venues(
         target_date=target_date,
         radius_km=radius_km,
         budget_max=budget_max,
-        preferred_amenity_ids=amenity_ids,
         time_from=time_from,
         time_to=time_to,
         top_n=top_n,

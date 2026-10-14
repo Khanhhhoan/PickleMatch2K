@@ -3,30 +3,20 @@ Gợi ý cụm sân theo phương pháp lọc -> chấm điểm đa tiêu chí -
 
     Score = Σ w_i * s_i / Σ w_i     (chỉ trên các tiêu chí có dữ liệu)
 
-    D  Khoảng cách từ người dùng tới sân
-    P  Mức giá so với ngân sách (hoặc so với các sân ứng viên khi yêu cầu không kèm ngân sách)
-    T  Tỷ lệ khung giờ còn trống trong ngày/khoảng giờ muốn chơi
-    R  Điểm đánh giá (trung bình Bayes)
-    S  Mức đáp ứng các tiện ích người dùng yêu cầu
+    D  Khoảng cách từ người dùng tới sân                                    (tối đa 40 trên thang 100)
+    P  Mức giá so với ngân sách (hoặc so với các sân ứng viên khi yêu cầu không kèm ngân sách)   (35)
+    T  Tỷ lệ khung giờ còn trống trong ngày/khoảng giờ muốn chơi                                  (25)
 
-Vị trí lấy từ yêu cầu, không có thì lấy từ hồ sơ người chơi. Ngân sách và tiện ích chỉ lấy từ yêu cầu.
+Vị trí lấy từ yêu cầu, không có thì lấy từ hồ sơ người chơi. Ngân sách chỉ lấy từ yêu cầu.
 """
 from datetime import date, time
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.recommendation_config import (
-    BUDGET_OVERRUN_LIMIT,
-    MAX_EXPECTED_DISTANCE_KM,
-    MAX_RATING,
-    RATING_PRIOR_FALLBACK,
-    RATING_PRIOR_WEIGHT,
-    WEIGHTS,
-)
+from app.core.recommendation_config import BUDGET_OVERRUN_LIMIT, MAX_EXPECTED_DISTANCE_KM, WEIGHTS
 from app.models.user import PlayerProfile
-from app.models.venue import Review, Venue, VenueStatus
+from app.models.venue import Venue, VenueStatus
 from app.schemas.recommendation import VenueRecommendationResponse
 from app.schemas.venue import VenueResponse
 from app.services.availability_service import get_venue_availability
@@ -67,24 +57,6 @@ def normalize_time(available_slots: int, total_slots: int) -> float:
     return _clamp(available_slots / total_slots)
 
 
-def bayesian_rating(review_count: int, mean_rating: Optional[float], prior_mean: float) -> float:
-    """Trung bình Bayes trên thang 5: sân chưa có đánh giá nhận đúng điểm trung bình toàn hệ thống."""
-    if review_count <= 0 or mean_rating is None:
-        return prior_mean
-    return (review_count * mean_rating + RATING_PRIOR_WEIGHT * prior_mean) / (review_count + RATING_PRIOR_WEIGHT)
-
-
-def normalize_rating(rating: float) -> float:
-    return _clamp(rating / MAX_RATING)
-
-
-def normalize_preference(venue_amenity_ids: set, preferred_ids: set) -> Optional[float]:
-    """Tỷ lệ tiện ích được yêu cầu mà sân đáp ứng. None khi yêu cầu không nêu tiện ích nào."""
-    if not preferred_ids:
-        return None
-    return len(venue_amenity_ids & preferred_ids) / len(preferred_ids)
-
-
 def weighted_score(scores: Dict[str, Optional[float]]) -> float:
     used = {name: value for name, value in scores.items() if value is not None}
     total_weight = sum(WEIGHTS[name] for name in used)
@@ -101,7 +73,6 @@ def get_venue_recommendations(
     target_date: Optional[date] = None,
     radius_km: Optional[float] = None,
     budget_max: Optional[float] = None,
-    preferred_amenity_ids: Optional[Sequence[int]] = None,
     time_from: Optional[time] = None,
     time_to: Optional[time] = None,
     top_n: int = 10,
@@ -110,7 +81,6 @@ def get_venue_recommendations(
     ref_lng = longitude if longitude is not None else (user_profile.longitude if user_profile else None)
     eval_date = target_date or today_vn()
     budget = budget_max or None
-    preferred = set(preferred_amenity_ids or [])
 
     venues = (
         db.query(Venue)
@@ -120,19 +90,6 @@ def get_venue_recommendations(
         )
         .filter(Venue.status == VenueStatus.ACTIVE.value)
         .all()
-    )
-
-    review_stats = {
-        venue_id: (count, mean)
-        for venue_id, count, mean in db.query(Review.venue_id, func.count(Review.id), func.avg(Review.rating))
-        .group_by(Review.venue_id).all()
-    }
-    # Điểm trung bình toàn hệ thống cũng được kéo về mốc mặc định khi tổng số đánh giá còn ít,
-    # để một vài đánh giá đầu tiên không quyết định điểm của mọi sân chưa có đánh giá.
-    total_reviews = sum(int(count) for count, _ in review_stats.values())
-    global_mean = db.query(func.avg(Review.rating)).scalar()
-    prior_mean = bayesian_rating(
-        total_reviews, float(global_mean) if global_mean is not None else None, RATING_PRIOR_FALLBACK
     )
 
     # Bước 1 - lọc và thu thập dữ liệu thô của từng sân
@@ -159,15 +116,12 @@ def get_venue_recommendations(
         if ref_price is None and venue.price_rules:
             ref_price = sum(r.price for r in venue.price_rules) / len(venue.price_rules)
 
-        count, mean = review_stats.get(venue.id, (0, None))
         candidates.append({
             "venue": venue,
             "dist_km": dist_km,
             "price": ref_price,
             "free": len(free_slots),
             "total": len(slots),
-            "review_count": int(count),
-            "rating": bayesian_rating(int(count), float(mean) if mean is not None else None, prior_mean),
         })
 
     # Bước 2 - chuẩn hóa về [0, 1] và tính điểm tổng hợp
@@ -176,27 +130,20 @@ def get_venue_recommendations(
 
     recommendations = []
     for c in candidates:
-        venue = c["venue"]
         scores = {
             "distance": normalize_distance(c["dist_km"]),
             "price": normalize_price(c["price"], budget=budget, min_price=min_price, max_price=max_price)
             if c["price"] is not None else None,
             "time": normalize_time(c["free"], c["total"]),
-            "rating": normalize_rating(c["rating"]),
-            "preference": normalize_preference({a.id for a in venue.amenities}, preferred),
         }
         recommendations.append(VenueRecommendationResponse(
-            venue=VenueResponse.model_validate(venue),
+            venue=VenueResponse.model_validate(c["venue"]),
             score=round(weighted_score(scores), 4),
             distance_score=round(scores["distance"], 3) if scores["distance"] is not None else None,
             price_score=round(scores["price"], 3) if scores["price"] is not None else None,
             time_score=round(scores["time"], 3),
-            rating_score=round(scores["rating"], 3),
-            preference_score=round(scores["preference"], 3) if scores["preference"] is not None else None,
             distance_km=round(c["dist_km"], 1) if c["dist_km"] is not None else None,
             avg_price=round(c["price"]) if c["price"] is not None else None,
-            avg_rating=round(c["rating"], 2),
-            review_count=c["review_count"],
             free_slots=c["free"],
             total_slots=c["total"],
             criteria_used=[name for name, value in scores.items() if value is not None],

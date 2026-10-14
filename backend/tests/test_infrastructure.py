@@ -203,7 +203,7 @@ def test_demo_seed_builds_a_consistent_dataset(client, db):
     partners = client.get("/api/v1/ml/recommend-partners", headers=auth(player)).json()
     assert partners["missing_profile_fields"] == [] and len(partners["items"]) == 8
     venues = client.get("/api/v1/recommendations/venues", headers=auth(player)).json()
-    assert len(venues) == 3 and all(v["distance_score"] is not None and v["preference_score"] is None for v in venues)
+    assert len(venues) == 3 and all(v["criteria_used"] == ["distance", "price", "time"] for v in venues)
     assert seed.apply_demo_preferences(db) == 0             # không ghi đè mục đích chơi đã có
 
 

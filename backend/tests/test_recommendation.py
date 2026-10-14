@@ -2,7 +2,7 @@
 import pytest
 
 from app.core.recommendation_config import WEIGHTS
-from app.models.venue import Amenity, Review
+from app.models.venue import Review
 from app.services import venue_recommendation_service as rec
 from helpers import auth, confirmed_booking, make_user, make_venue
 
@@ -19,7 +19,9 @@ def recommend(client, user=None, **params):
 # ---------------------------------------------------------------------------
 # Hàm chuẩn hóa
 # ---------------------------------------------------------------------------
-def test_weights_sum_to_one():
+def test_three_criteria_on_a_100_point_scale():
+    # Do chủ đề tài chọn: gần 40, giá 35, giờ còn trống 25; đánh giá không được tính
+    assert WEIGHTS == {"distance": 0.40, "price": 0.35, "time": 0.25}
     assert sum(WEIGHTS.values()) == pytest.approx(1.0)
 
 
@@ -39,27 +41,18 @@ def test_price_score_against_a_budget():
     assert rec.normalize_price(900000, budget=200000) == 0.0
 
 
-def test_distance_time_and_preference_scores():
+def test_distance_and_time_scores():
     assert rec.normalize_distance(0) == 1.0 and rec.normalize_distance(10) == 0.5
     assert rec.normalize_distance(20) == 0.0 and rec.normalize_distance(80) == 0.0
     assert rec.normalize_distance(None) is None
     assert rec.normalize_time(9, 12) == 0.75 and rec.normalize_time(0, 12) == 0.0 and rec.normalize_time(0, 0) == 0.0
-    assert rec.normalize_preference({1, 2, 3}, {2, 3, 9, 10}) == 0.5
-    assert rec.normalize_preference({1}, set()) is None
-
-
-def test_bayesian_rating_shrinks_small_samples_towards_the_prior():
-    assert rec.bayesian_rating(0, None, 4.0) == 4.0
-    assert rec.bayesian_rating(1, 5.0, 4.0) == pytest.approx(4.1667, abs=1e-3)   # một đánh giá 5 sao chưa đủ thành 5.0
-    assert rec.bayesian_rating(1, 1.0, 4.0) == pytest.approx(3.5)
-    assert rec.bayesian_rating(200, 4.8, 4.0) == pytest.approx(4.78, abs=0.01)   # nhiều đánh giá thì gần điểm thật
 
 
 def test_missing_criteria_are_dropped_and_weights_renormalised():
-    full = {"distance": 1.0, "price": 0.0, "time": 1.0, "rating": 0.5, "preference": 1.0}
-    assert rec.weighted_score(full) == pytest.approx(0.30 + 0.20 + 0.075 + 0.10)
-    partial = {"distance": None, "price": 1.0, "time": 1.0, "rating": 1.0, "preference": None}
-    assert rec.weighted_score(partial) == pytest.approx(1.0)   # không bị trừ điểm vì tiêu chí không có dữ liệu
+    assert rec.weighted_score({"distance": 1.0, "price": 0.0, "time": 1.0}) == pytest.approx(0.40 + 0.25)
+    # Chưa biết vị trí: chỉ còn giá (35) và giờ trống (25), quy về thang 100
+    assert rec.weighted_score({"distance": None, "price": 1.0, "time": 0.5}) == pytest.approx((0.35 + 0.125) / 0.60)
+    assert rec.weighted_score({"distance": None, "price": 1.0, "time": 1.0}) == pytest.approx(1.0)
     assert rec.weighted_score({name: None for name in WEIGHTS}) == 0.0
 
 
@@ -70,8 +63,8 @@ def test_anonymous_request_without_location_uses_only_available_criteria(client,
     by_name, order = recommend(client)
     assert set(order) == {"Sân A", "Sân B"}
     for item in by_name.values():
-        assert item["distance_score"] is None and item["preference_score"] is None and item["distance_km"] is None
-        assert item["criteria_used"] == ["price", "time", "rating"]
+        assert item["distance_score"] is None and item["distance_km"] is None
+        assert item["criteria_used"] == ["price", "time"]
         assert 0 <= item["score"] <= 1 and item["time_score"] == 1.0
     assert by_name["Sân A"]["price_score"] == 1.0 and by_name["Sân B"]["price_score"] == 0.0
     assert order[0] == "Sân A"
@@ -82,7 +75,7 @@ def test_distance_radius_and_budget(client, world):
     near_a, order = recommend(client, latitude=10.78, longitude=106.70)
     assert near_a["Sân A"]["distance_km"] == 0 and near_a["Sân A"]["distance_score"] == 1.0
     assert 0 < near_a["Sân B"]["distance_score"] < 1 and near_a["Sân B"]["distance_km"] > 5
-    assert order[0] == "Sân A" and "distance" in near_a["Sân A"]["criteria_used"]
+    assert order[0] == "Sân A" and near_a["Sân A"]["criteria_used"] == ["distance", "price", "time"]
 
     _, within = recommend(client, latitude=10.78, longitude=106.70, radius_km=3)
     assert within == ["Sân A"]
@@ -93,24 +86,16 @@ def test_distance_radius_and_budget(client, world):
     assert tight["Sân A"]["price_score"] > tight["Sân B"]["price_score"] == 0.0
 
 
-def test_profile_supplies_location_while_budget_and_amenities_come_from_the_request(client, db, world):
-    roof, parking = Amenity(name="Mái che"), Amenity(name="Bãi xe")
-    db.add_all([roof, parking])
-    world.venue_b.amenities = [roof, parking]
-    db.commit()
+def test_profile_supplies_location_while_budget_comes_from_the_request(client, db, world):
     player = make_user(db, latitude=10.85, longitude=106.75)
 
     by_name, _ = recommend(client, player)
     assert by_name["Sân B"]["distance_km"] == 0 and by_name["Sân A"]["distance_km"] > 5     # vị trí lấy từ hồ sơ
-    assert all(item["preference_score"] is None and "preference" not in item["criteria_used"] for item in by_name.values())
     assert by_name["Sân A"]["price_score"] == 1.0 and by_name["Sân B"]["price_score"] == 0.0  # không có ngân sách: so giá giữa các sân
 
-    asked, order = recommend(client, player, amenity_ids=[roof.id, parking.id], budget_max=500000)
-    assert asked["Sân B"]["preference_score"] == 1.0 and asked["Sân A"]["preference_score"] == 0.0
+    asked, order = recommend(client, player, budget_max=500000)
     assert asked["Sân A"]["price_score"] == asked["Sân B"]["price_score"] == 1.0
-    assert order[0] == "Sân B"
-    half, _ = recommend(client, player, amenity_ids=[roof.id, 99999])
-    assert half["Sân B"]["preference_score"] == 0.5
+    assert order[0] == "Sân B"                                                              # cùng giá đạt, sân gần hơn đứng đầu
 
 
 def test_time_score_reflects_remaining_free_slots(client, world, clock):
@@ -136,18 +121,17 @@ def test_slots_already_past_today_do_not_count(client, world, clock):
     assert late["Sân A"]["total_slots"] == 0 and late["Sân A"]["time_score"] == 0.0
 
 
-def test_rating_uses_bayesian_average_not_a_made_up_default(client, db, world):
-    none_yet, _ = recommend(client)
-    assert none_yet["Sân A"]["avg_rating"] == none_yet["Sân B"]["avg_rating"] == 4.0
-    assert none_yet["Sân A"]["review_count"] == 0
+def test_reviews_do_not_change_the_suggestion(client, db, world):
+    before, order_before = recommend(client, latitude=10.80, longitude=106.72)
 
     db.add_all([Review(user_id=p.id, venue_id=world.venue_b.id, rating=5.0) for p in world.players])
     db.add(Review(user_id=world.p1.id, venue_id=world.venue_a.id, rating=1.0))
     db.commit()
-    rated, _ = recommend(client)
-    assert rated["Sân B"]["review_count"] == 3 and rated["Sân A"]["review_count"] == 1
-    assert 4.0 < rated["Sân B"]["avg_rating"] < 5.0 and 1.0 < rated["Sân A"]["avg_rating"] < 4.0
-    assert rated["Sân B"]["rating_score"] > rated["Sân A"]["rating_score"]
+    after, order_after = recommend(client, latitude=10.80, longitude=106.72)
+
+    assert order_after == order_before
+    assert {name: item["score"] for name, item in after.items()} == {name: item["score"] for name, item in before.items()}
+    assert all("rating" not in item["criteria_used"] for item in after.values())
 
 
 def test_inactive_venues_are_excluded_and_top_n_is_respected(client, db, world):

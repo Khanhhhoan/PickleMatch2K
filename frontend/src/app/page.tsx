@@ -21,7 +21,7 @@ type SortOption = "near" | "best";
 
 const SORT_OPTIONS: { id: SortOption; label: string; hint: string }[] = [
   { id: "near", label: "Gần nhất", hint: "Xếp từ gần đến xa theo vị trí bạn chọn" },
-  { id: "best", label: "Phù hợp nhất", hint: "Kết hợp khoảng cách, giá thuê, giờ còn trống hôm nay và đánh giá" },
+  { id: "best", label: "Phù hợp nhất", hint: "Kết hợp khoảng cách, giá thuê và giờ còn trống hôm nay" },
 ];
 
 export default function HomePage() {
@@ -34,7 +34,7 @@ export default function HomePage() {
   const [sortBy, setSortBy] = useState<SortOption>("near");
   const [ranking, setRanking] = useState<Map<number, number> | null>(null);
 
-  // "Phù hợp nhất": thứ tự do mô-đun gợi ý cụm sân tính (khoảng cách, giá, giờ còn trống hôm nay, đánh giá)
+  // "Phù hợp nhất": thứ tự do mô-đun gợi ý cụm sân tính (khoảng cách, giá, giờ còn trống hôm nay)
   useEffect(() => {
     if (sortBy !== "best") return;
     let cancelled = false;
