@@ -207,26 +207,22 @@ async function main() {
   // ------------------------------------------------------------------ Người chơi 1
   console.log("\nNgười chơi 1: đặt sân, thanh toán cọc, mở phòng đấu");
   const p1 = await newSession("player01");
-  await step(p1, "đăng nhập, xem danh sách cụm sân và xếp lại theo mức phù hợp", async (page) => {
+  await step(p1, "khách xem danh sách thường; người chơi đăng nhập thấy danh sách xếp sẵn theo gợi ý (Top 1…)", async (page) => {
+    const topBadges = () => page.evaluate(() =>
+      [...document.querySelectorAll("span")].map((s) => s.innerText.trim()).filter((t) => /^Top \d+$/.test(t)));
+    await page.goto(`${WEB}/`, { waitUntil: "domcontentloaded" });
+    await waitForText(page, "RUDAL Pickleball & Academy");
+    if ((await topBadges()).length > 0) throw new Error("Khách chưa đăng nhập đã thấy nhãn gợi ý");
+
     await login(p1, WEB, "player01@gmail.com");
     await waitForText(page, "Danh Sách Cụm Sân");
     await waitForText(page, "RUDAL Pickleball & Academy");
-    if (await hasText(page, "Gợi Ý Cho Bạn")) throw new Error("Trang chủ vẫn còn khối gợi ý cụm sân");
-    // "Phù hợp nhất" xếp lại cùng danh sách theo mô-đun gợi ý cụm sân, không thêm khối nào
-    const cards = () => page.evaluate(() => [...document.querySelectorAll("button")].filter((b) => b.innerText.trim() === "Chi Tiết").length);
-    const before = await cards();
-    await Promise.all([
-      page.waitForResponse((res) => res.url().includes("/recommendations/venues") && res.status() === 200, { timeout: TIMEOUT }),
-      clickText(page, "button", "Phù hợp nhất", { exact: true }),
-    ]);
-    await page.waitForFunction(() => {
-      const pressed = [...document.querySelectorAll('button[aria-pressed="true"]')].map((b) => b.innerText.trim());
-      return pressed.includes("Phù hợp nhất");
-    }, { timeout: TIMEOUT });
-    await waitForText(page, "RUDAL Pickleball & Academy");
     await waitForText(page, "Top 1");
-    const after = await cards();
-    if (before === 0 || after !== before) throw new Error(`Số thẻ cụm sân đổi khi xếp lại: ${before} -> ${after}`);
+    if (await hasText(page, "Gợi Ý Cho Bạn")) throw new Error("Trang chủ vẫn còn khối gợi ý cụm sân");
+    if (await hasText(page, "Phù hợp nhất")) throw new Error("Trang chủ vẫn còn nút chọn cách xếp");
+    const badges = await topBadges();
+    const cards = await page.evaluate(() => [...document.querySelectorAll("button")].filter((b) => b.innerText.trim() === "Chi Tiết").length);
+    if (cards === 0 || badges.length !== cards || badges[0] !== "Top 1") throw new Error(`Nhãn gợi ý sai: ${badges.join(", ")} trên ${cards} thẻ`);
   });
 
   await step(p1, "bấm đúp một khung giờ không bị tính hai lần; lịch khóa các ngày ngoài 60 ngày", async (page) => {

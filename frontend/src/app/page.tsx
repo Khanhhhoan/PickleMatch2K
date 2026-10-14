@@ -17,13 +17,6 @@ import {
 
 const WEEKDAY_INDEX = (new Date().getDay() + 6) % 7; // 0 = Thứ Hai, khớp day_of_week của máy chủ
 
-type SortOption = "near" | "best";
-
-const SORT_OPTIONS: { id: SortOption; label: string; hint: string }[] = [
-  { id: "near", label: "Gần nhất", hint: "Xếp từ gần đến xa theo vị trí bạn chọn" },
-  { id: "best", label: "Phù hợp nhất", hint: "Kết hợp khoảng cách, giá thuê và giờ còn trống hôm nay" },
-];
-
 export default function HomePage() {
   const { user } = useAuth();
   const [keyword, setKeyword] = useState("");
@@ -31,12 +24,13 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
-  const [sortBy, setSortBy] = useState<SortOption>("near");
   const [ranking, setRanking] = useState<Map<number, number> | null>(null);
+  // Người chơi đã đăng nhập thấy danh sách xếp sẵn theo gợi ý; khách thấy danh sách từ gần đến xa
+  const suggesting = user?.role === "PLAYER";
 
-  // "Phù hợp nhất": thứ tự do mô-đun gợi ý cụm sân tính (khoảng cách, giá, giờ còn trống hôm nay)
+  // Thứ tự gợi ý do mô-đun gợi ý cụm sân tính (khoảng cách, giá, giờ còn trống hôm nay)
   useEffect(() => {
-    if (sortBy !== "best") return;
+    if (!suggesting) return;
     let cancelled = false;
     const params = new URLSearchParams({ top_n: "20" });
     if (userLocation) {
@@ -53,7 +47,7 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [sortBy, userLocation]);
+  }, [suggesting, userLocation]);
 
   // Load venues based on keyword and coordinates
   const loadVenues = async (searchKeyword = "", coords?: { lat: number; lng: number }) => {
@@ -161,17 +155,17 @@ export default function HomePage() {
 
   // Cụm sân không có trong kết quả gợi ý giữ thứ tự gần đến xa và đứng sau
   const sortedVenues = useMemo(() => {
-    if (sortBy !== "best" || !ranking) return filteredVenues;
+    if (!suggesting || !ranking) return filteredVenues;
     return [...filteredVenues].sort((a, b) => (ranking.get(a.id) ?? Infinity) - (ranking.get(b.id) ?? Infinity));
-  }, [filteredVenues, sortBy, ranking]);
+  }, [filteredVenues, suggesting, ranking]);
 
   // Nhãn "Top 1, Top 2…" theo thứ tự trong chính danh sách đang hiển thị (sau khi lọc khu vực, từ khóa)
   const rankOf = useMemo(() => {
     const ranks = new Map<number, number>();
-    if (sortBy !== "best" || !ranking) return ranks;
+    if (!suggesting || !ranking) return ranks;
     sortedVenues.filter((v) => ranking.has(v.id)).forEach((v, index) => ranks.set(v.id, index + 1));
     return ranks;
-  }, [sortedVenues, sortBy, ranking]);
+  }, [sortedVenues, suggesting, ranking]);
 
   const handleResetFilters = () => {
     setSelectedDistrict("all");
@@ -251,29 +245,11 @@ export default function HomePage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Thứ tự danh sách: gần nhất theo vị trí, hoặc phù hợp nhất theo mô-đun gợi ý cụm sân */}
-            <div className="flex items-center bg-white border border-zinc-200 rounded-xl p-1" role="group" aria-label="Sắp xếp cụm sân">
-              {SORT_OPTIONS.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  aria-pressed={sortBy === option.id}
-                  title={option.hint}
-                  onClick={() => setSortBy(option.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition cursor-pointer ${
-                    sortBy === option.id ? "bg-zinc-950 text-white" : "text-zinc-600 hover:text-zinc-950"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Có vị trí thì danh sách xếp từ gần đến xa */}
+            {/* Khách: có vị trí thì danh sách xếp từ gần đến xa. Người chơi: vị trí dùng cho gợi ý */}
             <button
               type="button"
               onClick={() => setIsLocationModalOpen(true)}
-              title="Vị trí dùng để tính khoảng cách và xếp cụm sân từ gần đến xa"
+              title={suggesting ? "Vị trí dùng để tính khoảng cách khi gợi ý cụm sân" : "Vị trí dùng để tính khoảng cách và xếp cụm sân từ gần đến xa"}
               className="max-w-full flex items-center gap-1.5 bg-white border border-zinc-200 hover:border-zinc-400 text-zinc-700 text-xs sm:text-sm rounded-xl px-3.5 py-2.5 cursor-pointer transition"
             >
               {userLocation ? (

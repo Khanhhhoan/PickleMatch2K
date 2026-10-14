@@ -73,7 +73,7 @@ python -m pytest tests/test_infrastructure.py          # kiểm tra schema khớ
 | `bookings` | 20 | Giữ chỗ tạm, tạo đơn, hủy, đơn tại quầy, check-in, thu tiền, dời lịch, hoàn tiền, thống kê |
 | `payments` | 5 | Thông tin chuyển khoản, webhook SePay, giả lập, sổ giao dịch |
 | `matches` | 11 | Phòng đấu: tạo trên đơn đã cọc, tham gia, rời, quản trị; mỗi phòng kèm độ phù hợp và cờ "mô hình đề xuất" cho người xem |
-| `recommendations` | 1 | Gợi ý cụm sân, thang 100: gần 40, giá 35, giờ còn trống 25 (trang chủ dùng cho lựa chọn "Phù hợp nhất") |
+| `recommendations` | 1 | Gợi ý cụm sân, thang 100: gần 40, giá 35, giờ còn trống 25 (trang chủ dùng để xếp danh sách cho người chơi đã đăng nhập) |
 | `ml` | 5 | Thông tin mô hình và ngưỡng đề xuất, dự đoán độ phù hợp, xếp hạng người chơi, khảo sát thu nhãn |
 
 WebSocket: `/api/v1/ws/live` (sự kiện công khai toàn hệ thống), `/api/v1/ws/venues/{venue_id}` (lịch của một cụm sân),

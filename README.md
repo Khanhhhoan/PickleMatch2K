@@ -21,7 +21,8 @@ Hai trọng tâm của hệ thống:
   những phòng có độ phù hợp cao (từ 70%).
 
 Gợi ý cụm sân chấm thang 100 điểm (`GET /api/v1/recommendations/venues`: gần 40, giá thuê 35, giờ còn trống 25) và
-được dùng cho lựa chọn "Phù hợp nhất" trên trang chủ; mặc định danh sách xếp từ gần đến xa.
+được dùng để xếp sẵn danh sách cụm sân trên trang chủ khi người chơi đã đăng nhập (kèm nhãn Top 1, Top 2…); khách
+chưa đăng nhập thấy danh sách xếp từ gần đến xa.
 
 Mô hình ghép trận dùng 5 đặc trưng của một cặp người chơi: chênh lệch trình độ, khoảng cách tới sân, cùng mục đích
 chơi, hợp phong cách và chênh lệch tuổi. Đặc trưng nằm ở `backend/app/ml/features.py`, quy tắc sinh phiếu mô phỏng và
