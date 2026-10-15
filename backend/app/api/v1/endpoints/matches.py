@@ -15,7 +15,7 @@ from app.schemas.match import (
     MatchResponse,
     MatchStatusUpdate,
 )
-from app.services import match_service, ml_service
+from app.services import match_service, ml_service, notification_service
 
 router = APIRouter()
 
@@ -140,8 +140,11 @@ def update_match_status_admin(
     db: Session = Depends(deps.get_db),
     _: User = Depends(admin_only),
 ):
-    match = match_service.get_match(db, match_id)
+    match = match_service.get_match(db, match_id, for_update=True)
+    was_active = match.status in match_service.ACTIVE_MATCH_STATUSES
     match.status = payload.status.value
+    if was_active and match.status == MatchStatus.CANCELLED.value:
+        notification_service.notify_match_cancelled(db, match, "quản trị viên đã hủy phòng")
     db.commit()
     db.refresh(match)
     return _admin_view(match)

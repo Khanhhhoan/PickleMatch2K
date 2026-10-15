@@ -10,6 +10,7 @@ from app.core.websocket_manager import dispatch, manager
 from app.models.booking import Booking, BookingSource, BookingStatus
 from app.models.match import Match, MatchParticipant, MatchStatus, ParticipantStatus
 from app.models.user import User
+from app.services import notification_service
 from app.schemas.match import MatchCreate, MatchResponse
 from app.utils.timeutils import now_vn, vn_datetime
 
@@ -103,6 +104,8 @@ def auto_update_expired_matches(db: Session) -> List[Dict[str, Any]]:
             continue
         is_full = match.status == MatchStatus.FULL.value or accepted_count(match) >= match.num_players
         match.status = MatchStatus.COMPLETED.value if is_full else MatchStatus.CANCELLED.value
+        if not is_full:
+            notification_service.notify_match_cancelled(db, match, "phòng chưa đủ người khi tới giờ chơi")
         updated.append(match)
     if updated:
         db.commit()
@@ -225,6 +228,13 @@ def get_match(db: Session, match_id: int, *, for_update: bool = False) -> Match:
     return match
 
 
+def _display_name(user: Optional[User]) -> str:
+    if user is None:
+        return "Một người chơi"
+    profile = user.player_profile
+    return (profile.full_name if profile and profile.full_name else None) or user.email.split("@")[0]
+
+
 def _ensure_open_and_upcoming(match: Match) -> None:
     if match.status != MatchStatus.OPEN.value:
         raise _error(400, "Phòng đấu không còn mở." if match.status != MatchStatus.FULL.value else "Phòng đấu đã đủ người.")
@@ -252,6 +262,8 @@ def join_match(db: Session, match_id: int, user_id: int) -> Match:
         raise _error(400, "Phòng đấu đã đủ người.")
 
     match.participants.append(MatchParticipant(user_id=user_id, status=ParticipantStatus.PENDING.value))
+    requester = db.get(User, user_id)
+    notification_service.notify_join_request(db, match, _display_name(requester), user_id)
     try:
         db.commit()
     except IntegrityError:
@@ -284,6 +296,7 @@ def decide_join_request(db: Session, match_id: int, host_id: int, user_id: int, 
             match.status = MatchStatus.FULL.value
     else:
         request.status = ParticipantStatus.REJECTED.value
+    notification_service.notify_join_decision(db, match, user_id, accept)
     db.commit()
     db.refresh(match)
     _notify(match, "MATCH_UPDATED", f"Phòng đấu #{match.id} vừa có thay đổi thành viên.")
@@ -305,6 +318,7 @@ def leave_match(db: Session, match_id: int, user_id: int) -> Match:
 
     if match.creator_id == user_id:
         match.status = MatchStatus.CANCELLED.value  # chủ phòng rời đi thì hủy phòng
+        notification_service.notify_match_cancelled(db, match, "chủ phòng đã hủy phòng", exclude_user_id=user_id)
     else:
         was_member = participant.status == ParticipantStatus.ACCEPTED.value
         match.participants.remove(participant)

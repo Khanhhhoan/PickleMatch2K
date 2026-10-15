@@ -5,3 +5,4 @@ from app.models.booking import Booking, BookingDetail
 from app.models.match import Match, MatchParticipant
 from app.models.payment import PaymentTransaction, ShiftClosing
 from app.models.ml import PairFeedback
+from app.models.notification import Notification

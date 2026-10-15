@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/components/Toast";
 
 import Logo from "@/components/Logo";
+import NotificationBell from "@/components/NotificationBell";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -124,7 +125,8 @@ export default function Navbar() {
             {isLoading ? (
               <div className="w-9 h-9 rounded-full bg-zinc-200 animate-pulse ml-2" />
             ) : user ? (
-              <div className="relative ml-2">
+              <div className="relative ml-2 flex items-center gap-1.5">
+                <NotificationBell />
                 <button
                   onClick={() => setMenuOpen(!menuOpen)}
                   className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-zinc-100 border border-zinc-200 transition-all cursor-pointer"
@@ -222,6 +224,7 @@ export default function Navbar() {
 
           {/* Mobile Right Actions & Hamburger Button */}
           <div className="flex items-center md:hidden gap-2">
+            {user && <NotificationBell />}
             {user ? (
               <Link href="/profile" className="flex items-center p-1.5 rounded-full hover:bg-zinc-100">
                 <div className="w-8 h-8 rounded-full bg-zinc-950 flex items-center justify-center text-white font-bold text-xs">

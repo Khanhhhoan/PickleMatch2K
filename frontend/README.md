@@ -43,11 +43,12 @@ Tài khoản quản trị đăng nhập ở đây được chuyển sang cổng 
 
 ```text
 src/
-├── app/                    Các trang (App Router)
+├── app/                    Các trang (App Router); onboarding/ là bước thiết lập hồ sơ ghép trận sau khi đăng ký
 ├── components/
 │   ├── BookingDesk.tsx     Quầy đặt sân dùng chung cho chủ sân và nhân viên: lưới lịch, tạo đơn tại quầy,
 │   │                       tra mã / quét QR, check-in, thu tiền, dời lịch, hủy, xác nhận hoàn tiền
-│   ├── ShiftClosingDialog.tsx   Kết ca trong ngày: nhập tiền vốn và tiền mặt đếm được, đối chiếu với sổ giao dịch
+│   ├── ShiftClosingDialog.tsx   Kết ca: nhập tiền vốn và tiền mặt đếm được, đối chiếu với sổ giao dịch
+│   ├── NotificationBell.tsx     Chuông thông báo (phòng bị hủy, xin vào phòng / được duyệt), cập nhật qua kênh WebSocket riêng
 │   ├── ManagementUi.tsx    Khung hộp thoại và kiểu ô nhập dùng chung của các cổng quản lý
 │   ├── SepayCheckoutModal.tsx   Thanh toán cọc VietQR, theo dõi trạng thái từ máy chủ
 │   └── …                   Navbar, Footer, Toast, LocationPickerModal, VenueImageHoverSlider…

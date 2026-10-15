@@ -40,6 +40,7 @@ const puppeteer = loadPuppeteer();
 const WEB = process.env.E2E_WEB_URL || "http://localhost:3000";
 const ADMIN = process.env.E2E_ADMIN_URL || "http://localhost:3001";
 const PASSWORD = process.env.E2E_PASSWORD || "123456";
+const API = process.env.E2E_API_URL || "http://localhost:8000/api/v1";
 const SHOTS = path.join(__dirname, "../test-results/screenshots");
 const TIMEOUT = 15000;
 // Ảnh PNG 1x1 dùng làm chứng từ chuyển hoàn trong bước của nhân viên
@@ -206,6 +207,48 @@ async function main() {
   });
   await guest.context.close();
 
+  // ------------------------------------------------------------------ Người chơi mới
+  console.log("\nNgười chơi mới: đăng ký rồi thiết lập hồ sơ ghép trận");
+  const newcomer = await newSession("newcomer");
+  await step(newcomer, "đăng ký xong được dẫn tới thiết lập hồ sơ; bỏ qua được từng bước, xong thì sang Ghép Trận", async (page) => {
+    const email = `e2e.moi.${Date.now()}@example.com`;
+    await page.goto(`${WEB}/register`, { waitUntil: "networkidle2" });
+    await page.type('input[type="text"]', "Người Chơi Mới");
+    await page.type('input[type="email"]', email);
+    const passwords = await page.$$('input[type="password"]');
+    await passwords[0].type(PASSWORD);
+    await passwords[1].type(PASSWORD);
+    await page.click('button[type="submit"]');
+    await page.waitForFunction(() => location.pathname === "/login" && location.search.includes("onboarding"), { timeout: TIMEOUT });
+    await page.type('input[type="email"]', email);
+    await page.type('input[type="password"]', PASSWORD);
+    await page.click('button[type="submit"]');
+    await page.waitForFunction(() => location.pathname === "/onboarding", { timeout: TIMEOUT });
+    await waitForText(page, "Bước 1/4");
+    await clickText(page, "button", "3.0 - Đánh ổn định", { exact: true });
+    await clickText(page, "button", "Tiếp tục", { exact: true });
+    await waitForText(page, "Bước 2/4");
+    await clickText(page, "button", "Để sau", { exact: true });
+    await waitForText(page, "Bước 3/4");
+    await clickText(page, "button", "Để sau", { exact: true });
+    await waitForText(page, "Bước 4/4");
+    await clickText(page, "button", "Toàn diện (All-Round)", { exact: true });
+    await clickText(page, "button", "Giao lưu vui vẻ", { exact: true });
+    await clickText(page, "button", "Hoàn tất", { exact: true });
+    await page.waitForFunction(() => location.pathname === "/matches", { timeout: TIMEOUT });
+    await waitForText(page, "Ghép Trận");
+    // hồ sơ đã lưu đúng những gì vừa chọn; bước bỏ qua để trống, trang vẫn chạy và nhắc bổ sung
+    const profile = await page.evaluate(async (api) => {
+      const response = await fetch(`${api}/users/me`, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
+      return (await response.json()).player_profile;
+    }, API);
+    if (Number(profile.skill_level) !== 3 || profile.play_style !== "All-Round" || profile.purpose !== "recreational") {
+      throw new Error(`Hồ sơ chưa lưu đúng sau khi thiết lập: ${JSON.stringify(profile)}`);
+    }
+    if (profile.date_of_birth) throw new Error("Bước ngày sinh đã bỏ qua nhưng hồ sơ vẫn có ngày sinh");
+  });
+  await newcomer.context.close();
+
   // ------------------------------------------------------------------ Người chơi 1
   console.log("\nNgười chơi 1: đặt sân, thanh toán cọc, mở phòng đấu");
   const p1 = await newSession("player01");
@@ -349,6 +392,12 @@ async function main() {
     });
     await step(p1, "chủ phòng thấy yêu cầu và chấp nhận", async (page) => {
       await page.goto(`${WEB}/matches?tab=my_matches`, { waitUntil: "networkidle2" });
+      // chuông báo có người xin vào phòng
+      await page.waitForSelector('button[aria-label^="Thông báo, "]', { timeout: TIMEOUT });
+      await page.click('button[aria-label^="Thông báo, "]');
+      await waitForText(page, "Có người xin vào phòng của bạn");
+      await page.keyboard.press("Escape");
+      await page.goto(`${WEB}/matches?tab=my_matches`, { waitUntil: "networkidle2" });
       await waitForText(page, "1 yêu cầu chờ duyệt");
       await clickText(page, "button", "Chi tiết", { exact: true });
       await waitForText(page, "Yêu cầu tham gia");
@@ -420,6 +469,18 @@ async function main() {
         if (await hasText(page, closed)) throw new Error(`Mục Phòng Của Tôi vẫn hiện phòng "${closed}"`);
       }
     });
+  }
+
+  if (bookingCode) {
+    const p2later = await newSession("player02-later");
+    await step(p2later, "thành viên vào lại thì thấy thông báo phòng đấu đã bị hủy kèm lý do", async (page) => {
+      await login(p2later, WEB, "player02@gmail.com");
+      await page.waitForSelector('button[aria-label^="Thông báo"]', { timeout: TIMEOUT });
+      await page.click('button[aria-label^="Thông báo"]');
+      await waitForText(page, "Phòng đấu đã bị hủy");
+      await waitForText(page, "chủ phòng đã hủy lịch đặt sân");
+    });
+    await p2later.context.close();
   }
 
   await step(p1, "hồ sơ chỉ còn các trường phục vụ ghép cặp và lưu được", async (page) => {

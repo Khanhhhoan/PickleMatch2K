@@ -31,7 +31,7 @@ from app.models.match import Match, MatchStatus
 from app.models.payment import PaymentKind, PaymentMethod
 from app.models.user import User
 from app.models.venue import Court, VenueStatus
-from app.services import ledger
+from app.services import ledger, notification_service
 from app.services.availability_service import active_booking_filter, calculate_slot_price, is_valid_slot
 from app.services.code_generator import generate_next_booking_code
 from app.services.slot_lock_service import slot_lock_manager
@@ -111,14 +111,16 @@ def _set_slots_active(booking: Booking, active: bool) -> None:
         detail.is_active = active
 
 
-def _cancel_linked_matches(db: Session, booking: Booking) -> None:
-    """Đơn không còn hiệu lực thì phòng đấu gắn với đơn cũng bị hủy."""
+def _cancel_linked_matches(db: Session, booking: Booking, reason: str = "lịch đặt sân của phòng không còn hiệu lực",
+                           exclude_user_id: Optional[int] = None) -> None:
+    """Đơn không còn hiệu lực thì phòng đấu gắn với đơn cũng bị hủy; chủ phòng và thành viên nhận thông báo."""
     matches = db.query(Match).filter(
         Match.booking_id == booking.id,
         Match.status.in_([MatchStatus.OPEN.value, MatchStatus.FULL.value]),
     ).all()
     for match in matches:
         match.status = MatchStatus.CANCELLED.value
+        notification_service.notify_match_cancelled(db, match, reason, exclude_user_id=exclude_user_id)
         dispatch(manager.broadcast_global({
             "type": "MATCH_UPDATED",
             "match_id": match.id,
@@ -195,7 +197,7 @@ def _expire(db: Session, booking: Booking) -> None:
         booking.refund_status = RefundStatus.PENDING.value
         booking.refund_amount = booking.paid_amount
         booking.refund_reason = "Đơn hết hạn khi chưa chuyển đủ tiền cọc"
-    _cancel_linked_matches(db, booking)
+    _cancel_linked_matches(db, booking, "lịch đặt sân của phòng chưa được thanh toán cọc đúng hạn")
 
 
 def expire_stale_pending(db: Session, *, user_id: Optional[int] = None) -> List[int]:
@@ -551,7 +553,12 @@ def _mark_cancelled(db: Session, booking: Booking, actor: Optional[User], reason
     booking.cancelled_by_id = actor.id if actor else None
     booking.cancel_reason = (reason or "").strip() or None
     _set_slots_active(booking, False)
-    _cancel_linked_matches(db, booking)
+    if actor is not None and actor.id == booking.user_id:
+        _cancel_linked_matches(db, booking, "chủ phòng đã hủy lịch đặt sân", exclude_user_id=actor.id)
+    elif actor is not None:
+        _cancel_linked_matches(db, booking, "cụm sân đã hủy lịch đặt sân của phòng")
+    else:
+        _cancel_linked_matches(db, booking, "lịch đặt sân của phòng đã bị hủy")
 
 
 def cancel_by_player(db: Session, booking_id: int, user: User, refund_info=None) -> Booking:
@@ -714,7 +721,7 @@ def finalize_past_bookings(db: Session) -> List[int]:
             booking.status = S.COMPLETED.value
         else:
             booking.status = S.NO_SHOW.value
-            _cancel_linked_matches(db, booking)
+            _cancel_linked_matches(db, booking, "chủ phòng không đến nhận sân")
         changed.append(booking)
     if changed:
         db.commit()

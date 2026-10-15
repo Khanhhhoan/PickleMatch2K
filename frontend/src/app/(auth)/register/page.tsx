@@ -33,8 +33,8 @@ export default function RegisterPage() {
 
     try {
       await register(email, password, fullName.trim(), phone.trim() || undefined);
-      toastSuccess("Đăng ký tài khoản người chơi thành công! Vui lòng đăng nhập.");
-      router.push("/login");
+      toastSuccess("Đăng ký thành công! Đăng nhập để thiết lập hồ sơ ghép trận.");
+      router.push("/login?next=/onboarding");
     } catch (err: any) {
       setError(err.message || "Đăng ký thất bại");
     } finally {

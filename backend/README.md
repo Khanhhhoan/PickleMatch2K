@@ -19,7 +19,7 @@ backend/
 │   │                       user, search, match, venue_recommendation, ml, maintenance (tác vụ nền), storage
 │   ├── ml/                 features (đặc trưng dùng chung), train_model, mô hình .pkl và model_meta.json
 │   └── utils/              timeutils (giờ Việt Nam, đồng hồ nghiệp vụ), geo (Haversine)
-├── alembic/versions/       0001 schema gốc → 0002 chỉnh lệch CSDL cũ → 0003 lõi đặt sân → 0004 nhãn khảo sát → 0005 bỏ giờ rảnh → 0006 bỏ tiện ích ưa thích, ngân sách → 0007 thêm chênh lệch tuổi → 0008 sổ kết ca → 0009 đối soát hoàn tiền, hạn tự hủy đơn tại quầy chưa thu
+├── alembic/versions/       0001 schema gốc → 0002 chỉnh lệch CSDL cũ → 0003 lõi đặt sân → 0004 nhãn khảo sát → 0005 bỏ giờ rảnh → 0006 bỏ tiện ích ưa thích, ngân sách → 0007 thêm chênh lệch tuổi → 0008 sổ kết ca → 0009 đối soát hoàn tiền, hạn tự hủy đơn tại quầy chưa thu → 0010 ca kết ca gắn giao dịch → 0011 tiền BIGINT → 0012 thông báo
 ├── scripts/                Script quản trị (seed, reset, import_excel, backup_db, show_db)
 ├── tests/                  Bộ kiểm thử pytest
 ├── manage.py               Bộ lệnh quản trị
@@ -62,7 +62,7 @@ python -m pytest tests/test_infrastructure.py          # kiểm tra schema khớ
 
 ## Nhóm API
 
-92 thao tác dưới tiền tố `/api/v1`; mô tả chi tiết từng tham số ở `http://localhost:8000/docs`.
+95 thao tác dưới tiền tố `/api/v1`; mô tả chi tiết từng tham số ở `http://localhost:8000/docs`.
 
 | Nhóm | Số thao tác | Nội dung |
 | :--- | :---: | :--- |
@@ -71,7 +71,8 @@ python -m pytest tests/test_infrastructure.py          # kiểm tra schema khớ
 | `venues` | 25 | Cụm sân, sân con, bảng giá, giờ mở cửa, ảnh, đánh giá, duyệt cụm sân, đơn sắp tới (chặn bảo trì khi còn khách) |
 | `search` | 2 | Tìm cụm sân, lịch trống theo ngày |
 | `bookings` | 22 | Giữ chỗ tạm, tạo đơn, hủy, đơn tại quầy, check-in, thu tiền, dời lịch, hoàn tiền (mã giao dịch + chứng từ), thống kê |
-| `payments` | 7 | Thông tin chuyển khoản, webhook SePay, giả lập, sổ giao dịch, kết ca tại quầy |
+| `payments` | 7 | Thông tin chuyển khoản, webhook SePay, giả lập, sổ giao dịch, kết ca tại quầy (ca tính theo lần kết ca, không theo ngày lịch) |
+| `notifications` | 3 | Thông báo trong ứng dụng của người đang đăng nhập: danh sách kèm số chưa đọc, đánh dấu đã đọc |
 | `matches` | 13 | Phòng đấu: tạo trên đơn đã cọc, xin tham gia, chủ phòng duyệt / từ chối, rời, quản trị; mỗi phòng kèm độ phù hợp và cờ "mô hình đề xuất" cho người xem |
 | `recommendations` | 1 | Gợi ý cụm sân, thang 100: gần 40, giá 35, giờ còn trống 25 (trang chủ dùng để xếp danh sách cho người chơi đã đăng nhập) |
 | `ml` | 5 | Thông tin mô hình và ngưỡng đề xuất, dự đoán độ phù hợp, xếp hạng người chơi, khảo sát thu nhãn |

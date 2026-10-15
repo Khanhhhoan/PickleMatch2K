@@ -54,7 +54,7 @@ KLTN/
 ├── .github/workflows/      Kiểm tra tự động (CI)
 ├── backend/                API FastAPI
 │   ├── app/                api, core, db, ml, models, schemas, services, utils
-│   ├── alembic/            Các phiên bản schema (0001 → 0009)
+│   ├── alembic/            Các phiên bản schema (0001 → 0012)
 │   ├── scripts/            Script quản trị CSDL (xem backend/scripts/README.md)
 │   ├── tests/              Bộ kiểm thử pytest (xem backend/tests/README.md)
 │   └── manage.py           Bộ lệnh quản trị
@@ -195,7 +195,7 @@ python -m pytest                                  # từ thư mục gốc, kho�
 python -m pytest backend/tests/test_payments.py -q
 ```
 
-**Kiểm thử đầu-cuối qua trình duyệt** - 25 bước cho cả bốn vai trò. Script tạo và hủy đơn nên chỉ chạy trên
+**Kiểm thử đầu-cuối qua trình duyệt** - 27 bước cho cả bốn vai trò. Script tạo và hủy đơn nên chỉ chạy trên
 CSDL demo, với `SEPAY_SIMULATOR_ENABLED=true` và hai ứng dụng web đã build (`npm run build && npm start`):
 
 ```powershell
@@ -239,6 +239,12 @@ Sau khi nâng cấp:
   `backend/private_uploads/`), đơn tại quầy chưa thu tiền tự hủy trước giờ chơi (mặc định 30 phút, chủ sân chỉnh trong
   "Giờ hoạt động"). Bước nâng cấp chỉ thêm cột; đơn tạo trước đó không bị tự hủy. Quay lại bản trước:
   `alembic downgrade 0008` (bỏ các cột mới) hoặc khôi phục bản sao lưu mà `manage.py migrate` tạo trước khi nâng cấp.
+- Từ revision 0010, một ca kết ca không còn gắn với ngày lịch: mỗi giao dịch được gắn vào đúng lần kết ca đã tính nó
+  (ca 20:00 - 00:15 hôm sau là một ca, khoản ghi sổ muộn thuộc lần kết ca sau). Các lần kết ca cũ được gắn đúng
+  những giao dịch chúng đã cộng; số tiền đã lưu không đổi.
+- Từ revision 0011, 13 cột tiền lưu bằng số nguyên `BIGINT` thay cho số thực. Migration kiểm tra trước và dừng hẳn
+  nếu có số tiền lẻ hoặc bất thường (không làm tròn ngầm); tổng từng cột giữ nguyên. Quay lại: `alembic downgrade 0010`.
+- Từ revision 0012 có bảng `notifications` (thông báo trong ứng dụng, ví dụ phòng đấu bị hủy). Chỉ thêm bảng mới.
 - Phiếu ghép cặp mô phỏng nạp từ bản cũ được sinh với nhiễu 0,08, khiến độ phù hợp của phòng thường hiện 100%. Mô hình
   đi kèm mã nguồn đã được huấn luyện lại với nhiễu 0,15; để bảng `pair_feedback` khớp với mô hình, sinh lại các phiếu
   mô phỏng bằng `python manage.py seed --feedback --regenerate` (câu trả lời khảo sát thật được giữ nguyên).
@@ -249,7 +255,7 @@ Sau khi nâng cấp:
   nhiều tiến trình: mỗi lượt giữ một khóa tư vấn của PostgreSQL nên chỉ một tiến trình chạy, và mỗi dòng được khóa
   SKIP LOCKED nên không xử lý trùng. Kênh WebSocket thì vẫn theo từng tiến trình: chạy nhiều tiến trình cần đặt
   `REDIS_URL` để giữ chỗ tạm và giới hạn đăng nhập dùng chung (không có Redis thì chúng chỉ nằm trong bộ nhớ tiến trình).
-- Số tiền lưu bằng kiểu số thực (`FLOAT`); mọi giá trị trong hệ thống là số nguyên VNĐ.
+- Thông báo chỉ có trong ứng dụng (chuông); chưa gửi email vì hệ thống chưa cấu hình dịch vụ gửi thư.
 - Quét QR bằng camera cần trình duyệt hỗ trợ `BarcodeDetector` và trang chạy trên HTTPS hoặc `localhost`;
   các trường hợp khác nhân viên nhập mã đơn bằng tay.
 - Mô hình ghép cặp được huấn luyện trên **10.000 phiếu ghép cặp mô phỏng** lưu trong bảng `pair_feedback`

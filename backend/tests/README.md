@@ -43,7 +43,9 @@ def test_vi_du(client, world, clock):
 | `test_booking_cancellation.py` | Mức hoàn tiền theo thời điểm hủy, xác nhận hoàn tiền (mã giao dịch bắt buộc, một mã một đơn, chứng từ lưu riêng và phân quyền xem) |
 | `test_desk_booking.py` | Đơn tại quầy, khách vãng lai, tự hủy đơn chưa thu trước giờ chơi, dời lịch, thống kê từ sổ giao dịch (tổng và theo từng cụm sân) |
 | `test_payments.py` | Thông tin chuyển khoản, webhook SePay (xác thực, khớp đơn, ghi trùng, tiền đến muộn), giả lập |
-| `test_shift_closing.py` | Kết ca tại quầy: đối chiếu tiền mặt với sổ giao dịch, nhiều lần kết ca trong ngày, phạm vi cụm sân |
+| `test_shift_closing.py` | Kết ca tại quầy: đối chiếu tiền mặt với sổ giao dịch, nhiều lần kết ca, ca qua nửa đêm, khoản ghi sổ muộn, phạm vi cụm sân |
+| `test_money.py` | Tiền là số nguyên đồng: cột BIGINT, làm tròn, chia tiền theo khung giờ, API trả và nhận số nguyên |
+| `test_notifications.py` | Thông báo phòng đấu bị hủy (mọi nguyên nhân), xin vào phòng / được duyệt, không trùng, chỉ chủ nhân xem được |
 | `test_concurrency.py` | Nhiều luồng thật tranh một khung giờ / một giao dịch / chỗ cuối của phòng đấu / cùng kết một ca |
 | `test_slot_holds.py` | Giữ chỗ tạm trên bộ nhớ và Redis (client giả), Redis lỗi |
 | `test_matches.py` | Phòng đấu gắn với đơn đặt, xin tham gia / chủ phòng duyệt / rời, tự cập nhật, che số điện thoại |

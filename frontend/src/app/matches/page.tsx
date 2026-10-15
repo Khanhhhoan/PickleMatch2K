@@ -423,7 +423,7 @@ function MatchesContent() {
               nhận gợi ý phòng sát với bạn hơn.
             </p>
             <Link
-              href="/profile"
+              href="/onboarding"
               className="px-3.5 py-1.5 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white text-xs font-bold shrink-0"
             >
               Cập nhật hồ sơ
