@@ -24,6 +24,7 @@ from app.schemas.venue import (
     PriceRuleResponse,
     ReviewCreate,
     ReviewResponse,
+    UpcomingBookingResponse,
     VenueCreate,
     VenueManageResponse,
     VenuePricingUpdate,
@@ -286,6 +287,8 @@ def update_venue(
         venue.google_maps_url = f"https://www.google.com/maps/search/?api=1&query={venue.latitude},{venue.longitude}"
     if changes.get("amenity_ids") is not None:
         venue.amenities = db.query(Amenity).filter(Amenity.id.in_(changes["amenity_ids"])).all()
+    if changes.get("unpaid_desk_release_minutes") is not None:
+        venue.unpaid_desk_release_minutes = changes["unpaid_desk_release_minutes"]
 
     if "bank_account" in changes or "company_name" in changes:
         profile = venue.owner.owner_profile if venue.owner else None
@@ -323,6 +326,8 @@ def update_venue_status(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Cụm sân đang chờ duyệt hoặc đã bị từ chối: chỉ Admin mới thay đổi được trạng thái này.",
             )
+    if venue.status == VenueStatus.ACTIVE.value and payload.status != VenueStatus.ACTIVE:
+        venue_service.ensure_venue_can_pause(db, venue)
     venue.status = payload.status.value
     db.commit()
     db.refresh(venue)
@@ -397,6 +402,21 @@ def create_court(
 ):
     venue = require_venue_owner(db, current_user, venue_id)
     return venue_service.create_court(db, venue, court_in)
+
+
+@router.get("/{venue_id}/upcoming-bookings", response_model=List[UpcomingBookingResponse])
+def read_upcoming_bookings(
+    venue_id: int,
+    court_id: Optional[int] = Query(None, description="Chỉ lấy đơn của một sân"),
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(owner_or_admin),
+):
+    """
+    Đơn còn hiệu lực sắp diễn ra của cụm sân (hoặc một sân). Chủ sân phải dời hoặc hủy và hoàn tiền các đơn này
+    trước khi chuyển sân / cụm sân sang bảo trì.
+    """
+    venue = require_venue_owner(db, current_user, venue_id)
+    return venue_service.upcoming_bookings(db, venue, court_id)
 
 
 @router.put("/{venue_id}/courts/{court_id}", response_model=CourtResponse)

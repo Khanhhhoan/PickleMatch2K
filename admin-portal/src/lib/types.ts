@@ -80,6 +80,8 @@ export interface Transaction {
 export interface MatchParticipant {
   id: number;
   user_id: number;
+  /** ACCEPTED = thành viên; PENDING = đã xin vào, chờ chủ phòng duyệt; REJECTED = bị chủ phòng từ chối. */
+  status?: "PENDING" | "ACCEPTED" | "REJECTED" | "INVITED";
   user_name?: string | null;
   skill_level?: number | null;
   phone?: string | null;
@@ -103,6 +105,8 @@ export interface Match {
   court_name?: string | null;
   creator_name?: string | null;
   participants: MatchParticipant[];
+  /** Số thành viên đã được duyệt (gồm chủ phòng). */
+  accepted_count?: number;
 }
 
 export interface DailyActivity {

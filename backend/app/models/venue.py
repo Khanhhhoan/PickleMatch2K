@@ -1,6 +1,6 @@
 import enum
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Table, Time, UniqueConstraint
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Table, Time, UniqueConstraint, text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -55,6 +55,8 @@ class Venue(Base):
     image_url = Column(String, nullable=True)
     images = Column(String, nullable=True)  # JSON-encoded array of image URLs
     status = Column(String, default=VenueStatus.ACTIVE.value)
+    # Đơn tại quầy chưa thu đồng nào tự hủy khi còn bấy nhiêu phút nữa tới giờ chơi; 0 = không tự hủy
+    unpaid_desk_release_minutes = Column(Integer, nullable=False, default=30, server_default=text("30"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

@@ -16,7 +16,24 @@ def open_match(client, user, booking, expect=200, **extra):
 
 
 def join(client, user, match):
+    """Xin tham gia: tạo yêu cầu chờ chủ phòng duyệt."""
     return client.post(f"{MATCHES}/{match['id']}/join", headers=auth(user))
+
+
+def accept(client, host, user, match):
+    return client.post(f"{MATCHES}/{match['id']}/requests/{user.id}/accept", headers=auth(host))
+
+
+def reject(client, host, user, match):
+    return client.post(f"{MATCHES}/{match['id']}/requests/{user.id}/reject", headers=auth(host))
+
+
+def enter(client, host, user, match):
+    """Xin vào phòng rồi được chủ phòng duyệt; trả về phản hồi của lần duyệt."""
+    requested = join(client, user, match)
+    if requested.status_code != 200:
+        return requested
+    return accept(client, host, user, match)
 
 
 def leave(client, user, match):
@@ -77,19 +94,57 @@ def test_join_until_full_then_leave_reopens(client, db, world, clock):
     booking = confirmed_booking(client, world.p1, world.court, clock.day(1), hours=(18,))
     match = open_match(client, world.p1, booking, num_players=3)
 
-    assert join(client, world.p1, match).status_code == 400                 # đã ở trong phòng
-    assert join(client, world.p2, match).json()["status"] == "OPEN"
-    assert join(client, world.p2, match).status_code == 400
-    full = join(client, world.p3, match).json()
-    assert full["status"] == "FULL" and len(full["participants"]) == 3
+    assert join(client, world.p1, match).status_code == 400                 # chủ phòng đã ở trong phòng
+    requested = join(client, world.p2, match).json()
+    assert (requested["status"], requested["my_status"], requested["accepted_count"]) == ("OPEN", "PENDING", 1)
+    assert join(client, world.p2, match).status_code == 400                 # đã gửi yêu cầu, đang chờ duyệt
+    assert accept(client, world.p1, world.p2, match).json()["accepted_count"] == 2
+    full = enter(client, world.p1, world.p3, match).json()
+    assert full["status"] == "FULL" and full["accepted_count"] == 3 and len(full["participants"]) == 3
 
     outsider = make_user(db, skill_level=3.5)
     assert join(client, outsider, match).status_code == 400                 # phòng đã đủ người
     assert leave(client, outsider, match).status_code == 400
 
     reopened = leave(client, world.p3, match).json()
-    assert reopened["status"] == "OPEN" and len(reopened["participants"]) == 2
-    assert join(client, outsider, match).json()["status"] == "FULL"
+    assert reopened["status"] == "OPEN" and reopened["accepted_count"] == 2
+    assert enter(client, world.p1, outsider, match).json()["status"] == "FULL"
+
+
+def test_join_requests_wait_for_the_host(client, db, world, clock):
+    booking = confirmed_booking(client, world.p1, world.court, clock.day(1), hours=(18,))
+    match = open_match(client, world.p1, booking, num_players=2)
+
+    first = join(client, world.p2, match).json()
+    assert (first["status"], first["my_status"], first["accepted_count"], first["pending_count"]) == ("OPEN", "PENDING", 1, 0)
+    assert join(client, world.p3, match).json()["my_status"] == "PENDING"   # yêu cầu chưa chiếm chỗ
+
+    # Chỉ chủ phòng duyệt; chủ phòng thấy hai yêu cầu, người khác không thấy yêu cầu của nhau
+    assert accept(client, world.p3, world.p2, match).status_code == 403
+    assert accept(client, world.p1, make_user(db), match).status_code == 404
+    [host_view] = client.get(MATCHES, headers=auth(world.p1)).json()
+    assert host_view["pending_count"] == 2
+    assert sorted(p["status"] for p in host_view["participants"]) == ["ACCEPTED", "PENDING", "PENDING"]
+    [p3_view] = client.get(MATCHES, headers=auth(world.p3)).json()
+    assert p3_view["pending_count"] == 0 and p3_view["my_status"] == "PENDING"
+    assert sorted(p["user_id"] for p in p3_view["participants"]) == sorted([world.p1.id, world.p3.id])
+
+    assert accept(client, world.p1, world.p2, match).json()["status"] == "FULL"
+    assert accept(client, world.p1, world.p3, match).status_code == 400     # đã đủ người
+    assert reject(client, world.p1, world.p3, match).json()["pending_count"] == 0
+    refused = join(client, world.p3, match)
+    assert refused.status_code == 400 and "từ chối" in refused.json()["detail"]
+    assert leave(client, world.p3, match).status_code == 400                # bị từ chối thì không có gì để rời
+    assert reject(client, world.p1, world.p3, match).status_code == 404
+
+
+def test_a_pending_request_can_be_withdrawn(client, db, world, clock):
+    booking = confirmed_booking(client, world.p1, world.court, clock.day(1), hours=(18,))
+    match = open_match(client, world.p1, booking)
+    assert join(client, world.p2, match).json()["my_status"] == "PENDING"
+    withdrawn = leave(client, world.p2, match).json()
+    assert (withdrawn["my_status"], withdrawn["status"]) == (None, "OPEN")
+    assert join(client, world.p2, match).json()["my_status"] == "PENDING"   # rút rồi thì gửi lại được
 
 
 def test_a_player_cannot_be_in_two_rooms_at_the_same_time(client, world, clock):
@@ -98,15 +153,22 @@ def test_a_player_cannot_be_in_two_rooms_at_the_same_time(client, world, clock):
     overlapping = open_match(client, world.p2, confirmed_booking(client, world.p2, second_court, day, hours=(19, 20)))  # 19-21
     later = open_match(client, world.p2, confirmed_booking(client, world.p2, second_court, day, hours=(21,)))          # 21-22
 
+    # Đang chờ duyệt ở hai phòng trùng giờ thì được; chủ phòng thứ hai không duyệt được khi người đó đã vào phòng đầu
     assert join(client, world.p3, evening).status_code == 200
+    assert join(client, world.p3, overlapping).status_code == 200
+    assert accept(client, world.p1, world.p3, evening).status_code == 200
+    clash = accept(client, world.p2, world.p3, overlapping)
+    assert clash.status_code == 400 and "trùng giờ" in clash.json()["detail"]
+    assert leave(client, world.p3, overlapping).status_code == 200          # rút yêu cầu còn treo
+
     clash = join(client, world.p3, overlapping)
     assert clash.status_code == 400 and "trùng giờ" in clash.json()["detail"]
     assert join(client, world.p1, overlapping).status_code == 400            # chủ phòng cũng không vào phòng khác trùng giờ
-    assert join(client, world.p3, later).status_code == 200                  # phòng liền sau, không trùng giờ
+    assert enter(client, world.p2, world.p3, later).status_code == 200       # phòng liền sau, không trùng giờ
 
     # Rời phòng (hoặc phòng bị hủy) thì khung giờ đó hết vướng
     assert leave(client, world.p3, evening).status_code == 200
-    assert join(client, world.p3, overlapping).status_code == 200
+    assert enter(client, world.p2, world.p3, overlapping).status_code == 200
 
     # Cũng không mở được phòng của riêng mình trùng giờ với phòng đang tham gia
     own = confirmed_booking(client, world.p3, world.court, day, hours=(20,))  # 20-21, trùng phòng 19-21
@@ -172,7 +234,8 @@ def test_finished_matches_are_completed_when_full_and_cancelled_otherwise(client
     full = open_match(client, world.p1, confirmed_booking(client, world.p1, world.court, day, hours=(9,)), num_players=2)
     short = open_match(client, world.p2, confirmed_booking(client, world.p2, world.venue_a.courts[1], day, hours=(9,)))
     later = open_match(client, world.p3, confirmed_booking(client, world.p3, world.court, day, hours=(20,)))
-    join(client, world.p3, full)
+    enter(client, world.p1, world.p3, full)
+    join(client, world.p1, short)   # yêu cầu chưa được duyệt không làm phòng "đủ người"
 
     clock.set(day, 9, 30)
     assert match_service.auto_update_expired_matches(db) == []          # trận đang diễn ra
@@ -185,30 +248,46 @@ def test_finished_matches_are_completed_when_full_and_cancelled_otherwise(client
 # ---------------------------------------------------------------------------
 # Danh sách và quyền riêng tư
 # ---------------------------------------------------------------------------
-def test_public_list_shows_active_matches_without_personal_contact_details(client, world, clock):
+def test_public_list_shows_active_matches_without_personal_contact_details(client, db, world, clock):
     booking = confirmed_booking(client, world.p1, world.court, clock.day(1), hours=(18,))
     match = open_match(client, world.p1, booking)
-    join(client, world.p2, match)
+    enter(client, world.p1, world.p2, match)
 
     public = client.get(MATCHES).json()
     assert [m["id"] for m in public] == [match["id"]]
     dump = json.dumps(public)
     assert "@" not in dump                                      # không lộ email ở bất kỳ trường nào
-    assert all(p["phone"] is None for m in public for p in m["participants"])
+    assert "090000001" not in dump and "090000002" not in dump  # không lộ số điện thoại đầy đủ
+    assert sorted(p["phone"] for m in public for p in m["participants"]) == ["0900***001", "0900***002"]
     assert all(m["compatibility"] is None for m in public)
 
     def phones(user):
         listed = client.get(MATCHES, headers=auth(user)).json()
-        return [p["phone"] for m in listed for p in m["participants"]]
+        return sorted(p["phone"] for m in listed for p in m["participants"])
 
-    assert phones(world.p3) == [None, None]                      # người ngoài phòng không thấy số điện thoại
-    assert sorted(phones(world.p2)) == ["090000001", "090000002"]  # thành viên thấy số của nhau để liên lạc
+    assert phones(world.p3) == ["0900***001", "0900***002"]      # người ngoài phòng chỉ thấy số đã che
+    assert phones(world.p2) == ["090000001", "090000002"]        # thành viên đã được duyệt thấy số của nhau
+    assert phones(world.p1) == ["090000001", "090000002"]
+
+    # Xin vào rồi rời ngay không lấy được số: lúc chờ duyệt chỉ thấy số đã che, rời rồi cũng vậy
+    harvester = make_user(db, phone="0911222333")
+    assert join(client, harvester, match).status_code == 200
+    assert phones(harvester) == ["0900***001", "0900***002", "0911222333"]   # số của chính mình thì vẫn thấy đủ
+    assert phones(world.p2) == ["090000001", "090000002"]        # thành viên không thấy người đang chờ duyệt
+    host = phones(world.p1)
+    assert "0911***333" in host and "0911222333" not in host     # chủ phòng thấy người chờ duyệt, số đã che
+    leave(client, harvester, match)
+    assert phones(harvester) == ["0900***001", "0900***002"]
+
+    # Thành viên đã rời phòng cũng chỉ còn thấy số đã che
+    leave(client, world.p2, match)
+    assert phones(world.p2) == ["0900***001"]
 
 
 def test_my_closed_matches_stay_visible_to_me_only(client, world, clock):
     booking = confirmed_booking(client, world.p1, world.court, clock.day(1), hours=(18,))
     match = open_match(client, world.p1, booking)
-    join(client, world.p2, match)
+    enter(client, world.p1, world.p2, match)
     leave(client, world.p1, match)  # hủy phòng
 
     assert client.get(MATCHES).json() == []

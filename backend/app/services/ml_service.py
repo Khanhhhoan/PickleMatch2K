@@ -213,7 +213,8 @@ def match_compatibility(
         if venue and None not in (me.latitude, me.longitude, venue.latitude, venue.longitude):
             distance = haversine_km(me.latitude, me.longitude, venue.latitude, venue.longitude)
         for participant in match.participants:
-            if participant.user_id == user.id or participant.user is None:
+            # Chỉ tính với thành viên đã được duyệt; yêu cầu chờ duyệt hay bị từ chối không phải người sẽ chơi cùng
+            if participant.status != "ACCEPTED" or participant.user_id == user.id or participant.user is None:
                 continue
             features = pair_features(me, ProfileView.from_profile(participant.user.player_profile), distance_km=distance)
             if features is not None:

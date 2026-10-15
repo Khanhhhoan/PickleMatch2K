@@ -44,6 +44,10 @@ export interface Booking {
   refund_account_holder?: string | null;
   refund_reason?: string | null;
   refunded_at?: string | null;
+  refund_reference?: string | null; // mã giao dịch ngân hàng của lần chuyển hoàn
+  refunded_by_name?: string | null;
+  has_refund_proof?: boolean; // có tệp chứng từ (tải qua API, cần đăng nhập)
+  auto_release_at?: string | null; // đơn tại quầy chưa thu: tự hủy lúc này nếu vẫn chưa thu
   created_at: string;
   details: BookingDetail[];
   user_name?: string | null;

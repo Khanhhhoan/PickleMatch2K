@@ -1,10 +1,12 @@
 """Đơn tạo tại quầy, khách vãng lai, dời lịch và số liệu doanh thu lấy từ sổ giao dịch."""
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 
 import pytest
 
 from app.models.booking import Booking
 from app.models.payment import PaymentTransaction
+from app.services import booking_service
+from app.utils.timeutils import vn_datetime
 from helpers import auth, confirmed_booking, create_booking, make_venue, sepay, slot
 
 BOOKINGS = "/api/v1/bookings"
@@ -105,6 +107,62 @@ def test_online_customer_cannot_take_a_slot_in_progress(client, world, clock):
                        headers=auth(world.p1)).status_code == 400
 
 
+# ---------------------------------------------------------------------------
+# Đơn tại quầy chưa thu tiền: tự hủy trước giờ chơi
+# ---------------------------------------------------------------------------
+def test_unpaid_desk_booking_is_released_shortly_before_play(client, db, world, clock):
+    day = clock.day(1)
+    unpaid = desk(client, world.staff_a, desk_payload(world.court, day, "18:00:00", "19:00:00", payment_method="UNPAID")).json()
+    paid = desk(client, world.staff_a, desk_payload(world.court, day, "19:00:00", "20:00:00", payment_method="CASH")).json()
+    deposit = desk(client, world.staff_a, desk_payload(world.court, day, "20:00:00", "21:00:00", payment_method="DEPOSIT_PAID")).json()
+    online = create_booking(client, world.p1, world.venue_a.courts[1], day, hours=(18,))
+    # mặc định 30 phút trước giờ chơi
+    assert datetime.fromisoformat(unpaid["auto_release_at"]) == vn_datetime(day, time(17, 30))
+    assert paid["auto_release_at"] is None and deposit["auto_release_at"] is None and online["auto_release_at"] is None
+
+    clock.set(day, 17, 29)
+    assert booking_service.release_unpaid_desk_bookings(db) == []
+    clock.set(day, 17, 30)
+    assert booking_service.release_unpaid_desk_bookings(db) == [unpaid["id"]]
+    assert booking_service.release_unpaid_desk_bookings(db) == []                 # chạy lại không làm gì thêm
+
+    db.expire_all()
+    released = db.get(Booking, unpaid["id"])
+    assert released.status == "CANCELLED" and released.cancelled_by_id is None
+    assert "chưa thanh toán" in released.cancel_reason and not any(d.is_active for d in released.details)
+    assert [db.get(Booking, b["id"]).status for b in (paid, deposit)] == ["CONFIRMED", "CONFIRMED"]
+    # Khung giờ được trả lại: khách khác đặt được ngay
+    retaken = desk(client, world.staff_a, desk_payload(world.court, day, "18:00:00", "19:00:00", payment_method="CASH"))
+    assert retaken.status_code == 200, retaken.text
+
+
+def test_unpaid_desk_booking_is_kept_when_paid_held_late_or_the_owner_turns_it_off(client, db, world, clock):
+    day = clock.day(1)
+    collected = desk(client, world.staff_a, desk_payload(world.court, day, "18:00:00", "19:00:00", payment_method="UNPAID")).json()
+    response = client.post(f"{BOOKINGS}/{collected['id']}/collect", json={"amount": 50000, "payment_method": "CASH"},
+                           headers=auth(world.staff_a))
+    assert response.status_code == 200 and response.json()["auto_release_at"] is None   # đã thu tiền: không tự hủy
+
+    clock.set(day, 17, 45)   # nhân viên giữ chỗ sát giờ cho khách đang tới: không tự hủy
+    late = desk(client, world.staff_a, desk_payload(world.venue_a.courts[1], day, "18:00:00", "19:00:00", payment_method="UNPAID")).json()
+    assert late["auto_release_at"] is None
+
+    clock.set(day, 17, 50)
+    assert booking_service.release_unpaid_desk_bookings(db) == []
+
+    # Chủ sân đổi số phút (0 = không tự hủy); nhân viên không đổi được; giá trị ngoài 0-1440 bị từ chối
+    venue_path = f"/api/v1/venues/{world.venue_a.id}"
+    assert client.put(venue_path, json={"unpaid_desk_release_minutes": 60}, headers=auth(world.staff_a)).status_code == 403
+    for bad in (-1, 1441):
+        assert client.put(venue_path, json={"unpaid_desk_release_minutes": bad}, headers=auth(world.owner_a)).status_code == 422
+    assert client.put(venue_path, json={"unpaid_desk_release_minutes": 0}, headers=auth(world.owner_a)).json()[
+        "unpaid_desk_release_minutes"] == 0
+    tomorrow = desk(client, world.staff_a, desk_payload(world.court, clock.day(2), "18:00:00", "19:00:00", payment_method="UNPAID")).json()
+    assert tomorrow["auto_release_at"] is None
+    clock.set(clock.day(2), 17, 59)
+    assert booking_service.release_unpaid_desk_bookings(db) == []
+
+
 def test_desk_bookings_do_not_appear_in_a_players_history(client, world, clock):
     desk(client, world.staff_a, desk_payload(world.court, clock.day(1)))
     assert client.get(f"{BOOKINGS}/me", headers=auth(world.staff_a)).json() == []
@@ -179,7 +237,8 @@ def test_owner_stats_come_from_the_ledger(client, db, world, clock):
 
     client.post(f"{BOOKINGS}/{refunded['id']}/cancel", headers=auth(world.p2),
                 json={"bank_account": "1", "bank_name": "MB", "account_holder": "B"})
-    client.post(f"{BOOKINGS}/{refunded['id']}/confirm-refund", headers=auth(world.owner_a))
+    client.post(f"{BOOKINGS}/{refunded['id']}/confirm-refund", json={"bank_reference": "FT26288STATS1"},
+                headers=auth(world.owner_a))
     clock.set(day, 8, 55)
     client.post(f"{BOOKINGS}/{played['id']}/checkin", headers=auth(world.staff_a))             # thu nốt 50k tiền mặt
     client.put(f"{BOOKINGS}/{played['id']}/status", json={"status": "COMPLETED"}, headers=auth(world.staff_a))
@@ -220,7 +279,8 @@ def test_stats_split_by_venue_add_up_to_the_totals(client, db, world, clock):
     confirmed_booking(client, world.p3, world.venue_b.courts[0], day, hours=(9,))             # Sân B: cọc 100k
     client.post(f"{BOOKINGS}/{refunded['id']}/cancel", headers=auth(world.p2),
                 json={"bank_account": "1", "bank_name": "MB", "account_holder": "B"})
-    client.post(f"{BOOKINGS}/{refunded['id']}/confirm-refund", headers=auth(world.owner_a))
+    client.post(f"{BOOKINGS}/{refunded['id']}/confirm-refund", json={"bank_reference": "FT26288STATS1"},
+                headers=auth(world.owner_a))
     make_venue(db, world.owner_b, name="Sân C")                                               # chưa có đơn nào
 
     everything = client.get(f"{BOOKINGS}/owner/stats", headers=auth(world.admin)).json()

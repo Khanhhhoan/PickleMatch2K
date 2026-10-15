@@ -186,22 +186,30 @@ def test_a_new_booking_cannot_take_the_slot_while_a_late_deposit_is_being_record
 def test_only_one_player_gets_the_last_seat_in_a_match(client, db, world, clock):
     booking = confirmed_booking(client, world.p1, world.court, clock.day(1), hours=(18,))
     match = match_service.create_match(db, world.p1, MatchCreate(booking_id=booking["id"], num_players=2))
-    match_id = match.id
+    match_id, host_id = match.id, world.p1.id
     joiners = [make_user(db, skill_level=3.5).id for _ in range(8)]
 
     def join(index: int) -> int:
         with SessionLocal() as session:
             return match_service.join_match(session, match_id, joiners[index]).id
 
-    results = run_together(8, join)
-
-    assert len(conflicts(results)) == 7
+    # Tám yêu cầu cùng lúc: đều được ghi nhận, không trùng, chưa ai chiếm chỗ
+    assert not conflicts(run_together(8, join))
     db.expire_all()
-    assert db.query(MatchParticipant).filter_by(match_id=match_id).count() == 2
+    assert db.query(MatchParticipant).filter_by(match_id=match_id, status="PENDING").count() == 8
+
+    def accept(index: int) -> int:
+        with SessionLocal() as session:
+            return match_service.decide_join_request(session, match_id, host_id, joiners[index], accept=True).id
+
+    # Chủ phòng bấm duyệt cả tám cùng lúc (nhiều thiết bị, bấm đúp...): chỉ một người vào được chỗ cuối
+    assert len(conflicts(run_together(8, accept))) == 7
+    db.expire_all()
+    assert db.query(MatchParticipant).filter_by(match_id=match_id, status="ACCEPTED").count() == 2
     assert db.get(Match, match_id).status == "FULL"
 
 
-def test_one_player_joining_two_overlapping_rooms_at_once_ends_up_in_only_one(client, db, world, clock):
+def test_one_player_accepted_into_two_overlapping_rooms_at_once_ends_up_in_only_one(client, db, world, clock):
     day = clock.day(1)
     first = confirmed_booking(client, world.p1, world.court, day, hours=(18,))
     second = confirmed_booking(client, world.p2, world.venue_a.courts[1], day, hours=(18,))
@@ -209,16 +217,19 @@ def test_one_player_joining_two_overlapping_rooms_at_once_ends_up_in_only_one(cl
         match_service.create_match(db, world.p1, MatchCreate(booking_id=first["id"])).id,
         match_service.create_match(db, world.p2, MatchCreate(booking_id=second["id"])).id,
     ]
-    joiner = world.p3.id
+    hosts, joiner = [world.p1.id, world.p2.id], world.p3.id
+    for room in rooms:
+        match_service.join_match(db, room, joiner)   # chờ duyệt ở cả hai phòng trùng giờ: được phép
 
-    def join(index: int) -> int:
+    def accept(index: int) -> int:
         with SessionLocal() as session:
-            return match_service.join_match(session, rooms[index], joiner).id
+            return match_service.decide_join_request(session, rooms[index], hosts[index], joiner, accept=True).id
 
-    results = run_together(2, join)
+    results = run_together(2, accept)
 
     assert len(conflicts(results)) == 1
-    assert db.query(MatchParticipant).filter_by(user_id=joiner).count() == 1
+    db.expire_all()
+    assert db.query(MatchParticipant).filter_by(user_id=joiner, status="ACCEPTED").count() == 1
 
 
 def test_cancel_and_payment_racing_on_one_booking_leave_consistent_money(client, db, world, clock):

@@ -3,6 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { deleteVenueImage, fetchApi, formatVND, getMediaUrl, uploadVenueImage } from "@/lib/api";
+import { formatDisplayDate } from "@/lib/booking";
+import { Modal } from "@/components/ManagementUi";
 import { searchAddressGeocode } from "@/lib/location";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/components/Toast";
@@ -32,6 +34,20 @@ interface Venue {
   amenities: { id: number; name: string }[];
   owner_company_name?: string | null;
   owner_bank_account?: string | null;
+  unpaid_desk_release_minutes?: number;
+}
+
+/** Đơn còn hiệu lực sắp diễn ra: phải dời hoặc hủy trước khi tạm ngưng sân / cụm sân. */
+interface UpcomingBooking {
+  booking_id: number;
+  booking_code?: string | null;
+  status: string;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  court_name?: string | null;
+  date: string;
+  start_time: string;
+  end_time: string;
 }
 
 interface Staff {
@@ -105,6 +121,8 @@ function OwnerVenueManagementContent() {
   const [prices, setPrices] = useState({ base: "", peak: "", weekend: "", peak_start: "17:00", peak_end: "23:00" });
   const [hours, setHours] = useState(WEEKDAYS.map(() => ({ open: false, open_time: "06:00", close_time: "22:00" })));
   const [newCourt, setNewCourt] = useState({ name: "", price: "" });
+  const [releaseMinutes, setReleaseMinutes] = useState("30");
+  const [conflicts, setConflicts] = useState<{ title: string; items: UpcomingBooking[] } | null>(null);
   const [staffForm, setStaffForm] = useState({ id: 0, email: "", password: "", full_name: "", phone: "" });
   const [showStaffForm, setShowStaffForm] = useState(false);
   const [newVenue, setNewVenue] = useState({ name: "", address: "" });
@@ -174,6 +192,7 @@ function OwnerVenueManagementContent() {
           : { open: false, open_time: "06:00", close_time: "22:00" };
       }),
     );
+    setReleaseMinutes(String(venue.unpaid_desk_release_minutes ?? 30));
   }, [venue]);
 
   /** Chạy một thao tác ghi, báo kết quả và tải lại dữ liệu. */
@@ -243,8 +262,40 @@ function OwnerVenueManagementContent() {
     }), "Đã lưu tài khoản nhận tiền.");
   };
 
-  const setStatus = (status: string) =>
-    venue && run("status", () => put(`/venues/${venue.id}/status`, { status }), `Đã chuyển cụm sân sang “${STATUS_LABEL[status]}”.`);
+  // Còn khách đã đặt thì không tạm ngưng được: hiện danh sách đơn để chủ sân dời hoặc hủy (hoàn tiền) trước
+  const upcomingOf = async (courtId?: number): Promise<UpcomingBooking[]> => {
+    if (!venue) return [];
+    const query = courtId ? `?court_id=${courtId}` : "";
+    const items = await fetchApi(`/venues/${venue.id}/upcoming-bookings${query}`).catch(() => []);
+    return Array.isArray(items) ? items : [];
+  };
+
+  const setStatus = async (status: string) => {
+    if (!venue) return;
+    if (venue.status === "ACTIVE" && status !== "ACTIVE") {
+      const items = await upcomingOf();
+      if (items.length > 0) return setConflicts({ title: "Cụm sân còn đơn đặt sắp tới", items });
+    }
+    run("status", () => put(`/venues/${venue.id}/status`, { status }), `Đã chuyển cụm sân sang “${STATUS_LABEL[status]}”.`);
+  };
+
+  const pauseCourt = async (court: Court) => {
+    const items = await upcomingOf(court.id);
+    if (items.length > 0) return setConflicts({ title: `${court.name} còn đơn đặt sắp tới`, items });
+    updateCourt(court, { status: "MAINTENANCE" }, "Đã chuyển sân sang bảo trì.");
+  };
+
+  const saveReleaseMinutes = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!venue) return;
+    const minutes = Number(releaseMinutes);
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1440) {
+      toastError("Số phút phải là số nguyên từ 0 đến 1440 (0 = không tự hủy).");
+      return;
+    }
+    run("release", () => put(`/venues/${venue.id}`, { unpaid_desk_release_minutes: minutes }),
+      minutes > 0 ? `Đơn tại quầy chưa thu sẽ tự hủy trước giờ chơi ${minutes} phút.` : "Đã tắt tự hủy đơn tại quầy chưa thu.");
+  };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -576,7 +627,10 @@ function OwnerVenueManagementContent() {
                   ))}
                 </div>
               )}
-              <p className="text-[11px] text-[#8a97ab]">Khi tạm đóng hoặc ngừng hiển thị, người chơi không đặt thêm được; các đơn đã có vẫn giữ nguyên.</p>
+              <p className="text-[11px] text-[#8a97ab]">
+                Khi tạm đóng hoặc ngừng hiển thị, người chơi không đặt thêm được. Chỉ tạm ngưng được khi không còn đơn sắp tới:
+                hệ thống liệt kê các đơn cần dời sang sân khác hoặc hủy và hoàn tiền trước.
+              </p>
             </div>
           </div>
         </div>
@@ -606,8 +660,7 @@ function OwnerVenueManagementContent() {
                       type="button"
                       className={ROW_ACTION}
                       disabled={busy === `court-${court.id}`}
-                      onClick={() => updateCourt(court, { status: court.status === "ACTIVE" ? "MAINTENANCE" : "ACTIVE" },
-                        court.status === "ACTIVE" ? "Đã chuyển sân sang bảo trì." : "Sân đã nhận đặt trở lại.")}
+                      onClick={() => (court.status === "ACTIVE" ? pauseCourt(court) : updateCourt(court, { status: "ACTIVE" }, "Sân đã nhận đặt trở lại."))}
                     >
                       {court.status === "ACTIVE" ? "Bảo trì" : "Mở lại"}
                     </button>
@@ -698,6 +751,52 @@ function OwnerVenueManagementContent() {
           </p>
           <button type="submit" disabled={busy === "hours"} className={PRIMARY}>{busy === "hours" ? "Đang lưu..." : "Lưu giờ hoạt động"}</button>
         </form>
+      )}
+
+      {activeTab === "hours" && (
+        <form onSubmit={saveReleaseMinutes} className={`${CARD} max-w-2xl mt-6`}>
+          <h3 className="text-sm font-black text-[#17253d] m-0">Đơn tại quầy chưa thu tiền</h3>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-40">
+              <label className={LABEL} htmlFor="unpaid-release-minutes">Tự hủy trước giờ chơi (phút)</label>
+              <input id="unpaid-release-minutes" className={INPUT} type="number" min={0} max={1440} step={5} required
+                value={releaseMinutes} onChange={(e) => setReleaseMinutes(e.target.value)} />
+            </div>
+            <button type="submit" disabled={busy === "release"} className={PRIMARY}>{busy === "release" ? "Đang lưu..." : "Lưu"}</button>
+          </div>
+          <p className="text-[11px] text-[#8a97ab] leading-relaxed">
+            Khách gọi điện giữ sân mà chưa trả đồng nào: tới lúc này sân được trả lại cho người khác đặt. Đơn đã thu tiền,
+            đã nhận sân hoặc tạo khi đã sát giờ không bị hủy. Nhập 0 để tắt. Thay đổi áp dụng cho các đơn tạo sau khi lưu.
+          </p>
+        </form>
+      )}
+
+      {conflicts && venue && (
+        <Modal title={conflicts.title} onClose={() => setConflicts(null)}>
+          <div className="space-y-3">
+            <p className="text-xs text-[#51627c] leading-relaxed">
+              Chưa thể tạm ngưng vì còn {conflicts.items.length} lượt đặt bên dưới. Hãy dời các đơn này sang sân khác hoặc hủy và
+              hoàn tiền cho khách ở trang Lịch đặt, rồi thử lại. Hệ thống không tự hủy đơn của khách.
+            </p>
+            <ul className="space-y-2 max-h-80 overflow-y-auto">
+              {conflicts.items.map((item) => (
+                <li key={`${item.booking_id}-${item.court_name}-${item.date}`} className={ROW}>
+                  <div className="min-w-0">
+                    <p className="text-xs font-black text-[#17253d]">{item.booking_code || `Đơn #${item.booking_id}`} • {item.customer_name || "Khách"}</p>
+                    <p className="text-[11px] text-[#8a97ab]">
+                      {item.court_name} • {formatDisplayDate(item.date)} • {item.start_time.slice(0, 5)} - {item.end_time.slice(0, 5)}
+                      {item.customer_phone ? ` • ${item.customer_phone}` : ""}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" className={SECONDARY} onClick={() => setConflicts(null)}>Đóng</button>
+              <button type="button" className={PRIMARY} onClick={() => router.push("/owner/bookings")}>Mở trang Lịch đặt</button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {activeTab === "staff" && (

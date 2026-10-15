@@ -148,9 +148,14 @@ def test_court_management(client, db, world, clock):
     assert client.post(base, json={"name": "x", "status": "BROKEN"}, headers=owner).status_code == 422
 
     vip = db.get(Court, created["id"])
-    assert create_booking(client, world.p1, vip, clock.day(1), hours=(9,))["total_price"] == 250000
+    booking = create_booking(client, world.p1, vip, clock.day(1), hours=(9,))
+    assert booking["total_price"] == 250000
 
     path = f"{base}/{created['id']}"
+    # Còn khách đã đặt (kể cả đơn đang chờ cọc) thì chưa cho bảo trì; khách hủy đơn rồi mới chuyển được
+    blocked = client.put(path, json={"status": "MAINTENANCE"}, headers=owner)
+    assert blocked.status_code == 409 and booking["booking_code"] in blocked.json()["detail"]
+    client.post(f"{BOOKINGS}/{booking['id']}/cancel", headers=auth(world.p1))
     paused = client.put(path, json={"status": "MAINTENANCE", "price": 0}, headers=owner).json()
     assert (paused["status"], paused["price"]) == ("MAINTENANCE", None)
     assert client.post(BOOKINGS, json={"details": [slot(vip, clock.day(1), 10)]}, headers=auth(world.p1)).status_code == 400
@@ -159,6 +164,51 @@ def test_court_management(client, db, world, clock):
     spare = client.post(base, json={"name": "Sân thừa"}, headers=owner).json()
     assert client.delete(f"{base}/{spare['id']}", headers=owner).status_code == 200
     assert client.delete(f"{base}/{spare['id']}", headers=owner).status_code == 404
+
+
+def test_maintenance_waits_until_upcoming_bookings_are_dealt_with(client, db, world, clock):
+    owner, venue = auth(world.owner_a), world.venue_a
+    court_1, court_2 = venue.courts
+    court_path = f"{VENUES}/{venue.id}/courts"
+    booking = confirmed_booking(client, world.p1, court_1, clock.day(2), hours=(18,))
+
+    # Sân còn đơn sắp tới: không chuyển sang bảo trì được, chủ sân xem được danh sách đơn cần xử lý
+    blocked = client.put(f"{court_path}/{court_1.id}", json={"status": "MAINTENANCE"}, headers=owner)
+    assert blocked.status_code == 409 and booking["booking_code"] in blocked.json()["detail"]
+    upcoming = client.get(f"{VENUES}/{venue.id}/upcoming-bookings", params={"court_id": court_1.id}, headers=owner).json()
+    assert [(u["booking_code"], u["court_name"], u["start_time"], u["end_time"]) for u in upcoming] == [
+        (booking["booking_code"], court_1.name, "18:00:00", "19:00:00")]
+    assert client.get(f"{VENUES}/{venue.id}/upcoming-bookings", headers=auth(world.owner_b)).status_code == 403
+    db.expire_all()
+    assert db.get(Court, court_1.id).status == "ACTIVE"
+
+    # Dời đơn sang sân khác thì sân cũ bảo trì được; đơn vẫn nguyên vẹn
+    moved = client.put(f"{BOOKINGS}/staff/{booking['id']}/reschedule", json={"court_id": court_2.id}, headers=owner)
+    assert moved.status_code == 200, moved.text
+    assert client.put(f"{court_path}/{court_1.id}", json={"status": "MAINTENANCE"}, headers=owner).status_code == 200
+
+    # Cả cụm sân: còn đơn thì không tạm ngưng được; cụm sân hủy đơn (khách được hoàn tiền) rồi mới tạm ngưng
+    for paused in ("MAINTENANCE", "INACTIVE"):
+        response = client.put(f"{VENUES}/{venue.id}/status", json={"status": paused}, headers=owner)
+        assert response.status_code == 409, response.text
+    cancelled = client.put(f"{BOOKINGS}/{booking['id']}/status", json={"status": "CANCELLED", "reason": "Bảo trì sân"},
+                           headers=owner).json()
+    assert (cancelled["status"], cancelled["refund_status"]) == ("CANCELLED", "PENDING")
+    assert client.put(f"{VENUES}/{venue.id}/status", json={"status": "MAINTENANCE"}, headers=owner).status_code == 200
+    assert client.put(f"{VENUES}/{venue.id}/status", json={"status": "ACTIVE"}, headers=owner).status_code == 200
+
+
+def test_expired_unpaid_and_finished_bookings_do_not_block_maintenance(client, db, world, clock):
+    owner, court = auth(world.owner_a), world.court
+    path = f"{VENUES}/{world.venue_a.id}/courts/{court.id}"
+    finished = confirmed_booking(client, world.p1, court, clock.day(1), hours=(9,))
+    unpaid = create_booking(client, world.p2, court, clock.day(1), hours=(18,))
+    assert client.put(path, json={"status": "MAINTENANCE"}, headers=owner).status_code == 409
+
+    clock.set(clock.day(1), 10, 30)  # khung 9-10h đã qua, đơn chờ cọc đã quá hạn giữ chỗ
+    assert unpaid["status"] == "PENDING" and finished["status"] == "CONFIRMED"
+    response = client.put(path, json={"status": "MAINTENANCE"}, headers=owner)
+    assert response.status_code == 200, response.text
 
 
 def test_operating_hours(client, world, clock):

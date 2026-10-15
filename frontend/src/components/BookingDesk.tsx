@@ -6,7 +6,7 @@
  * thu tiền, dời lịch, hủy và xác nhận hoàn tiền. Mọi thay đổi trạng thái đều do máy chủ thực hiện và kiểm tra.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetchApi, formatLocalDate, formatVND, parseUtcDate } from "@/lib/api";
+import { fetchApi, formatLocalDate, formatVND, openRefundProof, parseUtcDate, uploadRefundProof } from "@/lib/api";
 import {
   Booking,
   bookingCode,
@@ -72,6 +72,14 @@ const addHours = (time: string, hours: number) => {
 };
 
 const slotKey = (courtId: number, date: string, start: string) => `${courtId}|${date}|${start.slice(0, 5)}`;
+
+/** Giờ:phút (giờ Việt Nam trên máy người dùng) của một thời điểm máy chủ trả về. */
+const clockTime = (value: string) => parseUtcDate(value).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+
+// Mã giao dịch ngân hàng của lần chuyển hoàn: cùng quy tắc với máy chủ
+const BANK_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._\-/]{2,63}$/;
+const PROOF_TYPES = "image/jpeg,image/png,image/webp,application/pdf";
+const MAX_PROOF_BYTES = 5 * 1024 * 1024;
 
 /** Khách vào sân được ngay: khung giờ của hôm nay đang diễn ra hoặc bắt đầu trong vòng một giờ tới. */
 const startsSoon = (date: string, start: string) => {
@@ -438,6 +446,7 @@ export default function BookingDesk({ heading }: { heading: string }) {
                         <span className={`px-2 py-0.5 rounded-md border font-bold whitespace-nowrap ${paymentStatusTone(b.payment_status)}`}>{paymentStatusLabel(b.payment_status)}</span>
                       </div>
                       {b.refund_status === "PENDING" && <p className="font-bold text-amber-700 mt-1">Chờ hoàn {formatVND(b.refund_amount || 0)}</p>}
+                      {b.auto_release_at && <p className="font-bold text-amber-700 mt-1">Tự hủy lúc {clockTime(b.auto_release_at)} nếu chưa thu</p>}
                     </td>
                     <td className="py-3 text-right">
                       <button type="button" className={SECONDARY} onClick={() => setDetailId(b.id)}>Xử lý</button>
@@ -590,6 +599,9 @@ function BookingDetailModal({
           {booking.status === "PENDING" && booking.expires_at && (
             <Line label="Hạn thanh toán cọc" value={parseUtcDate(booking.expires_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} />
           )}
+          {booking.auto_release_at && (
+            <Line label="Tự hủy nếu chưa thu" value={<span className="text-amber-700">{clockTime(booking.auto_release_at)} {formatDisplayDate(parseUtcDate(booking.auto_release_at).toLocaleDateString("en-CA"))}</span>} />
+          )}
           {booking.checked_in_at && <Line label="Nhận sân lúc" value={parseUtcDate(booking.checked_in_at).toLocaleString("vi-VN")} />}
           {booking.cancel_reason && <Line label="Lý do hủy" value={booking.cancel_reason} />}
         </div>
@@ -601,25 +613,7 @@ function BookingDetailModal({
           <Line label="Còn lại" value={<span className={booking.remaining_amount > 0 ? "text-amber-700" : "text-emerald-700"}>{formatVND(booking.remaining_amount)}</span>} />
         </div>
 
-        {booking.refund_status && (
-          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-1.5">
-            <Line label="Hoàn tiền" value={`${formatVND(booking.refund_amount || 0)} - ${booking.refund_status === "PENDING" ? "chờ chuyển" : booking.refund_status === "COMPLETED" ? "đã chuyển" : "từ chối"}`} />
-            {booking.refund_bank_account && (
-              <Line label="Tài khoản khách" value={`${booking.refund_bank_account} • ${booking.refund_bank_name || ""} • ${booking.refund_account_holder || ""}`} />
-            )}
-            {booking.refund_reason && <p className="text-[11px] text-amber-900">{booking.refund_reason}</p>}
-            {booking.refund_status === "PENDING" && (
-              <button
-                type="button"
-                disabled={busy}
-                className={PRIMARY}
-                onClick={() => window.confirm(`Xác nhận ĐÃ chuyển ${formatVND(booking.refund_amount || 0)} cho khách?`) && act(() => post(`${path}/confirm-refund`, { note: null }), "Đã ghi nhận hoàn tiền.")}
-              >
-                Xác nhận đã chuyển hoàn
-              </button>
-            )}
-          </div>
-        )}
+        {booking.refund_status && <RefundBox booking={booking} busy={busy} act={act} />}
 
         {(booking.status === "PENDING" || booking.status === "CONFIRMED" || (booking.status === "CHECKED_IN" && booking.remaining_amount > 0)) && (
           <div className="p-3 rounded-xl border border-[#e8edf3] space-y-3">
@@ -714,6 +708,119 @@ function BookingDetailModal({
 }
 
 /** Quét mã QR trên vé của khách bằng camera (trình duyệt hỗ trợ BarcodeDetector); nếu không, nhập mã bằng tay. */
+/**
+ * Hoàn tiền thủ công: hệ thống không tự chuyển tiền. Nhân viên chuyển khoản cho khách bằng ứng dụng ngân hàng,
+ * rồi xác nhận ở đây kèm mã giao dịch ngân hàng (bắt buộc) và chứng từ (ảnh hoặc PDF, không bắt buộc) để đối soát.
+ */
+function RefundBox({
+  booking,
+  busy,
+  act,
+}: {
+  booking: Booking;
+  busy: boolean;
+  act: (action: () => Promise<unknown>, successMessage: string) => Promise<boolean>;
+}) {
+  const [reference, setReference] = useState("");
+  const [proof, setProof] = useState<File | null>(null);
+  const [error, setError] = useState("");
+  const statusText = booking.refund_status === "PENDING" ? "chờ chuyển" : booking.refund_status === "COMPLETED" ? "đã chuyển" : "từ chối";
+
+  const proofProblem = (file: File | null) => (file && file.size > MAX_PROOF_BYTES ? "Chứng từ vượt quá 5MB." : "");
+
+  const confirm = async () => {
+    const value = reference.trim();
+    if (!BANK_REFERENCE.test(value)) {
+      setError("Nhập mã giao dịch ngân hàng của lần chuyển hoàn (3-64 ký tự: chữ, số và . _ - /).");
+      return;
+    }
+    const problem = proofProblem(proof);
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    if (!window.confirm(`Xác nhận ĐÃ chuyển ${formatVND(booking.refund_amount || 0)} cho khách, mã giao dịch ${value}?`)) return;
+    setError("");
+    const done = await act(
+      () => fetchApi(`/bookings/${booking.id}/confirm-refund`, { method: "POST", body: JSON.stringify({ bank_reference: value }) }),
+      "Đã ghi nhận hoàn tiền.",
+    );
+    if (done && proof) await act(() => uploadRefundProof(booking.id, proof), "Đã lưu chứng từ hoàn tiền.");
+  };
+
+  const attach = async (file: File | null) => {
+    const problem = proofProblem(file);
+    if (problem) return setError(problem);
+    if (file) {
+      setError("");
+      await act(() => uploadRefundProof(booking.id, file), "Đã lưu chứng từ hoàn tiền.");
+    }
+  };
+
+  return (
+    <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-1.5">
+      <Line label="Hoàn tiền" value={`${formatVND(booking.refund_amount || 0)} - ${statusText}`} />
+      {booking.refund_bank_account && (
+        <Line label="Tài khoản khách" value={`${booking.refund_bank_account} • ${booking.refund_bank_name || ""} • ${booking.refund_account_holder || ""}`} />
+      )}
+      {booking.refund_reason && <p className="text-[11px] text-amber-900">{booking.refund_reason}</p>}
+
+      {booking.refund_status === "COMPLETED" && (
+        <>
+          {booking.refund_reference && <Line label="Mã giao dịch" value={booking.refund_reference} />}
+          {(booking.refunded_by_name || booking.refunded_at) && (
+            <Line
+              label="Người xác nhận"
+              value={`${booking.refunded_by_name || "—"}${booking.refunded_at ? ` • ${parseUtcDate(booking.refunded_at).toLocaleString("vi-VN")}` : ""}`}
+            />
+          )}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {booking.has_refund_proof && (
+              <button type="button" className={SECONDARY} onClick={() => openRefundProof(booking.id).catch((e: Error) => setError(e.message))}>
+                Xem chứng từ
+              </button>
+            )}
+            <label className={`${SECONDARY} cursor-pointer`}>
+              {booking.has_refund_proof ? "Thay chứng từ" : "Đính kèm chứng từ"}
+              <input type="file" accept={PROOF_TYPES} className="hidden" disabled={busy} onChange={(e) => attach(e.target.files?.[0] || null)} />
+            </label>
+          </div>
+        </>
+      )}
+
+      {booking.refund_status === "PENDING" && (
+        <div className="space-y-2 pt-1">
+          <div>
+            <label className={LABEL} htmlFor={`refund-reference-${booking.id}`}>Mã giao dịch ngân hàng *</label>
+            <input
+              id={`refund-reference-${booking.id}`}
+              className={INPUT}
+              value={reference}
+              maxLength={64}
+              placeholder="Ví dụ: FT26288123456"
+              onChange={(e) => setReference(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className={LABEL} htmlFor={`refund-proof-${booking.id}`}>Chứng từ chuyển khoản (ảnh hoặc PDF, không bắt buộc)</label>
+            <input
+              id={`refund-proof-${booking.id}`}
+              type="file"
+              accept={PROOF_TYPES}
+              className="block w-full text-xs text-[#51627c] file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border file:border-[#dde4ef] file:bg-white file:text-xs file:font-bold"
+              onChange={(e) => setProof(e.target.files?.[0] || null)}
+            />
+          </div>
+          <button type="button" disabled={busy} className={PRIMARY} onClick={confirm}>
+            Xác nhận đã chuyển hoàn
+          </button>
+        </div>
+      )}
+      {error && <p className="text-xs font-bold text-rose-600">{error}</p>}
+    </div>
+  );
+}
+
 function QrScanner({ onDetected, onClose }: { onDetected: (value: string) => void; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraError, setCameraError] = useState(false);

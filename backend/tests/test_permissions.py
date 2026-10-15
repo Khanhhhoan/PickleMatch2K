@@ -154,7 +154,7 @@ def test_staff_can_only_work_on_bookings_of_their_venue(client, world, clock):
         ("PUT", f"{API}/bookings/staff/{booking['id']}/reschedule", {"start_time": "20:00:00"}),
         ("POST", f"{base}/checkin", None),
         ("PUT", f"{base}/status", {"status": "CANCELLED"}),
-        ("POST", f"{base}/confirm-refund", None),
+        ("POST", f"{base}/confirm-refund", {"bank_reference": "FT26288PERM01"}),
     ]
     for method, path, body in actions:
         for outsider in (world.staff_a, world.owner_a):

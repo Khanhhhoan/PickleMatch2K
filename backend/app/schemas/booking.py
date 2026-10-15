@@ -102,6 +102,8 @@ class CancelBookingRequest(BaseModel):
 
 
 class ConfirmRefundRequest(BaseModel):
+    """Xác nhận đã chuyển hoàn thủ công: bắt buộc có mã giao dịch ngân hàng của lần chuyển để đối soát."""
+    bank_reference: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._\-/]*$")
     note: Optional[str] = Field(default=None, max_length=300)
 
 
@@ -155,13 +157,20 @@ class BookingResponse(BaseModel):
     refund_account_holder: Optional[str] = None
     refund_reason: Optional[str] = None
     refunded_at: Optional[datetime] = None
+    # Đối soát hoàn tiền: mã giao dịch ngân hàng, người xác nhận, có tệp chứng từ hay không (tệp tải qua API riêng)
+    refund_reference: Optional[str] = None
+    refunded_by_name: Optional[str] = None
+    has_refund_proof: bool = False
+    # Đơn tại quầy chưa thu tiền: thời điểm sẽ tự hủy nếu vẫn chưa thu (None = không tự hủy)
+    auto_release_at: Optional[datetime] = None
     created_at: datetime
     details: List[BookingDetailResponse]
     user_name: Optional[str] = None
     user_phone: Optional[str] = None
     user_email: Optional[str] = None
 
-    @field_serializer("created_at", "refunded_at", "expires_at", "checked_in_at", "cancelled_at", when_used="json")
+    @field_serializer("created_at", "refunded_at", "expires_at", "checked_in_at", "cancelled_at", "auto_release_at",
+                      when_used="json")
     def serialize_datetime(self, v: Optional[datetime]) -> Optional[str]:
         if v is None:
             return None

@@ -58,12 +58,33 @@ def read_open_matches(
 
 @router.post("/{match_id}/join", response_model=MatchResponse)
 def join_match(match_id: int, db: Session = Depends(deps.get_db), current_user: User = Depends(deps.get_current_active_user)):
+    """Xin tham gia phòng đấu: yêu cầu chờ chủ phòng duyệt (my_status = PENDING)."""
     return match_service.serialize_match(match_service.join_match(db, match_id, current_user.id), current_user.id)
+
+
+@router.post("/{match_id}/requests/{user_id}/accept", response_model=MatchResponse)
+def accept_join_request(
+    match_id: int, user_id: int, db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_active_user),
+):
+    """Chủ phòng chấp nhận một yêu cầu tham gia: người đó thành thành viên và thấy số điện thoại của các thành viên."""
+    match = match_service.decide_join_request(db, match_id, current_user.id, user_id, accept=True)
+    return match_service.serialize_match(match, current_user.id)
+
+
+@router.post("/{match_id}/requests/{user_id}/reject", response_model=MatchResponse)
+def reject_join_request(
+    match_id: int, user_id: int, db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_active_user),
+):
+    """Chủ phòng từ chối một yêu cầu tham gia; người đó không gửi lại yêu cầu cho phòng này được."""
+    match = match_service.decide_join_request(db, match_id, current_user.id, user_id, accept=False)
+    return match_service.serialize_match(match, current_user.id)
 
 
 @router.post("/{match_id}/leave", response_model=MatchResponse)
 def leave_match(match_id: int, db: Session = Depends(deps.get_db), current_user: User = Depends(deps.get_current_active_user)):
-    """Rời phòng đấu. Nếu chủ phòng rời đi thì phòng bị hủy."""
+    """Rời phòng đấu, hoặc rút yêu cầu tham gia đang chờ duyệt. Nếu chủ phòng rời đi thì phòng bị hủy."""
     return match_service.serialize_match(match_service.leave_match(db, match_id, current_user.id), current_user.id)
 
 
@@ -181,8 +202,9 @@ def remove_participant_admin(
     participant = next((p for p in match.participants if p.user_id == user_id), None)
     if not participant:
         raise HTTPException(status_code=404, detail="Người chơi không có trong phòng đấu này")
+    was_member = participant.status == ParticipantStatus.ACCEPTED.value
     match.participants.remove(participant)
-    if match.status == MatchStatus.FULL.value:
+    if was_member and match.status == MatchStatus.FULL.value:
         match.status = MatchStatus.OPEN.value
     db.commit()
     db.refresh(match)

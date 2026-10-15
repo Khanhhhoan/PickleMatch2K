@@ -1,4 +1,5 @@
 import enum
+from typing import Optional
 
 from sqlalchemy import (
     Boolean, CheckConstraint, Column, Date, DateTime, Float, ForeignKey, Index, Integer, String, Time, text,
@@ -56,6 +57,13 @@ FINAL_STATUSES = (
 
 class Booking(Base):
     __tablename__ = "bookings"
+    __table_args__ = (
+        # Một mã giao dịch ngân hàng chỉ dùng để xác nhận hoàn tiền cho một đơn
+        Index(
+            "uq_bookings_refund_reference", "refund_reference", unique=True,
+            postgresql_where=text("refund_reference IS NOT NULL"), sqlite_where=text("refund_reference IS NOT NULL"),
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     booking_code = Column(String(32), unique=True, index=True, nullable=True)
@@ -70,6 +78,9 @@ class Booking(Base):
     status = Column(String, default=BookingStatus.PENDING.value, index=True)
     payment_status = Column(String, default=PaymentStatus.UNPAID.value, index=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)  # Hạn thanh toán cọc của đơn PENDING
+    # Đơn tại quầy chưa thu đồng nào: tự hủy vào lúc này nếu vẫn chưa thu (tính khi tạo đơn từ cài đặt của cụm sân,
+    # bỏ khi đã thu tiền, tính lại khi dời lịch). NULL = không tự hủy.
+    auto_release_at = Column(DateTime(timezone=True), nullable=True)
 
     checked_in_at = Column(DateTime(timezone=True), nullable=True)
     checked_in_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -85,6 +96,9 @@ class Booking(Base):
     refund_reason = Column(String, nullable=True)
     refunded_at = Column(DateTime(timezone=True), nullable=True)
     refunded_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # Đối soát lần chuyển hoàn: mã giao dịch ngân hàng (bắt buộc khi xác nhận) và tệp chứng từ (tùy chọn, lưu riêng)
+    refund_reference = Column(String(64), nullable=True)
+    refund_proof_file = Column(String(255), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -94,10 +108,26 @@ class Booking(Base):
         order_by="BookingDetail.date, BookingDetail.start_time",
     )
     user = relationship("User", foreign_keys=[user_id])
+    refunded_by = relationship("User", foreign_keys=[refunded_by_id])
 
     @property
     def is_desk_booking(self) -> bool:
         return self.source == BookingSource.DESK.value
+
+    @property
+    def has_refund_proof(self) -> bool:
+        return bool(self.refund_proof_file)
+
+    @property
+    def refunded_by_name(self) -> Optional[str]:
+        """Người đã xác nhận chuyển hoàn (nhân viên, chủ sân hoặc quản trị viên)."""
+        actor = self.refunded_by
+        if actor is None:
+            return None
+        for profile in (actor.staff_profile, actor.owner_profile, actor.player_profile):
+            if profile is not None and getattr(profile, "full_name", None):
+                return profile.full_name
+        return actor.email.split("@")[0] if actor.email else f"Tài khoản #{actor.id}"
 
     @property
     def user_name(self) -> str:
@@ -139,6 +169,7 @@ class Booking(Base):
     def venue_id(self):
         first = self.details[0] if self.details else None
         return first.court.venue_id if first and first.court else None
+
 
 
 class BookingDetail(Base):

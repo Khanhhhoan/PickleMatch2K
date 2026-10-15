@@ -54,7 +54,7 @@ KLTN/
 ├── .github/workflows/      Kiểm tra tự động (CI)
 ├── backend/                API FastAPI
 │   ├── app/                api, core, db, ml, models, schemas, services, utils
-│   ├── alembic/            Các phiên bản schema (0001 → 0008)
+│   ├── alembic/            Các phiên bản schema (0001 → 0009)
 │   ├── scripts/            Script quản trị CSDL (xem backend/scripts/README.md)
 │   ├── tests/              Bộ kiểm thử pytest (xem backend/tests/README.md)
 │   └── manage.py           Bộ lệnh quản trị
@@ -195,7 +195,7 @@ python -m pytest                                  # từ thư mục gốc, kho�
 python -m pytest backend/tests/test_payments.py -q
 ```
 
-**Kiểm thử đầu-cuối qua trình duyệt** - 23 bước cho cả bốn vai trò. Script tạo và hủy đơn nên chỉ chạy trên
+**Kiểm thử đầu-cuối qua trình duyệt** - 25 bước cho cả bốn vai trò. Script tạo và hủy đơn nên chỉ chạy trên
 CSDL demo, với `SEPAY_SIMULATOR_ENABLED=true` và hai ứng dụng web đã build (`npm run build && npm start`):
 
 ```powershell
@@ -235,14 +235,20 @@ Sau khi nâng cấp:
   cho các tài khoản demo đang để trống bằng `python manage.py seed --preferences`.
 - Từ revision 0008 có thêm bảng `shift_closings` (sổ kết ca tại quầy). Bước nâng cấp này chỉ thêm bảng mới, không
   đổi dữ liệu đang có.
+- Từ revision 0009: xác nhận hoàn tiền bắt buộc có mã giao dịch ngân hàng (kèm chứng từ tùy chọn, lưu riêng trong
+  `backend/private_uploads/`), đơn tại quầy chưa thu tiền tự hủy trước giờ chơi (mặc định 30 phút, chủ sân chỉnh trong
+  "Giờ hoạt động"). Bước nâng cấp chỉ thêm cột; đơn tạo trước đó không bị tự hủy. Quay lại bản trước:
+  `alembic downgrade 0008` (bỏ các cột mới) hoặc khôi phục bản sao lưu mà `manage.py migrate` tạo trước khi nâng cấp.
 - Phiếu ghép cặp mô phỏng nạp từ bản cũ được sinh với nhiễu 0,08, khiến độ phù hợp của phòng thường hiện 100%. Mô hình
   đi kèm mã nguồn đã được huấn luyện lại với nhiễu 0,15; để bảng `pair_feedback` khớp với mô hình, sinh lại các phiếu
   mô phỏng bằng `python manage.py seed --feedback --regenerate` (câu trả lời khảo sát thật được giữ nguyên).
 
 ## 10. Giới hạn đã biết
 
-- API chạy **một tiến trình**: kênh WebSocket và tác vụ nền (hết hạn đơn chờ cọc, hoàn tất đơn) nằm trong tiến trình đó.
-  Không có Redis thì giữ chỗ tạm và giới hạn đăng nhập cũng chỉ nằm trong bộ nhớ tiến trình.
+- Tác vụ nền (hết hạn đơn chờ cọc, tự hủy đơn tại quầy chưa thu, hoàn tất đơn và phòng đấu) chạy được khi API có
+  nhiều tiến trình: mỗi lượt giữ một khóa tư vấn của PostgreSQL nên chỉ một tiến trình chạy, và mỗi dòng được khóa
+  SKIP LOCKED nên không xử lý trùng. Kênh WebSocket thì vẫn theo từng tiến trình: chạy nhiều tiến trình cần đặt
+  `REDIS_URL` để giữ chỗ tạm và giới hạn đăng nhập dùng chung (không có Redis thì chúng chỉ nằm trong bộ nhớ tiến trình).
 - Số tiền lưu bằng kiểu số thực (`FLOAT`); mọi giá trị trong hệ thống là số nguyên VNĐ.
 - Quét QR bằng camera cần trình duyệt hỗ trợ `BarcodeDetector` và trang chạy trên HTTPS hoặc `localhost`;
   các trường hợp khác nhân viên nhập mã đơn bằng tay.

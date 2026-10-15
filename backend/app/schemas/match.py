@@ -16,7 +16,7 @@ class MatchParticipantResponse(BaseModel):
     user_name: Optional[str] = None
     skill_level: Optional[float] = None
     play_style: Optional[str] = None
-    # Số điện thoại chỉ trả về cho thành viên của chính phòng đấu đó
+    # Số đầy đủ chỉ trả về giữa các thành viên đã được duyệt; người khác nhận số đã che (0901***233)
     phone: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -101,6 +101,12 @@ class MatchResponse(BaseModel):
     creator_skill_level: Optional[float] = None
     creator_play_style: Optional[str] = None
     participants: List[MatchParticipantResponse] = []
+    # Số thành viên đã được duyệt (gồm chủ phòng): con số "đã có / cần" của phòng
+    accepted_count: int = 0
+    # Trạng thái của chính người xem trong phòng: None, PENDING, ACCEPTED, REJECTED
+    my_status: Optional[str] = None
+    # Số yêu cầu chờ duyệt; chỉ chủ phòng nhận được con số này
+    pending_count: int = 0
     # Độ phù hợp do mô hình ghép cặp ước lượng (0-100); None khi chưa có mô hình hoặc chưa đăng nhập
     compatibility: Optional[float] = None
     # True khi độ phù hợp đạt ngưỡng đề xuất (app/core/matching_policy.py)

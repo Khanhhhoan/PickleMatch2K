@@ -76,6 +76,49 @@ def test_maintenance_run_expires_finalises_and_closes_matches(client, db, world,
     assert db.get(Match, match["id"]).status == "CANCELLED"
 
 
+def test_maintenance_skips_a_round_while_another_process_runs_one(client, db, world, clock):
+    """Nhiều tiến trình API: chỉ một tiến trình chạy lượt bảo trì tại một thời điểm, nhờ khóa tư vấn của PostgreSQL."""
+    unpaid = create_booking(client, world.p1, world.court, clock.day(1), hours=(9,))
+    clock.advance(minutes=20)
+
+    with engine.connect() as other_process:
+        other_process.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": maintenance.MAINTENANCE_LOCK_KEY})
+        assert maintenance.run_maintenance_once() is False
+        db.expire_all()
+        assert db.get(Booking, unpaid["id"]).status == "PENDING"
+    # Tiến trình kia xong lượt (giao dịch kết thúc, khóa tự nhả): lượt sau chạy bình thường
+    assert maintenance.run_maintenance_once() is True
+    db.expire_all()
+    assert db.get(Booking, unpaid["id"]).status == "EXPIRED"
+
+
+def test_background_jobs_skip_rows_another_transaction_is_working_on(client, db, world, clock):
+    from app.db.database import SessionLocal
+    from app.services import booking_service, match_service
+
+    day = clock.day(1)
+    absent = confirmed_booking(client, world.p1, world.court, day, hours=(9,))
+    room = client.post("/api/v1/matches", json={"booking_id": confirmed_booking(
+        client, world.p2, world.venue_a.courts[1], day, hours=(9,))["id"]}, headers=auth(world.p2)).json()
+    clock.set(day, 10, 5)
+
+    # Phòng đấu đang bị giao dịch khác giữ: lượt này bỏ qua, lượt sau mới xử lý
+    with SessionLocal() as other:
+        other.execute(text("SELECT id FROM matches WHERE id = :id FOR UPDATE"), {"id": room["id"]})
+        assert match_service.auto_update_expired_matches(db) == []
+        other.rollback()
+    assert [m["id"] for m in match_service.auto_update_expired_matches(db)] == [room["id"]]
+    assert match_service.auto_update_expired_matches(db) == []      # lượt sau không xử lý lại
+
+    # Đơn đang bị giao dịch khác giữ (ví dụ nhân viên đang thao tác): lượt này bỏ qua đơn đó
+    with SessionLocal() as other:
+        other.execute(text("SELECT id FROM bookings WHERE id = :id FOR UPDATE"), {"id": absent["id"]})
+        assert absent["id"] not in booking_service.finalize_past_bookings(db)
+        other.rollback()
+    assert booking_service.finalize_past_bookings(db) == [absent["id"]]
+    assert booking_service.finalize_past_bookings(db) == []          # lượt sau không xử lý lại
+
+
 def test_one_failing_job_does_not_stop_the_others(client, db, world, clock, monkeypatch):
     from app.services import booking_service
 

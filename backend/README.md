@@ -19,7 +19,7 @@ backend/
 │   │                       user, search, match, venue_recommendation, ml, maintenance (tác vụ nền), storage
 │   ├── ml/                 features (đặc trưng dùng chung), train_model, mô hình .pkl và model_meta.json
 │   └── utils/              timeutils (giờ Việt Nam, đồng hồ nghiệp vụ), geo (Haversine)
-├── alembic/versions/       0001 schema gốc → 0002 chỉnh lệch CSDL cũ → 0003 lõi đặt sân → 0004 nhãn khảo sát → 0005 bỏ giờ rảnh → 0006 bỏ tiện ích ưa thích, ngân sách → 0007 thêm chênh lệch tuổi → 0008 sổ kết ca
+├── alembic/versions/       0001 schema gốc → 0002 chỉnh lệch CSDL cũ → 0003 lõi đặt sân → 0004 nhãn khảo sát → 0005 bỏ giờ rảnh → 0006 bỏ tiện ích ưa thích, ngân sách → 0007 thêm chênh lệch tuổi → 0008 sổ kết ca → 0009 đối soát hoàn tiền, hạn tự hủy đơn tại quầy chưa thu
 ├── scripts/                Script quản trị (seed, reset, import_excel, backup_db, show_db)
 ├── tests/                  Bộ kiểm thử pytest
 ├── manage.py               Bộ lệnh quản trị
@@ -62,17 +62,17 @@ python -m pytest tests/test_infrastructure.py          # kiểm tra schema khớ
 
 ## Nhóm API
 
-87 thao tác dưới tiền tố `/api/v1`; mô tả chi tiết từng tham số ở `http://localhost:8000/docs`.
+92 thao tác dưới tiền tố `/api/v1`; mô tả chi tiết từng tham số ở `http://localhost:8000/docs`.
 
 | Nhóm | Số thao tác | Nội dung |
 | :--- | :---: | :--- |
 | `auth` | 2 | Đăng ký, đăng nhập (giới hạn số lần sai) |
 | `users` | 14 | Hồ sơ cá nhân, đổi mật khẩu, chủ sân quản lý nhân viên, quản trị viên quản lý tài khoản |
-| `venues` | 24 | Cụm sân, sân con, bảng giá, giờ mở cửa, ảnh, đánh giá, duyệt cụm sân |
+| `venues` | 25 | Cụm sân, sân con, bảng giá, giờ mở cửa, ảnh, đánh giá, duyệt cụm sân, đơn sắp tới (chặn bảo trì khi còn khách) |
 | `search` | 2 | Tìm cụm sân, lịch trống theo ngày |
-| `bookings` | 20 | Giữ chỗ tạm, tạo đơn, hủy, đơn tại quầy, check-in, thu tiền, dời lịch, hoàn tiền, thống kê |
+| `bookings` | 22 | Giữ chỗ tạm, tạo đơn, hủy, đơn tại quầy, check-in, thu tiền, dời lịch, hoàn tiền (mã giao dịch + chứng từ), thống kê |
 | `payments` | 7 | Thông tin chuyển khoản, webhook SePay, giả lập, sổ giao dịch, kết ca tại quầy |
-| `matches` | 11 | Phòng đấu: tạo trên đơn đã cọc, tham gia, rời, quản trị; mỗi phòng kèm độ phù hợp và cờ "mô hình đề xuất" cho người xem |
+| `matches` | 13 | Phòng đấu: tạo trên đơn đã cọc, xin tham gia, chủ phòng duyệt / từ chối, rời, quản trị; mỗi phòng kèm độ phù hợp và cờ "mô hình đề xuất" cho người xem |
 | `recommendations` | 1 | Gợi ý cụm sân, thang 100: gần 40, giá 35, giờ còn trống 25 (trang chủ dùng để xếp danh sách cho người chơi đã đăng nhập) |
 | `ml` | 5 | Thông tin mô hình và ngưỡng đề xuất, dự đoán độ phù hợp, xếp hạng người chơi, khảo sát thu nhãn |
 
@@ -115,8 +115,15 @@ Webhook SePay ghi nhận mỗi mã tham chiếu đúng một lần, kể cả kh
 
 ## Tác vụ nền
 
-Mỗi 60 giây (`app/services/maintenance.py`): hết hạn đơn chờ cọc, hoàn tất đơn và đánh dấu vắng mặt cho đơn đã qua
-giờ, đóng phòng đấu đã qua giờ. Một tác vụ lỗi không chặn các tác vụ còn lại. Vì vậy API chạy bằng **một tiến trình**.
+Mỗi 60 giây (`app/services/maintenance.py`): hết hạn đơn chờ cọc, tự hủy đơn tại quầy chưa thu tiền khi tới hạn
+(`Booking.auto_release_at`), hoàn tất đơn và đánh dấu vắng mặt cho đơn đã qua giờ, đóng phòng đấu đã qua giờ. Một tác
+vụ lỗi không chặn các tác vụ còn lại.
+
+Chạy nhiều tiến trình API (`uvicorn --workers N`) vẫn an toàn: mỗi lượt giữ khóa tư vấn
+`pg_try_advisory_xact_lock` trên một kết nối riêng, tiến trình nào không giành được khóa thì bỏ qua lượt đó (khóa tự
+nhả khi giao dịch kết thúc, kể cả khi tiến trình chết). Bên trong, từng tác vụ khóa dòng `FOR UPDATE SKIP LOCKED`, nên
+một đơn hay một phòng đấu chỉ được xử lý một lần và không có thông báo, yêu cầu hoàn tiền trùng. Giữ chỗ tạm cần
+`REDIS_URL` khi chạy nhiều tiến trình; ràng buộc của CSDL vẫn chặn đặt trùng trong mọi trường hợp.
 
 ## Mô hình ghép cặp
 

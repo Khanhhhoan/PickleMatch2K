@@ -54,6 +54,12 @@ from app.services.user_service import create_user  # noqa: E402
 from app.utils import timeutils  # noqa: E402
 from app.utils.timeutils import today_vn, vn_datetime  # noqa: E402
 
+
+def _join_and_accept(db, match_id: int, user_id: int):
+    """Dữ liệu mẫu: người chơi xin vào phòng và chủ phòng duyệt ngay (trong ứng dụng đây là hai bước)."""
+    match = match_service.join_match(db, match_id, user_id)
+    return match_service.decide_join_request(db, match_id, match.creator_id, user_id, accept=True)
+
 DEMO_PASSWORD = "123456"
 
 AMENITIES = [
@@ -513,7 +519,8 @@ class DemoActivity:
         ))
         self.at(day - timedelta(days=1), 15)
         cancelled = booking_service.get_booking_or_404(self.db, cancelled.id)
-        booking_service.confirm_refund(self.db, cancelled, self.ctx["owners"]["rudal"], "Đã chuyển hoàn cọc")
+        booking_service.confirm_refund(self.db, cancelled, self.ctx["owners"]["rudal"],
+                                       bank_reference=f"DEMO-HT-{cancelled.booking_code}", note="Đã chuyển hoàn cọc")
         self._stamp(cancelled)
 
         # Khách vãng lai trả tiền mặt tại quầy hôm qua
@@ -541,7 +548,7 @@ class DemoActivity:
                 booking_id=booking.id, required_skill=skill, num_players=players, purpose=purpose, notes=notes,
             ))
             for joiner in joiners:
-                match_service.join_match(self.db, match.id, self.player(joiner).id)
+                _join_and_accept(self.db, match.id, self.player(joiner).id)
 
         open_match(
             confirmed("khanhhoan121209@gmail.com", "no152", 1, 1, 18, 2), "khanhhoan121209@gmail.com",
@@ -749,7 +756,7 @@ def seed_match_demo(db: Session) -> dict:
         ))
         for email in room.joiners:
             try:
-                match = match_service.join_match(db, match.id, users[email].id)
+                match = _join_and_accept(db, match.id, users[email].id)
             except HTTPException:
                 db.rollback()   # ví dụ người này đã ở phòng khác trùng giờ từ lần nạp trước
         result["rooms"].append({
@@ -973,7 +980,8 @@ class _VenueActivity:
             ))
             self.at(vn_datetime(day_before, time(15, 0)))
             refunded = booking_service.get_booking_or_404(self.db, refunded.id)
-            booking_service.confirm_refund(self.db, refunded, self.venue.owner or staff[0], f"Đã chuyển hoàn cọc {DEMO_NOTE}")
+            booking_service.confirm_refund(self.db, refunded, self.venue.owner or staff[0],
+                                           bank_reference=f"DEMO-HT-{refunded.booking_code}", note=f"Đã chuyển hoàn cọc {DEMO_NOTE}")
             self._stamp(refunded)
 
         # Khách vãng lai trả đủ tiền mặt tại quầy hôm qua
@@ -1010,7 +1018,7 @@ class _VenueActivity:
                 joiner = self.db.query(User).filter(User.email == email).first()
                 try:
                     if joiner is not None:
-                        match_service.join_match(self.db, match.id, joiner.id)
+                        _join_and_accept(self.db, match.id, joiner.id)
                 except HTTPException:
                     self.db.rollback()   # người này đang ở một phòng khác trùng giờ: phòng vẫn mở, chỉ thiếu một người
 

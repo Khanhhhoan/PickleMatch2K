@@ -6,10 +6,12 @@ from datetime import time
 from typing import List, Optional
 
 from fastapi import HTTPException, status
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.core.websocket_manager import dispatch, manager
-from app.models.venue import Court, OperatingHour, PriceRule, Venue, VenueStatus
+from app.models.venue import Court, CourtStatus, OperatingHour, PriceRule, Venue, VenueStatus
+from app.utils.timeutils import now_utc, now_vn
 from app.schemas.venue import CourtCreate, CourtUpdate, OperatingHourBase, PriceRuleCreate, VenueCreate
 
 DEFAULT_PEAK_START = time(17, 0)
@@ -43,11 +45,83 @@ def get_venue(db: Session, venue_id: int) -> Optional[Venue]:
 # ---------------------------------------------------------------------------
 # Courts
 # ---------------------------------------------------------------------------
-def _get_court(db: Session, venue: Venue, court_id: int) -> Court:
-    court = db.query(Court).filter(Court.id == court_id, Court.venue_id == venue.id).first()
+def _get_court(db: Session, venue: Venue, court_id: int, *, for_update: bool = False) -> Court:
+    query = db.query(Court).filter(Court.id == court_id, Court.venue_id == venue.id)
+    if for_update:
+        query = query.populate_existing().with_for_update()
+    court = query.first()
     if not court:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy sân trong cụm sân này")
     return court
+
+
+def upcoming_bookings(db: Session, venue: Venue, court_id: Optional[int] = None) -> List[dict]:
+    """
+    Đơn còn hiệu lực có khung giờ chưa kết thúc trên một sân (hoặc cả cụm sân): đã xác nhận, đang chơi, hoặc đang chờ
+    cọc mà chưa hết hạn. Mỗi phần tử là một đơn trên một sân, kèm khoảng giờ sớm nhất - muộn nhất của đơn trên sân đó.
+    """
+    from app.models.booking import Booking, BookingDetail, BookingStatus
+
+    now_local = now_vn()
+    today = now_local.date()
+    query = (
+        db.query(BookingDetail, Booking)
+        .join(Booking, Booking.id == BookingDetail.booking_id)
+        .join(Court, Court.id == BookingDetail.court_id)
+        .filter(
+            Court.venue_id == venue.id,
+            BookingDetail.is_active.is_(True),
+            Booking.status.in_([BookingStatus.PENDING.value, BookingStatus.CONFIRMED.value, BookingStatus.CHECKED_IN.value]),
+            or_(Booking.status != BookingStatus.PENDING.value, Booking.expires_at > now_utc()),
+            or_(BookingDetail.date > today, and_(BookingDetail.date == today, BookingDetail.end_time > now_local.time())),
+        )
+        .order_by(BookingDetail.date, BookingDetail.start_time)
+    )
+    if court_id is not None:
+        query = query.filter(BookingDetail.court_id == court_id)
+
+    grouped: dict = {}
+    for detail, booking in query.all():
+        key = (booking.id, detail.court_id, detail.date)
+        item = grouped.get(key)
+        if item is None:
+            grouped[key] = {
+                "booking_id": booking.id,
+                "booking_code": booking.booking_code,
+                "status": booking.status,
+                "customer_name": booking.user_name,
+                "customer_phone": booking.user_phone,
+                "court_id": detail.court_id,
+                "court_name": detail.court_name,
+                "date": detail.date,
+                "start_time": detail.start_time,
+                "end_time": detail.end_time,
+            }
+        else:
+            item["start_time"] = min(item["start_time"], detail.start_time)
+            item["end_time"] = max(item["end_time"], detail.end_time)
+    return list(grouped.values())
+
+
+def ensure_no_upcoming_bookings(db: Session, venue: Venue, court_id: Optional[int], target: str) -> None:
+    """
+    Chặn tạm ngưng (bảo trì, ngừng hoạt động) khi còn khách đã đặt: không âm thầm bỏ rơi hay hủy đơn của khách.
+    Chủ sân dời các đơn đó sang sân khác hoặc hủy và hoàn tiền trước, rồi mới tạm ngưng được.
+    """
+    conflicts = upcoming_bookings(db, venue, court_id)
+    if conflicts:
+        codes = ", ".join(sorted({c["booking_code"] for c in conflicts}))
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{target} còn {len({c['booking_id'] for c in conflicts})} đơn đặt sắp tới ({codes}). "
+                   "Hãy dời các đơn này sang sân khác hoặc hủy và hoàn tiền cho khách trước khi tạm ngưng.",
+        )
+
+
+def ensure_venue_can_pause(db: Session, venue: Venue) -> None:
+    """Trước khi chuyển cả cụm sân khỏi ACTIVE: khóa mọi sân (theo thứ tự id như lúc đặt sân) rồi kiểm tra đơn sắp tới."""
+    db.query(Court.id).filter(Court.venue_id == venue.id).order_by(Court.id).with_for_update().all()
+    ensure_no_upcoming_bookings(db, venue, None, "Cụm sân")
 
 
 def create_court(db: Session, venue: Venue, court_in: CourtCreate) -> Court:
@@ -62,12 +136,17 @@ def create_court(db: Session, venue: Venue, court_in: CourtCreate) -> Court:
 
 
 def update_court(db: Session, venue: Venue, court_id: int, court_in: CourtUpdate) -> Court:
-    court = _get_court(db, venue, court_id)
+    # Khóa dòng sân: đơn mới cũng khóa dòng này (booking_service.create_booking), nên không có đơn nào chen vào
+    # giữa lúc kiểm tra đơn sắp tới và lúc đổi trạng thái sân.
+    court = _get_court(db, venue, court_id, for_update=True)
     changes = court_in.model_dump(exclude_unset=True)
     if changes.get("name"):
         court.name = changes["name"].strip()
-    if changes.get("status") is not None:
-        court.status = changes["status"].value
+    new_status = changes.get("status")
+    if new_status is not None:
+        if new_status.value != CourtStatus.ACTIVE.value and court.status == CourtStatus.ACTIVE.value:
+            ensure_no_upcoming_bookings(db, venue, court.id, f"Sân {court.name}")
+        court.status = new_status.value
     if "price" in changes:
         court.price = changes["price"] or None
     db.commit()

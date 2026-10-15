@@ -17,8 +17,9 @@ class MatchStatus(str, enum.Enum):
 
 class ParticipantStatus(str, enum.Enum):
     INVITED = "INVITED"
-    ACCEPTED = "ACCEPTED"
-    REJECTED = "REJECTED"
+    PENDING = "PENDING"    # Đã xin tham gia, chờ chủ phòng duyệt: chưa chiếm chỗ, chưa xem được số điện thoại
+    ACCEPTED = "ACCEPTED"  # Thành viên chính thức (chủ phòng luôn ở trạng thái này)
+    REJECTED = "REJECTED"  # Chủ phòng đã từ chối: không gửi lại yêu cầu cho phòng này được
 
 
 def _display_name(user, fallback: str) -> str:

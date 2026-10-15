@@ -42,6 +42,8 @@ const ADMIN = process.env.E2E_ADMIN_URL || "http://localhost:3001";
 const PASSWORD = process.env.E2E_PASSWORD || "123456";
 const SHOTS = path.join(__dirname, "../test-results/screenshots");
 const TIMEOUT = 15000;
+// Ảnh PNG 1x1 dùng làm chứng từ chuyển hoàn trong bước của nhân viên
+const TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 const results = [];
 const problems = []; // lỗi JavaScript trên trang và phản hồi 5xx của API
@@ -75,7 +77,7 @@ const hasText = (page, text) => page.evaluate((t) => document.body.innerText.toL
 const roomIsRecommended = (page, memberName) =>
   page.evaluate((name) => {
     const cards = [...document.querySelectorAll("div")].filter(
-      (el) => el.querySelector("h3") && (el.innerText || "").includes(name) && (el.innerText || "").includes("Tham Gia Phòng"),
+      (el) => el.querySelector("h3") && (el.innerText || "").includes(name) && (el.innerText || "").includes("Xin Tham Gia"),
     );
     const card = cards[cards.length - 1]; // khối nhỏ nhất có tiêu đề cụm sân, tên chủ phòng và nút tham gia = thẻ phòng
     if (!card) return null;
@@ -323,9 +325,9 @@ async function main() {
     await far.context.close();
 
     // ---------------------------------------------------------------- Người chơi 2
-    console.log("\nNgười chơi 2: tham gia phòng");
+    console.log("\nNgười chơi 2: xin vào phòng, chủ phòng duyệt");
     const p2 = await newSession("player02");
-    await step(p2, "thấy phòng của người chơi 1 kèm độ phù hợp và tham gia", async (page) => {
+    await step(p2, "thấy phòng của người chơi 1 kèm độ phù hợp, xin tham gia và chưa thấy số điện thoại", async (page) => {
       await login(p2, WEB, "player02@gmail.com");
       await page.goto(`${WEB}/matches?tab=open`, { waitUntil: "networkidle2" });
       await waitForText(page, "Lê Hoàng Long");
@@ -338,9 +340,27 @@ async function main() {
       if ((await hasText(page, "Lê Hoàng Long")) !== recommended) throw new Error("Mục Phòng Đề Xuất không khớp với nhãn trên thẻ phòng");
       await page.goto(`${WEB}/matches?tab=open`, { waitUntil: "networkidle2" });
       await waitForText(page, "Lê Hoàng Long");
-      await clickText(page, "button", "Tham Gia Phòng", { within: "Lê Hoàng Long" });
-      await waitForText(page, "Đã tham gia phòng");
-      await waitForText(page, "0901112233"); // thành viên cùng phòng thấy số điện thoại của nhau
+      await clickText(page, "button", "Xin Tham Gia", { within: "Lê Hoàng Long" });
+      await waitForText(page, "Đã gửi yêu cầu tham gia");
+      await waitForText(page, "Đang chờ duyệt");
+      await clickText(page, "button", "Chi tiết", { within: "Lê Hoàng Long", exact: true });
+      await waitForText(page, "0901***233"); // chờ duyệt: chỉ thấy số đã che
+      if (await hasText(page, "0901112233")) throw new Error("Chưa được duyệt mà đã thấy đủ số điện thoại của chủ phòng");
+    });
+    await step(p1, "chủ phòng thấy yêu cầu và chấp nhận", async (page) => {
+      await page.goto(`${WEB}/matches?tab=my_matches`, { waitUntil: "networkidle2" });
+      await waitForText(page, "1 yêu cầu chờ duyệt");
+      await clickText(page, "button", "Chi tiết", { exact: true });
+      await waitForText(page, "Yêu cầu tham gia");
+      await clickText(page, "button", "Chấp Nhận", { exact: true });
+      await waitForText(page, "vào phòng.");
+    });
+    await step(p2, "được duyệt thì thành viên thấy số điện thoại của nhau", async (page) => {
+      await page.goto(`${WEB}/matches?tab=my_matches`, { waitUntil: "networkidle2" });
+      await waitForText(page, "Lê Hoàng Long");
+      await clickText(page, "button", "Chi tiết", { within: "Lê Hoàng Long", exact: true });
+      await waitForText(page, "0901112233");
+      if (await hasText(page, "Đang chờ duyệt")) throw new Error("Đã được duyệt nhưng thẻ phòng vẫn ghi đang chờ duyệt");
     });
     await p2.context.close();
 
@@ -448,8 +468,22 @@ async function main() {
       await page.type('input[aria-label="Mã đơn để check-in"]', bookingCode);
       await clickText(page, "button", "Tìm đơn");
       await waitForText(page, `Đơn ${bookingCode}`);
+      // thiếu mã giao dịch ngân hàng thì không xác nhận được
+      await clickText(page, "button", "Xác nhận đã chuyển hoàn");
+      await waitForText(page, "Nhập mã giao dịch ngân hàng");
+      await page.type('input[id^="refund-reference-"]', "FT26E2E000001");
       await clickText(page, "button", "Xác nhận đã chuyển hoàn");
       await waitForText(page, "Đã ghi nhận hoàn tiền");
+      await waitForText(page, "FT26E2E000001");
+      // đính kèm chứng từ (ảnh) sau khi xác nhận; tệp lưu riêng, chỉ xem được khi đã đăng nhập
+      fs.mkdirSync(SHOTS, { recursive: true });
+      const proof = path.join(SHOTS, "chung-tu-e2e.png");
+      fs.writeFileSync(proof, Buffer.from(TINY_PNG, "base64"));
+      const input = await page.$('label input[type="file"]');
+      if (!input) throw new Error("Không thấy ô đính kèm chứng từ sau khi xác nhận hoàn tiền");
+      await input.uploadFile(proof);
+      await waitForText(page, "Đã lưu chứng từ hoàn tiền");
+      await waitForText(page, "Xem chứng từ");
     });
   }
   await step(staff, "tạo đơn tại quầy từ một ô trống trên lịch", async (page) => {

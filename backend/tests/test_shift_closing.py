@@ -79,7 +79,8 @@ def test_each_closing_covers_only_what_came_after_the_previous_one(client, db, w
     desk(client, world.staff_a, court_1, today, "13:00:00", "14:00:00", payment_method="BANK_TRANSFER")     # 100k chuyển khoản
     client.post(f"{BOOKINGS}/{cancelled['id']}/cancel", headers=auth(world.p2),
                 json={"bank_account": "1", "bank_name": "MB", "account_holder": "B"})
-    client.post(f"{BOOKINGS}/{cancelled['id']}/confirm-refund", headers=auth(world.staff_a))           # hoàn 50k
+    client.post(f"{BOOKINGS}/{cancelled['id']}/confirm-refund", json={"bank_reference": "FT26288SHIFT1"},
+                headers=auth(world.staff_a))                                                           # hoàn 50k
 
     assert money(summary(client, world.staff_a)) == (50000, 100000, 50000)
     second = close(client, world.owner_a, opening_float=200000, counted_cash=260000).json()

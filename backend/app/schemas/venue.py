@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -154,8 +154,24 @@ class VenueUpdate(BaseModel):
     # Thông tin nhận tiền của chủ cụm sân
     bank_account: Optional[str] = Field(default=None, max_length=160)
     company_name: Optional[str] = Field(default=None, max_length=160)
+    # Đơn tại quầy chưa thu tiền tự hủy khi còn bấy nhiêu phút tới giờ chơi (0 = không tự hủy, tối đa 24 giờ)
+    unpaid_desk_release_minutes: Optional[int] = Field(default=None, ge=0, le=1440)
 
     model_config = ConfigDict(extra="ignore")
+
+
+class UpcomingBookingResponse(BaseModel):
+    """Một đơn còn hiệu lực sắp diễn ra trên một sân: cần xử lý trước khi tạm ngưng sân hay cụm sân."""
+    booking_id: int
+    booking_code: Optional[str] = None
+    status: str
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    court_id: int
+    court_name: Optional[str] = None
+    date: date
+    start_time: time
+    end_time: time
 
 
 class VenueStatusUpdate(BaseModel):
@@ -218,6 +234,7 @@ class VenueResponse(BaseModel):
     image_url: Optional[str] = None
     images: Optional[str] = None
     status: Optional[str] = VenueStatus.ACTIVE.value
+    unpaid_desk_release_minutes: int = 30
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     courts: List[CourtResponse] = []

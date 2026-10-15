@@ -88,6 +88,31 @@ export async function uploadVenueImage(venueId: number, file: File, isPrimary: b
   });
 }
 
+/** Đính kèm chứng từ chuyển hoàn (ảnh hoặc PDF) cho đơn đã xác nhận hoàn tiền. */
+export async function uploadRefundProof(bookingId: number, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return fetchApi(`/bookings/${bookingId}/refund-proof`, { method: "POST", body: formData });
+}
+
+/** Mở chứng từ hoàn tiền trong tab mới. Tệp không công khai nên phải tải kèm phiên đăng nhập rồi mới mở. */
+export async function openRefundProof(bookingId: number) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const opened = window.open("", "_blank"); // mở trước để trình duyệt không chặn cửa sổ bật lên
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/bookings/${bookingId}/refund-proof`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    opened?.close();
+    const errorData = await response.json().catch(() => ({}));
+    throw new ApiError(describeApiError(errorData.detail, "Không mở được chứng từ."), response.status);
+  }
+  const url = URL.createObjectURL(await response.blob());
+  if (opened) opened.location.href = url;
+  else window.location.href = url;
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export async function deleteVenueImage(venueId: number, imageUrl: string) {
   const params = new URLSearchParams({ image_url: imageUrl });
   return fetchApi(`/venues/${venueId}/images?${params.toString()}`, {

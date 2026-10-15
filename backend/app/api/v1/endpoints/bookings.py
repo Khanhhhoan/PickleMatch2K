@@ -1,7 +1,9 @@
+import os
 from datetime import date
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -26,7 +28,7 @@ from app.schemas.booking import (
     ReleaseSlotRequest,
     RescheduleRequest,
 )
-from app.services import booking_service, ledger
+from app.services import booking_service, ledger, storage_service
 from app.services.availability_service import is_valid_slot
 from app.services.booking_service import SlotRequest
 from app.services.slot_lock_service import slot_lock_manager
@@ -203,13 +205,54 @@ def collect_booking_payment(
 @router.post("/{booking_id}/confirm-refund", response_model=BookingResponse)
 def confirm_refund(
     booking_id: int,
-    payload: Optional[ConfirmRefundRequest] = None,
+    payload: ConfirmRefundRequest,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(venue_staff),
 ):
-    """Xác nhận đã chuyển tiền hoàn cho khách."""
+    """
+    Xác nhận đã chuyển tiền hoàn cho khách, kèm mã giao dịch ngân hàng của lần chuyển (bắt buộc).
+    Hệ thống không tự chuyển tiền: nhân viên chuyển khoản thủ công rồi xác nhận ở đây.
+    """
     booking = _get_staff_booking(db, booking_id, current_user)
-    return booking_service.confirm_refund(db, booking, current_user, payload.note if payload else None)
+    return booking_service.confirm_refund(db, booking, current_user, bank_reference=payload.bank_reference, note=payload.note)
+
+
+@router.post("/{booking_id}/refund-proof", response_model=BookingResponse)
+async def upload_refund_proof(
+    booking_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(venue_staff),
+):
+    """Đính kèm chứng từ chuyển hoàn (ảnh JPG/PNG/WEBP hoặc PDF, tối đa 5MB) cho đơn đã xác nhận hoàn tiền."""
+    limit = storage_service.MAX_PROOF_BYTES
+    contents = await file.read(limit + 1)
+    booking = _get_staff_booking(db, booking_id, current_user)
+    if booking.refund_status != "COMPLETED":
+        raise HTTPException(status_code=400, detail="Chỉ đính kèm chứng từ cho đơn đã xác nhận hoàn tiền.")
+    old = booking.refund_proof_file
+    booking.refund_proof_file = storage_service.save_refund_proof(booking.id, contents)
+    db.commit()
+    if old:
+        storage_service.delete_refund_proof(old)
+    db.refresh(booking)
+    return booking
+
+
+@router.get("/{booking_id}/refund-proof")
+def download_refund_proof(
+    booking_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_active_user),
+):
+    """Tải chứng từ chuyển hoàn. Chỉ người quản lý cụm sân của đơn, quản trị viên và chính khách của đơn được xem."""
+    booking = booking_service.get_booking_or_404(db, booking_id)
+    if booking.user_id != current_user.id or booking.is_desk_booking:
+        require_booking_staff(db, current_user, booking)
+    if not booking.refund_proof_file:
+        raise HTTPException(status_code=404, detail="Đơn này chưa có chứng từ hoàn tiền.")
+    path, media_type = storage_service.refund_proof_path(booking.refund_proof_file)
+    return FileResponse(path, media_type=media_type, filename=f"chung-tu-hoan-tien-{booking.booking_code}{os.path.splitext(path)[1]}")
 
 
 @router.put("/{booking_id}/status", response_model=BookingResponse)

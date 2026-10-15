@@ -66,6 +66,8 @@ backups/
 backend/uploads/**
 !backend/uploads/venues/
 !backend/uploads/venues/.gitkeep
+# Chứng từ hoàn tiền: dữ liệu tài chính của khách, không bao giờ đưa vào kho mã
+backend/private_uploads/
 
 # IDE & OS Specific
 .idea/

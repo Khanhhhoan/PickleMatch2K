@@ -6,7 +6,8 @@ Vòng đời một đơn:
        │                           │  └─(hết giờ, không đến)──> NO_SHOW
        ├─(quá 15 phút)──> EXPIRED  └─(hủy)──> CANCELLED
        └─(hủy)──> CANCELLED
-Đơn tạo tại quầy (source = DESK) bắt đầu ở CONFIRMED hoặc CHECKED_IN.
+Đơn tạo tại quầy (source = DESK) bắt đầu ở CONFIRMED hoặc CHECKED_IN. Đơn tại quầy chưa thu đồng nào tự hủy khi
+còn `Venue.unpaid_desk_release_minutes` phút nữa tới giờ chơi (xem release_unpaid_desk_bookings).
 
 Bảo đảm không đặt trùng: mỗi dòng BookingDetail là một khung 60 phút; CSDL có unique index
 (court_id, date, start_time) và ràng buộc loại trừ khoảng thời gian trên các dòng is_active.
@@ -18,8 +19,9 @@ from datetime import date, datetime, time, timedelta
 from typing import List, Optional, Sequence
 
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core import booking_policy as policy
 from app.core.websocket_manager import dispatch, manager
@@ -78,6 +80,8 @@ def last_slot_end(booking: Booking) -> datetime:
 
 def recalculate_payment_status(booking: Booking) -> None:
     paid, total, deposit = float(booking.paid_amount or 0), float(booking.total_price or 0), float(booking.deposit_amount or 0)
+    if paid > 0:
+        booking.auto_release_at = None  # đã thu tiền thì đơn tại quầy không còn tự hủy
     if paid >= total - policy.PAYMENT_TOLERANCE and total > 0:
         booking.payment_status = PaymentStatus.FULLY_PAID.value
     elif paid >= deposit - policy.PAYMENT_TOLERANCE and paid > 0:
@@ -86,6 +90,19 @@ def recalculate_payment_status(booking: Booking) -> None:
         booking.payment_status = PaymentStatus.PARTIALLY_PAID.value
     else:
         booking.payment_status = PaymentStatus.UNPAID.value
+
+
+def _desk_release_deadline(booking: Booking, venue) -> Optional[datetime]:
+    """
+    Hạn tự hủy của một đơn tại quầy chưa thu đồng nào: giờ chơi trừ `unpaid_desk_release_minutes` của cụm sân.
+    None nếu cụm sân tắt tính năng (0 phút), đơn đã có tiền, hoặc hạn đã qua lúc tạo/dời đơn (nhân viên chủ động giữ
+    chỗ sát giờ cho khách đang tới thì không tự hủy).
+    """
+    minutes = getattr(venue, "unpaid_desk_release_minutes", 0) or 0
+    if not minutes or float(booking.paid_amount or 0) > 0 or not booking.details:
+        return None
+    deadline = first_slot_start(booking) - timedelta(minutes=minutes)
+    return deadline if deadline > now_vn() else None
 
 
 def _set_slots_active(booking: Booking, active: bool) -> None:
@@ -359,6 +376,8 @@ def create_booking(
         if check_in_now:
             booking.checked_in_at = now_utc()
             booking.checked_in_by_id = user.id
+        else:
+            booking.auto_release_at = _desk_release_deadline(booking, venue)
 
     db.commit()
     db.refresh(booking)
@@ -523,11 +542,12 @@ def preview_cancellation(booking: Booking) -> dict:
             "refund_amount": float(refund), "message": message}
 
 
-def _mark_cancelled(db: Session, booking: Booking, actor: User, reason: Optional[str]) -> None:
+def _mark_cancelled(db: Session, booking: Booking, actor: Optional[User], reason: Optional[str]) -> None:
+    """actor = None: hệ thống tự hủy (tác vụ nền)."""
     booking.status = S.CANCELLED.value
     booking.expires_at = None
     booking.cancelled_at = now_utc()
-    booking.cancelled_by_id = actor.id
+    booking.cancelled_by_id = actor.id if actor else None
     booking.cancel_reason = (reason or "").strip() or None
     _set_slots_active(booking, False)
     _cancel_linked_matches(db, booking)
@@ -579,20 +599,39 @@ def cancel_by_venue(db: Session, booking: Booking, actor: User, reason: Optional
     return booking
 
 
-def confirm_refund(db: Session, booking: Booking, actor: User, note: Optional[str] = None) -> Booking:
+def confirm_refund(db: Session, booking: Booking, actor: User, *, bank_reference: str, note: Optional[str] = None) -> Booking:
+    """
+    Xác nhận đã chuyển hoàn thủ công cho khách (hệ thống không tự chuyển tiền). Bắt buộc có mã giao dịch ngân hàng
+    của lần chuyển; một mã chỉ dùng cho một đơn. Đơn phải được khóa dòng trước khi gọi (xem _get_staff_booking),
+    nên hai lần xác nhận cùng lúc không thể cùng ghi khoản hoàn.
+    """
     if booking.refund_status != RefundStatus.PENDING.value:
         raise _error(400, "Đơn này không ở trạng thái chờ hoàn tiền")
+    reference = (bank_reference or "").strip()
+    if not reference:
+        raise _error(400, "Cần nhập mã giao dịch ngân hàng của lần chuyển hoàn.")
+    used = db.query(Booking.booking_code).filter(Booking.refund_reference == reference, Booking.id != booking.id).first()
+    if used:
+        raise _error(status.HTTP_409_CONFLICT, f"Mã giao dịch {reference} đã được dùng để xác nhận hoàn tiền cho đơn {used[0]}.")
+
     amount = float(booking.refund_amount or 0)
     if amount > 0:
+        content = f"Hoàn tiền đơn {booking.booking_code} - mã GD {reference}"
+        if (note or "").strip():
+            content += f" - {note.strip()}"
         ledger.record_transaction(
             db, booking, amount=amount, kind=PaymentKind.REFUND.value, method=PaymentMethod.BANK_TRANSFER.value,
-            gateway="Hoàn tiền thủ công", content=(note or "").strip() or f"Hoàn tiền đơn {booking.booking_code}",
-            created_by_id=actor.id,
+            gateway="Hoàn tiền thủ công", content=content, created_by_id=actor.id,
         )
+    booking.refund_reference = reference
     booking.refund_status = RefundStatus.COMPLETED.value
     booking.refunded_at = now_utc()
     booking.refunded_by_id = actor.id
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise _error(status.HTTP_409_CONFLICT, f"Mã giao dịch {reference} đã được dùng để xác nhận hoàn tiền cho đơn khác.")
     db.refresh(booking)
     _broadcast_status(booking, f"Đơn {booking.booking_code} đã được hoàn tiền.")
     return booking
@@ -633,6 +672,7 @@ def check_in(
     booking.status = S.CHECKED_IN.value
     booking.checked_in_at = now_utc()
     booking.checked_in_by_id = actor.id
+    booking.auto_release_at = None
     db.commit()
     db.refresh(booking)
     _broadcast_status(booking, f"Đơn {booking.booking_code} đã check-in.")
@@ -651,13 +691,18 @@ def mark_completed(db: Session, booking: Booking) -> Booking:
 
 
 def finalize_past_bookings(db: Session) -> List[int]:
-    """Tác vụ nền: đơn đã qua giờ chơi -> COMPLETED (đã check-in) hoặc NO_SHOW (không đến)."""
+    """
+    Tác vụ nền: đơn đã qua giờ chơi -> COMPLETED (đã check-in) hoặc NO_SHOW (không đến).
+    Khóa dòng với SKIP LOCKED: đơn đang được thao tác ở nơi khác (hoặc một lượt tác vụ nền khác đang xử lý) thì để
+    lượt sau, nên một đơn không bao giờ bị kết thúc hai lần.
+    """
     now_local = now_vn()
     candidates = (
         db.query(Booking)
-        .options(joinedload(Booking.details))
+        .options(selectinload(Booking.details))
         .filter(Booking.status.in_([S.CONFIRMED.value, S.CHECKED_IN.value]))
         .filter(Booking.details.any(BookingDetail.date <= now_local.date()))
+        .with_for_update(skip_locked=True)
         .all()
     )
     changed = []
@@ -675,6 +720,43 @@ def finalize_past_bookings(db: Session) -> List[int]:
         for booking in changed:
             _broadcast_status(booking, f"Đơn {booking.booking_code} đã kết thúc.")
     return [b.id for b in changed]
+
+
+def release_unpaid_desk_bookings(db: Session) -> List[int]:
+    """
+    Tác vụ nền: tự hủy đơn tại quầy chưa thu đồng nào khi đã tới hạn (Booking.auto_release_at) mà chưa tới giờ chơi,
+    để khách hẹn qua điện thoại rồi không đến không giữ sân mãi. Đơn đã thu tiền, đã check-in, đơn online và đơn tạo
+    sát giờ không bị đụng. Khóa dòng SKIP LOCKED như các tác vụ nền khác.
+    """
+    now_local = now_vn()
+    candidates = (
+        db.query(Booking)
+        .options(selectinload(Booking.details))
+        .filter(
+            Booking.source == BookingSource.DESK.value,
+            Booking.status == S.CONFIRMED.value,
+            func.coalesce(Booking.paid_amount, 0) <= 0,
+            Booking.auto_release_at.isnot(None),
+            Booking.auto_release_at <= now_utc(),
+        )
+        .with_for_update(skip_locked=True)
+        .all()
+    )
+    released = []
+    for booking in candidates:
+        start = first_slot_start(booking) if booking.details else now_local
+        if start <= now_local:
+            continue  # đã tới giờ chơi (ví dụ máy chủ tắt đúng lúc tới hạn): để kết thúc theo giờ như mọi đơn khác
+        minutes = round((start - as_utc(booking.auto_release_at)).total_seconds() / 60)
+        _mark_cancelled(db, booking, None, f"Tự hủy: chưa thanh toán khi còn {minutes} phút tới giờ chơi")
+        booking.auto_release_at = None
+        released.append(booking)
+    if released:
+        db.commit()
+        for booking in released:
+            _broadcast_slots(booking, "SLOT_RELEASED", "Một khung giờ vừa được mở lại do đơn tại quầy chưa thanh toán.", True)
+            _broadcast_status(booking, f"Đơn {booking.booking_code} đã tự hủy vì chưa thanh toán.")
+    return [b.id for b in released]
 
 
 # ---------------------------------------------------------------------------
@@ -733,6 +815,9 @@ def reschedule(db: Session, booking: Booking, actor: User, court_id: int, new_da
     for match in db.query(Match).filter(Match.booking_id == booking.id).all():
         match.court_id, match.date = court.id, new_date
         match.start_time, match.end_time = new_slots[0].start_time, new_slots[-1].end_time
+    if booking.auto_release_at is not None:
+        # Đơn tại quầy chưa thu: hạn tự hủy dời theo giờ chơi mới
+        booking.auto_release_at = _desk_release_deadline(booking, court.venue)
     db.commit()
     db.refresh(booking)
 

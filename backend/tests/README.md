@@ -38,18 +38,18 @@ def test_vi_du(client, world, clock):
 | `test_security.py` | Băm mật khẩu, nâng cấp hash cũ, token, đăng ký, khóa đăng nhập sai, tài khoản bị khóa |
 | `test_permissions.py` | Mọi endpoint không công khai đều đòi đăng nhập; phân quyền theo vai trò và theo cụm sân |
 | `test_users.py` | Hồ sơ, đổi mật khẩu, quản trị tài khoản (khóa thay vì xóa khi đã có lịch sử) |
-| `test_venue_config.py` | Giá từng khung giờ, lịch trống, sân con, giờ hoạt động, ảnh, đánh giá, duyệt cụm sân |
+| `test_venue_config.py` | Giá từng khung giờ, lịch trống, sân con, chặn bảo trì khi còn đơn sắp tới, giờ hoạt động, ảnh, đánh giá, duyệt cụm sân |
 | `test_booking_flow.py` | Tạo đơn, kiểm tra đầu vào, hết hạn giữ chỗ, check-in, hoàn tất, ràng buộc chống đặt trùng ở CSDL |
-| `test_booking_cancellation.py` | Mức hoàn tiền theo thời điểm hủy, xác nhận hoàn tiền |
-| `test_desk_booking.py` | Đơn tại quầy, khách vãng lai, dời lịch, thống kê từ sổ giao dịch (tổng và theo từng cụm sân) |
+| `test_booking_cancellation.py` | Mức hoàn tiền theo thời điểm hủy, xác nhận hoàn tiền (mã giao dịch bắt buộc, một mã một đơn, chứng từ lưu riêng và phân quyền xem) |
+| `test_desk_booking.py` | Đơn tại quầy, khách vãng lai, tự hủy đơn chưa thu trước giờ chơi, dời lịch, thống kê từ sổ giao dịch (tổng và theo từng cụm sân) |
 | `test_payments.py` | Thông tin chuyển khoản, webhook SePay (xác thực, khớp đơn, ghi trùng, tiền đến muộn), giả lập |
 | `test_shift_closing.py` | Kết ca tại quầy: đối chiếu tiền mặt với sổ giao dịch, nhiều lần kết ca trong ngày, phạm vi cụm sân |
 | `test_concurrency.py` | Nhiều luồng thật tranh một khung giờ / một giao dịch / chỗ cuối của phòng đấu / cùng kết một ca |
 | `test_slot_holds.py` | Giữ chỗ tạm trên bộ nhớ và Redis (client giả), Redis lỗi |
-| `test_matches.py` | Phòng đấu gắn với đơn đặt, tham gia/rời, tự cập nhật, quyền riêng tư |
+| `test_matches.py` | Phòng đấu gắn với đơn đặt, xin tham gia / chủ phòng duyệt / rời, tự cập nhật, che số điện thoại |
 | `test_recommendation.py` | Chuẩn hóa từng tiêu chí và xếp hạng gợi ý cụm sân |
 | `test_ml.py` | Đặc trưng, huấn luyện/đánh giá, phục vụ mô hình, khảo sát thu nhãn, phiếu mô phỏng nạp trong CSDL (tách khỏi nhãn thật) |
-| `test_infrastructure.py` | Schema sau migration, nâng cấp CSDL cũ bằng `manage.py migrate`, tác vụ nền, WebSocket, script seed / nhập Excel / reset |
+| `test_infrastructure.py` | Schema sau migration, nâng cấp CSDL cũ bằng `manage.py migrate`, tác vụ nền (khóa tư vấn, SKIP LOCKED), WebSocket, script seed / nhập Excel / reset |
 
 `helpers.py` chứa hàm dựng dữ liệu và thao tác API dùng chung; `conftest.py` chứa fixture (`db`, `client`,
 `clock`, `world`).

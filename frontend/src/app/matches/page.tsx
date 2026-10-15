@@ -16,10 +16,11 @@ import { PROFILE_FIELD_LABEL, playStyleLabel, purposeLabel } from "@/lib/player"
 interface Participant {
   id: number;
   user_id: number;
+  status: "PENDING" | "ACCEPTED" | "REJECTED" | "INVITED";
   user_name?: string | null;
   skill_level?: number | null;
   play_style?: string | null;
-  phone?: string | null; // chỉ có khi mình là thành viên của phòng
+  phone?: string | null; // đầy đủ giữa các thành viên đã được duyệt; người khác nhận số đã che (0901***233)
 }
 
 interface Match {
@@ -41,6 +42,9 @@ interface Match {
   creator_skill_level?: number | null;
   creator_play_style?: string | null;
   participants: Participant[];
+  accepted_count: number; // thành viên đã được duyệt, gồm chủ phòng
+  my_status?: Participant["status"] | null; // trạng thái của chính mình trong phòng
+  pending_count?: number; // số yêu cầu chờ duyệt (chỉ chủ phòng nhận được)
   compatibility?: number | null; // 0-100, do mô hình ở máy chủ ước lượng
   is_recommended?: boolean; // độ phù hợp đạt ngưỡng đề xuất của máy chủ
 }
@@ -125,25 +129,29 @@ function MatchesContent() {
     if (lastMessage && (lastMessage.type === "MATCH_CREATED" || lastMessage.type === "MATCH_UPDATED")) loadData();
   }, [lastMessage, loadData]);
 
+  // Thành viên = chủ phòng hoặc đã được chủ phòng duyệt; đang chờ duyệt thì chưa phải thành viên
   const isMember = useCallback(
-    (m: Match) => !!user && (m.creator_id === user.id || m.participants.some((p) => p.user_id === user.id)),
+    (m: Match) => !!user && (m.creator_id === user.id || m.my_status === "ACCEPTED"),
     [user],
   );
 
-  // Phòng mình đang ở bị hủy thì thẻ rời khỏi mục Phòng Của Tôi: báo một câu để người chơi biết lý do
-  const activeRooms = useRef<Map<number, string>>(new Map());
+  // Báo một câu khi phòng mình đang ở bị hủy, hoặc khi chủ phòng vừa duyệt / từ chối yêu cầu của mình
+  const watchedRooms = useRef<Map<number, { label: string; status: string }>>(new Map());
   useEffect(() => {
-    const current = new Map<number, string>();
+    const current = new Map<number, { label: string; status: string }>();
     for (const m of matches) {
-      if (!isMember(m)) continue;
-      if (m.status === "OPEN" || m.status === "FULL") {
-        current.set(m.id, `${m.venue_name || "cụm sân"} lúc ${m.start_time.slice(0, 5)} ${formatDisplayDate(m.date)}`);
-      } else if (m.status === "CANCELLED" && activeRooms.current.has(m.id)) {
-        toastInfo(`Phòng tại ${activeRooms.current.get(m.id)} đã bị hủy.`);
+      const label = `${m.venue_name || "cụm sân"} lúc ${m.start_time.slice(0, 5)} ${formatDisplayDate(m.date)}`;
+      const before = watchedRooms.current.get(m.id);
+      const mine = isMember(m) ? "MEMBER" : m.my_status || "";
+      if (before?.status === "PENDING" && mine === "MEMBER") toastSuccess(`Chủ phòng tại ${label} đã nhận bạn vào phòng.`);
+      if (before?.status === "PENDING" && mine === "REJECTED") toastInfo(`Chủ phòng tại ${label} đã từ chối yêu cầu của bạn.`);
+      if (before && m.status === "CANCELLED") toastInfo(`Phòng tại ${label} đã bị hủy.`);
+      if ((mine === "MEMBER" || mine === "PENDING") && (m.status === "OPEN" || m.status === "FULL")) {
+        current.set(m.id, { label, status: mine });
       }
     }
-    activeRooms.current = current;
-  }, [matches, isMember, toastInfo]);
+    watchedRooms.current = current;
+  }, [matches, isMember, toastInfo, toastSuccess]);
 
   const toggleExpand = (id: number) =>
     setExpandedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
@@ -152,13 +160,25 @@ function MatchesContent() {
     setBusyMatchId(match.id);
     try {
       await fetchApi(`/matches/${match.id}/join`, { method: "POST" });
-      toastSuccess("Đã tham gia phòng. Xem số điện thoại các thành viên trong mục “Phòng Của Tôi”.");
+      toastSuccess("Đã gửi yêu cầu tham gia. Chủ phòng duyệt xong, bạn sẽ thấy số điện thoại các thành viên.");
       await loadData();
-      // Mở sẵn phần chi tiết của phòng vừa vào để thấy ngay số điện thoại các thành viên
-      setExpandedIds((prev) => (prev.includes(match.id) ? prev : [...prev, match.id]));
       setActiveTab("my_matches");
     } catch (err: any) {
-      toastError(err.message || "Không tham gia được phòng.");
+      toastError(err.message || "Không gửi được yêu cầu tham gia.");
+    } finally {
+      setBusyMatchId(null);
+    }
+  };
+
+  const handleDecision = async (match: Match, participant: Participant, accept: boolean) => {
+    setBusyMatchId(match.id);
+    try {
+      await fetchApi(`/matches/${match.id}/requests/${participant.user_id}/${accept ? "accept" : "reject"}`, { method: "POST" });
+      const name = participant.user_name || "người chơi";
+      toastSuccess(accept ? `Đã nhận ${name} vào phòng.` : `Đã từ chối yêu cầu của ${name}.`);
+      await loadData();
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : "Không thực hiện được.");
     } finally {
       setBusyMatchId(null);
     }
@@ -166,17 +186,20 @@ function MatchesContent() {
 
   const handleLeave = (match: Match) => {
     const isHost = match.creator_id === user?.id;
+    const pending = !isHost && match.my_status === "PENDING";
     setConfirm({
       message: isHost
         ? "Bạn là chủ phòng: rời phòng sẽ HỦY phòng đấu này với tất cả thành viên. Tiếp tục?"
-        : "Bạn chắc chắn muốn rời khỏi phòng đấu này?",
+        : pending
+          ? "Rút lại yêu cầu tham gia phòng này?"
+          : "Bạn chắc chắn muốn rời khỏi phòng đấu này?",
       onConfirm: async () => {
         setConfirm(null);
         setBusyMatchId(match.id);
-        activeRooms.current.delete(match.id); // tự mình rời/hủy thì không cần báo "phòng đã bị hủy" nữa
+        watchedRooms.current.delete(match.id); // tự mình rời/hủy thì không cần báo "phòng đã bị hủy" nữa
         try {
           await fetchApi(`/matches/${match.id}/leave`, { method: "POST" });
-          toastSuccess(isHost ? "Đã hủy phòng." : "Đã rời phòng.");
+          toastSuccess(isHost ? "Đã hủy phòng." : pending ? "Đã rút yêu cầu tham gia." : "Đã rời phòng.");
           await loadData();
         } catch (err: any) {
           toastError(err.message || "Không thực hiện được.");
@@ -187,19 +210,22 @@ function MatchesContent() {
     });
   };
 
-  // Phòng còn tuyển người mà mình chưa tham gia; phòng mô hình chấm cao hơn xếp trước
+  // Phòng còn tuyển người mà mình chưa vào và chưa gửi yêu cầu; phòng mô hình chấm cao hơn xếp trước
   const joinable = useMemo(
     () =>
       matches
-        .filter((m) => m.status === "OPEN" && !isMember(m))
+        .filter((m) => m.status === "OPEN" && !isMember(m) && !m.my_status)
         .sort((a, b) => (b.compatibility ?? -1) - (a.compatibility ?? -1)),
     [matches, isMember],
   );
   // Đề xuất của mô hình: chỉ những phòng đạt ngưỡng phù hợp do máy chủ quy định
   const suggested = useMemo(() => joinable.filter((m) => m.is_recommended), [joinable]);
-  // Phòng của tôi: chỉ những phòng còn dùng được (đang tuyển hoặc đã đủ người); phòng đã hủy hay đã kết thúc không hiện nữa
+  // Phòng của tôi: phòng còn dùng được (đang tuyển hoặc đã đủ người) mà mình là thành viên hoặc đang chờ duyệt
   const myMatches = useMemo(
-    () => matches.filter((m) => isMember(m) && (m.status === "OPEN" || m.status === "FULL")),
+    () =>
+      matches.filter(
+        (m) => (isMember(m) || m.my_status === "PENDING") && (m.status === "OPEN" || m.status === "FULL"),
+      ),
     [matches, isMember],
   );
 
@@ -212,8 +238,11 @@ function MatchesContent() {
   const renderMatch = (m: Match) => {
     const member = isMember(m);
     const isHost = m.creator_id === user.id;
-    const freeSeats = Math.max(0, m.num_players - m.participants.length);
+    const waiting = !member && m.my_status === "PENDING";
+    const freeSeats = Math.max(0, m.num_players - m.accepted_count);
     const expanded = expandedIds.includes(m.id);
+    const members = m.participants.filter((p) => p.status === "ACCEPTED");
+    const requests = isHost ? m.participants.filter((p) => p.status === "PENDING") : [];
     return (
       <div key={m.id} className="bg-white rounded-2xl border border-zinc-200/90 shadow-xs p-5 space-y-3.5">
         <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -236,6 +265,16 @@ function MatchesContent() {
                 {m.compatibility.toFixed(0)}%
               </span>
             )}
+            {waiting && (
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold border bg-amber-50 text-amber-800 border-amber-200">
+                Đang chờ duyệt
+              </span>
+            )}
+            {isHost && (m.pending_count || 0) > 0 && (
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold border bg-amber-50 text-amber-800 border-amber-200">
+                {m.pending_count} yêu cầu chờ duyệt
+              </span>
+            )}
             <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${STATUS_TONE[m.status]}`}>{STATUS_LABEL[m.status]}</span>
           </div>
         </div>
@@ -248,7 +287,7 @@ function MatchesContent() {
               {isHost ? " (bạn)" : ""}
             </p>
             <p>
-              {m.required_skill != null ? `Trình độ khoảng ${m.required_skill.toFixed(1)}` : "Mọi trình độ"} • {m.participants.length}/
+              {m.required_skill != null ? `Trình độ khoảng ${m.required_skill.toFixed(1)}` : "Mọi trình độ"} • {m.accepted_count}/
               {m.num_players} người{m.status === "OPEN" ? `, còn ${freeSeats} chỗ` : ""}
             </p>
           </div>
@@ -263,24 +302,24 @@ function MatchesContent() {
             >
               {expanded ? "Đóng" : "Chi tiết"}
             </button>
-            {member && (m.status === "OPEN" || m.status === "FULL") && (
+            {(member || waiting) && (m.status === "OPEN" || m.status === "FULL") && (
               <button
                 type="button"
                 disabled={busyMatchId === m.id}
                 onClick={() => handleLeave(m)}
                 className="px-3.5 py-2 rounded-xl border border-zinc-200 hover:border-rose-200 hover:bg-rose-50 text-zinc-600 hover:text-rose-600 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
               >
-                {isHost ? "Hủy Phòng" : "Rời Phòng"}
+                {isHost ? "Hủy Phòng" : waiting ? "Rút Yêu Cầu" : "Rời Phòng"}
               </button>
             )}
-            {!member && m.status === "OPEN" && (
+            {!member && !m.my_status && m.status === "OPEN" && (
               <button
                 type="button"
                 disabled={busyMatchId === m.id}
                 onClick={() => handleJoin(m)}
                 className="px-4 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white text-xs font-bold btn-press cursor-pointer shadow-xs transition disabled:opacity-50"
               >
-                {busyMatchId === m.id ? "Đang xử lý..." : "Tham Gia Phòng"}
+                {busyMatchId === m.id ? "Đang xử lý..." : "Xin Tham Gia"}
               </button>
             )}
           </div>
@@ -296,7 +335,7 @@ function MatchesContent() {
             {m.notes && <p className="text-xs text-zinc-600 leading-relaxed">{m.notes}</p>}
 
             <ul className="space-y-1">
-              {m.participants.map((p) => (
+              {members.map((p) => (
                 <li key={p.id} className="flex items-center justify-between gap-3 text-xs bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-1.5">
                   <span className="font-semibold text-zinc-900 truncate">
                     {p.user_name || `Người chơi #${p.user_id}`}
@@ -310,6 +349,48 @@ function MatchesContent() {
                 </li>
               ))}
             </ul>
+            {!member && (
+              <p className="text-[11px] text-zinc-500">
+                Số điện thoại đầy đủ chỉ hiện giữa các thành viên đã được chủ phòng duyệt.
+              </p>
+            )}
+
+            {requests.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-bold text-zinc-900">Yêu cầu tham gia</p>
+                {requests.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex flex-wrap items-center justify-between gap-2 text-xs bg-amber-50/60 border border-amber-100 rounded-lg px-3 py-2"
+                  >
+                    <span className="min-w-0">
+                      <span className="font-semibold text-zinc-900">{p.user_name || `Người chơi #${p.user_id}`}</span>
+                      <span className="text-zinc-500">
+                        {p.skill_level != null ? ` • ${p.skill_level.toFixed(1)}` : ""} • {playStyleLabel(p.play_style, true)}
+                      </span>
+                    </span>
+                    <span className="flex gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        disabled={busyMatchId === m.id || m.status !== "OPEN"}
+                        onClick={() => handleDecision(m, p, true)}
+                        className="px-3 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white font-bold cursor-pointer disabled:opacity-50"
+                      >
+                        Chấp Nhận
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busyMatchId === m.id}
+                        onClick={() => handleDecision(m, p, false)}
+                        className="px-3 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-rose-50 hover:text-rose-600 text-zinc-600 font-semibold cursor-pointer disabled:opacity-50"
+                      >
+                        Từ Chối
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

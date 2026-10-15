@@ -141,20 +141,101 @@ def test_confirming_a_refund_writes_it_to_the_ledger_once(client, db, world, clo
     booking = confirmed_booking(client, world.p1, world.court, clock.day(1), hours=(18,))
     cancel(client, world.p1, booking, BANK)
     path = f"{BOOKINGS}/{booking['id']}/confirm-refund"
+    body = {"bank_reference": "FT26288123456", "note": "Đã chuyển khoản hoàn cọc"}
 
-    assert client.post(path, headers=auth(world.p1)).status_code == 403
-    response = client.post(path, json={"note": "Đã chuyển khoản hoàn cọc"}, headers=auth(world.owner_a))
+    assert client.post(path, json=body, headers=auth(world.p1)).status_code == 403
+    # Thiếu mã giao dịch ngân hàng (hoặc mã sai dạng) thì không ghi nhận được hoàn tiền
+    assert client.post(path, json={"note": "Đã chuyển"}, headers=auth(world.owner_a)).status_code == 422
+    assert client.post(path, json={"bank_reference": "  "}, headers=auth(world.owner_a)).status_code == 422
+    assert db.query(PaymentTransaction).filter_by(kind="REFUND").count() == 0
+
+    response = client.post(path, json=body, headers=auth(world.owner_a))
     assert response.status_code == 200, response.text
-    assert response.json()["refund_status"] == "COMPLETED" and response.json()["refunded_at"]
+    confirmed = response.json()
+    assert confirmed["refund_status"] == "COMPLETED" and confirmed["refunded_at"]
+    assert (confirmed["refund_reference"], confirmed["has_refund_proof"]) == ("FT26288123456", False)
+    assert confirmed["refunded_by_name"]
 
     refund = db.query(PaymentTransaction).filter_by(booking_id=booking["id"], kind="REFUND").one()
     assert (refund.amount_in, refund.created_by_id, refund.transaction_content) == (
-        75000, world.owner_a.id, "Đã chuyển khoản hoàn cọc")
-    assert client.post(path, headers=auth(world.owner_a)).status_code == 400
+        75000, world.owner_a.id, f"Hoàn tiền đơn {booking['booking_code']} - mã GD FT26288123456 - Đã chuyển khoản hoàn cọc")
+    assert client.post(path, json=body, headers=auth(world.owner_a)).status_code == 400
     assert db.query(PaymentTransaction).filter_by(kind="REFUND").count() == 1
 
 
 def test_refund_cannot_be_confirmed_when_none_is_pending(client, world, clock):
     booking = confirmed_booking(client, world.p1, world.court, clock.day(1), hours=(18,))
-    response = client.post(f"{BOOKINGS}/{booking['id']}/confirm-refund", headers=auth(world.owner_a))
+    response = client.post(f"{BOOKINGS}/{booking['id']}/confirm-refund", json={"bank_reference": "FT26288000001"},
+                           headers=auth(world.owner_a))
     assert response.status_code == 400
+
+
+def test_one_bank_reference_confirms_only_one_refund(client, db, world, clock):
+    first = confirmed_booking(client, world.p1, world.court, clock.day(1), hours=(18,))
+    second = confirmed_booking(client, world.p2, world.court, clock.day(1), hours=(19,))
+    for booking, player in ((first, world.p1), (second, world.p2)):
+        cancel(client, player, booking, BANK)
+
+    def confirm(booking, reference):
+        return client.post(f"{BOOKINGS}/{booking['id']}/confirm-refund", json={"bank_reference": reference},
+                           headers=auth(world.staff_a))
+
+    assert confirm(first, "FT26288777777").status_code == 200
+    reused = confirm(second, "FT26288777777")
+    assert reused.status_code == 409 and first["booking_code"] in reused.json()["detail"]
+    db.expire_all()
+    assert db.get(Booking, second["id"]).refund_status == "PENDING"
+    assert confirm(second, "FT26288777778").status_code == 200
+    assert db.query(PaymentTransaction).filter_by(kind="REFUND").count() == 2
+
+
+def _png_bytes() -> bytes:
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (8, 8), "white").save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def test_refund_proof_is_stored_privately_and_only_shown_to_the_right_people(client, db, world, clock, tmp_path, monkeypatch):
+    from app.services import storage_service
+
+    monkeypatch.setattr(storage_service, "REFUND_PROOF_DIR", str(tmp_path))
+    booking = confirmed_booking(client, world.p1, world.court, clock.day(1), hours=(18,))
+    cancel(client, world.p1, booking, BANK)
+    proof_path = f"{BOOKINGS}/{booking['id']}/refund-proof"
+
+    def upload(user, contents, name="chung-tu.png"):
+        return client.post(proof_path, files={"file": (name, contents, "image/png")}, headers=auth(user))
+
+    # Chưa xác nhận hoàn tiền thì chưa đính kèm chứng từ
+    assert upload(world.staff_a, _png_bytes()).status_code == 400
+    client.post(f"{BOOKINGS}/{booking['id']}/confirm-refund", json={"bank_reference": "FT26288123999"},
+                headers=auth(world.staff_a))
+
+    assert upload(world.staff_a, b"khong phai anh", "chung-tu.txt").status_code == 400
+    assert upload(world.staff_a, b"%PDF-" + b"0" * (5 * 1024 * 1024), "lon.pdf").status_code == 400
+    assert upload(world.staff_b, _png_bytes()).status_code == 403            # nhân viên cụm sân khác
+    assert upload(world.p1, _png_bytes()).status_code == 403                 # khách không tự tải chứng từ lên
+    stored = upload(world.staff_a, _png_bytes())
+    assert stored.status_code == 200 and stored.json()["has_refund_proof"] is True
+
+    db.expire_all()
+    name = db.get(Booking, booking["id"]).refund_proof_file
+    assert (tmp_path / name).is_file()
+    assert not name.startswith("/uploads") and str(tmp_path) != storage_service.UPLOAD_DIR
+
+    for viewer, expected in ((world.owner_a, 200), (world.staff_a, 200), (world.admin, 200), (world.p1, 200),
+                             (world.p2, 403), (world.staff_b, 403), (world.owner_b, 403)):
+        response = client.get(proof_path, headers=auth(viewer))
+        assert response.status_code == expected, (viewer.email, response.text)
+        if expected == 200:
+            assert response.content == _png_bytes() and response.headers["content-type"] == "image/png"
+    assert client.get(proof_path).status_code == 401
+
+    # Thay chứng từ: tệp cũ bị xóa, chỉ còn tệp mới
+    upload(world.staff_a, b"%PDF-1.4 chung tu moi", "moi.pdf")
+    db.expire_all()
+    assert [p.name for p in tmp_path.iterdir()] == [db.get(Booking, booking["id"]).refund_proof_file]

@@ -100,7 +100,7 @@ export default function MatchesTab({ data, run }: TabProps) {
               {m.required_skill != null ? `Trình độ ${m.required_skill}` : "Mọi trình độ"}
             </td>
             <td className={TD}>
-              <button type="button" className={BTN_SECONDARY} onClick={() => setViewId(m.id)}>{m.participants.length}/{m.num_players} người</button>
+              <button type="button" className={BTN_SECONDARY} onClick={() => setViewId(m.id)}>{m.accepted_count ?? m.participants.filter((p) => p.status !== "PENDING" && p.status !== "REJECTED").length}/{m.num_players} người</button>
             </td>
             <td className={TD}>
               <select
@@ -127,6 +127,8 @@ export default function MatchesTab({ data, run }: TabProps) {
                 <div>
                   <p className="font-semibold text-[#17253d]">
                     {p.user_name} {p.user_id === viewing.creator_id && <Badge tone="bg-amber-50 text-amber-800 border-amber-200">Chủ phòng</Badge>}
+                    {p.status === "PENDING" && <Badge tone="bg-sky-50 text-sky-800 border-sky-200">Chờ chủ phòng duyệt</Badge>}
+                    {p.status === "REJECTED" && <Badge tone="bg-zinc-100 text-zinc-600 border-zinc-200">Bị từ chối</Badge>}
                   </p>
                   <p className="text-xs text-[#718096]">{p.skill_level != null ? `Trình độ ${p.skill_level}` : "Chưa khai trình độ"}{p.phone ? ` • ${p.phone}` : ""}</p>
                 </div>

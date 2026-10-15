@@ -22,6 +22,14 @@ LOCAL_URL_PREFIX = "/uploads/venues/"
 # Chỉ nhận ảnh bitmap. SVG bị loại vì có thể chứa mã script và được phục vụ cùng origin với API.
 _PIL_FORMAT_TO_EXT = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp", "GIF": ".gif"}
 
+# Chứng từ hoàn tiền là dữ liệu tài chính của khách: lưu NGOÀI thư mục /uploads công khai và chỉ tải được qua API có
+# kiểm tra quyền (GET /bookings/{id}/refund-proof). Không đưa lên Cloudinary vì liên kết ở đó ai có cũng mở được.
+PRIVATE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "private_uploads"))
+REFUND_PROOF_DIR = os.path.join(PRIVATE_DIR, "refund_proofs")
+MAX_PROOF_BYTES = 5 * 1024 * 1024
+_PROOF_MEDIA_TYPES = {".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".pdf": "application/pdf"}
+_PROOF_NAME = re.compile(r"^\d+_[0-9a-f]{32}\.(jpg|png|webp|pdf)$")
+
 
 def max_image_bytes() -> int:
     return settings.MAX_IMAGE_SIZE_MB * 1024 * 1024
@@ -151,3 +159,56 @@ def _delete_cloudinary(image_url: str) -> bool:
     except Exception as exc:
         logger.warning("Không xóa được ảnh Cloudinary: %s", exc)
         return False
+
+
+# ---------------------------------------------------------------------------
+# Chứng từ hoàn tiền (lưu riêng, không công khai)
+# ---------------------------------------------------------------------------
+def _proof_extension(contents: bytes) -> str:
+    """Định dạng chứng từ xác định từ nội dung tệp: ảnh JPG/PNG/WEBP hoặc PDF."""
+    if not contents:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tệp chứng từ rỗng (0 bytes).")
+    if len(contents) > MAX_PROOF_BYTES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tệp chứng từ vượt quá 5MB.")
+    if contents.startswith(b"%PDF-"):
+        return ".pdf"
+    try:
+        ext = detect_image_extension(contents)
+    except HTTPException:
+        ext = ""
+    if ext not in (".jpg", ".png", ".webp"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Chứng từ phải là ảnh JPG, PNG, WEBP hoặc tệp PDF.",
+        )
+    return ext
+
+
+def save_refund_proof(booking_id: int, contents: bytes) -> str:
+    """Lưu chứng từ hoàn tiền của một đơn; trả về tên tệp (không phải đường dẫn công khai)."""
+    ext = _proof_extension(contents)
+    os.makedirs(REFUND_PROOF_DIR, exist_ok=True)
+    name = f"{booking_id}_{uuid.uuid4().hex}{ext}"
+    with open(os.path.join(REFUND_PROOF_DIR, name), "wb") as handle:
+        handle.write(contents)
+    return name
+
+
+def refund_proof_path(name: str) -> tuple:
+    """(đường dẫn tệp, media type) của một chứng từ đã lưu. Tên tệp được kiểm tra chặt để không đọc được tệp khác."""
+    if not _PROOF_NAME.fullmatch(name or ""):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tệp chứng từ.")
+    path = os.path.join(REFUND_PROOF_DIR, name)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tệp chứng từ.")
+    return path, _PROOF_MEDIA_TYPES[os.path.splitext(name)[1]]
+
+
+def delete_refund_proof(name: str) -> None:
+    """Xóa chứng từ cũ khi được thay bằng tệp mới."""
+    if not _PROOF_NAME.fullmatch(name or ""):
+        return
+    try:
+        os.remove(os.path.join(REFUND_PROOF_DIR, name))
+    except FileNotFoundError:
+        pass
