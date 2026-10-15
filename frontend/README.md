@@ -48,7 +48,6 @@ src/
 │   ├── BookingDesk.tsx     Quầy đặt sân dùng chung cho chủ sân và nhân viên: lưới lịch, tạo đơn tại quầy,
 │   │                       tra mã / quét QR, check-in, thu tiền, dời lịch, hủy, xác nhận hoàn tiền
 │   ├── ShiftClosingDialog.tsx   Kết ca trong ngày: nhập tiền vốn và tiền mặt đếm được, đối chiếu với sổ giao dịch
-│   ├── ChangePasswordDialog.tsx Đổi mật khẩu ngay trong cổng nhân viên
 │   ├── ManagementUi.tsx    Khung hộp thoại và kiểu ô nhập dùng chung của các cổng quản lý
 │   ├── SepayCheckoutModal.tsx   Thanh toán cọc VietQR, theo dõi trạng thái từ máy chủ
 │   └── …                   Navbar, Footer, Toast, LocationPickerModal, VenueImageHoverSlider…

@@ -439,6 +439,7 @@ async function main() {
     await page.waitForFunction(() => location.pathname.startsWith("/staff"), { timeout: TIMEOUT });
     await waitForText(page, "RUDAL Pickleball & Academy");
     await waitForText(page, "Thu trong ngày");
+    if (await hasText(page, "Đổi mật khẩu")) throw new Error("Cổng nhân viên không còn chức năng đổi mật khẩu");
   });
   if (bookingCode) {
     await step(staff, "tìm đơn theo mã và xác nhận đã hoàn tiền", async (page) => {
