@@ -38,7 +38,7 @@ class DeskBookingCreate(BaseModel):
     customer_name: Optional[str] = Field(default=None, max_length=120, validation_alias=AliasChoices("customer_name", "guest_name"))
     customer_phone: Optional[str] = Field(default=None, max_length=20, validation_alias=AliasChoices("customer_phone", "guest_phone"))
     # Tổng tiền thỏa thuận; bỏ trống hoặc 0 để hệ thống tự tính theo bảng giá
-    price: Optional[float] = Field(default=None, ge=0, le=100_000_000)
+    price: Optional[int] = Field(default=None, ge=0, le=100_000_000)
     # FULLY_PAID | DEPOSIT_PAID | UNPAID, hoặc CASH | BANK_TRANSFER (đã thu đủ bằng phương thức đó)
     payment_method: Literal["FULLY_PAID", "DEPOSIT_PAID", "UNPAID", "CASH", "BANK_TRANSFER"] = "CASH"
 
@@ -75,12 +75,12 @@ class BookingStatusUpdate(BaseModel):
 
 class CheckInRequest(BaseModel):
     # Số tiền thu khi khách nhận sân; bỏ trống = thu toàn bộ phần còn lại, 0 = thu sau
-    collected_amount: Optional[float] = Field(default=None, ge=0)
+    collected_amount: Optional[int] = Field(default=None, ge=0)
     payment_method: Literal["CASH", "BANK_TRANSFER"] = "CASH"
 
 
 class CollectPaymentRequest(BaseModel):
-    amount: float = Field(gt=0)
+    amount: int = Field(gt=0)  # số nguyên đồng; số lẻ bị từ chối
     payment_method: Literal["CASH", "BANK_TRANSFER"] = "CASH"
 
 
@@ -112,8 +112,8 @@ class CancelPreviewResponse(BaseModel):
     can_cancel: bool
     tier: str  # UNPAID | FULL_REFUND | RESCHEDULE_ONLY | NO_REFUND | NOT_ALLOWED
     hours_before: float
-    paid_amount: float
-    refund_amount: float
+    paid_amount: int
+    refund_amount: int
     full_refund_hours: int
     reschedule_hours: int
     message: str
@@ -125,7 +125,7 @@ class BookingDetailResponse(BaseModel):
     date: date
     start_time: time
     end_time: time
-    price: float
+    price: int
     is_active: bool = True
     court_name: Optional[str] = None
     venue_id: Optional[int] = None
@@ -140,10 +140,10 @@ class BookingResponse(BaseModel):
     booking_code: Optional[str] = None
     user_id: int
     source: Optional[str] = "ONLINE"
-    total_price: float
-    deposit_amount: float = 0.0
-    paid_amount: float = 0.0
-    remaining_amount: float = 0.0
+    total_price: int
+    deposit_amount: int = 0
+    paid_amount: int = 0
+    remaining_amount: int = 0
     status: str
     payment_status: Optional[str] = "UNPAID"
     expires_at: Optional[datetime] = None
@@ -151,7 +151,7 @@ class BookingResponse(BaseModel):
     cancelled_at: Optional[datetime] = None
     cancel_reason: Optional[str] = None
     refund_status: Optional[str] = None
-    refund_amount: Optional[float] = 0.0
+    refund_amount: Optional[int] = 0
     refund_bank_account: Optional[str] = None
     refund_bank_name: Optional[str] = None
     refund_account_holder: Optional[str] = None

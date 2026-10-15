@@ -2,7 +2,7 @@ import enum
 from typing import Optional
 
 from sqlalchemy import (
-    Boolean, CheckConstraint, Column, Date, DateTime, Float, ForeignKey, Index, Integer, String, Time, text,
+    BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, String, Time, text,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -72,9 +72,10 @@ class Booking(Base):
     guest_name = Column(String, nullable=True)   # Khách vãng lai của đơn tại quầy
     guest_phone = Column(String, nullable=True)
 
-    total_price = Column(Float, nullable=False, default=0.0)
-    deposit_amount = Column(Float, nullable=False, default=0.0, server_default=text("0"))
-    paid_amount = Column(Float, nullable=False, default=0.0, server_default=text("0"))
+    # Tiền VNĐ: số nguyên đồng (BIGINT), xem app/core/money.py
+    total_price = Column(BigInteger, nullable=False, default=0)
+    deposit_amount = Column(BigInteger, nullable=False, default=0, server_default=text("0"))
+    paid_amount = Column(BigInteger, nullable=False, default=0, server_default=text("0"))
     status = Column(String, default=BookingStatus.PENDING.value, index=True)
     payment_status = Column(String, default=PaymentStatus.UNPAID.value, index=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)  # Hạn thanh toán cọc của đơn PENDING
@@ -89,7 +90,7 @@ class Booking(Base):
     cancel_reason = Column(String, nullable=True)
 
     refund_status = Column(String, nullable=True, index=True)  # PENDING, COMPLETED, REJECTED
-    refund_amount = Column(Float, nullable=True, default=0.0)
+    refund_amount = Column(BigInteger, nullable=True, default=0)
     refund_bank_account = Column(String, nullable=True)
     refund_bank_name = Column(String, nullable=True)
     refund_account_holder = Column(String, nullable=True)
@@ -162,8 +163,8 @@ class Booking(Base):
         return self.user.email if self.user and self.user.email else ""
 
     @property
-    def remaining_amount(self) -> float:
-        return max(0.0, float(self.total_price or 0) - float(self.paid_amount or 0))
+    def remaining_amount(self) -> int:
+        return max(0, (self.total_price or 0) - (self.paid_amount or 0))
 
     @property
     def venue_id(self):
@@ -192,7 +193,7 @@ class BookingDetail(Base):
     date = Column(Date, nullable=False, index=True)
     start_time = Column(Time, nullable=False)
     end_time = Column(Time, nullable=False)
-    price = Column(Float, nullable=False)
+    price = Column(BigInteger, nullable=False)
     # False khi đơn bị hủy hoặc hết hạn: slot được trả lại cho người khác đặt
     is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
 

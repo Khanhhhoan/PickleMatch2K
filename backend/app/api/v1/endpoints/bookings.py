@@ -309,9 +309,9 @@ def _count_bookings(db: Session, venue_ids: Optional[List[int]], *filters) -> in
     return db.query(Booking.id).filter(Booking.id.in_(db.query(booking_ids.c.booking_id)), *filters).count()
 
 
-def _daily_series(revenue: Dict[date, float], created: Dict[date, int]) -> List[dict]:
+def _daily_series(revenue: Dict[date, int], created: Dict[date, int]) -> List[dict]:
     return [
-        {"date": d.isoformat(), "revenue": revenue.get(d, 0.0), "bookings": created.get(d, 0)}
+        {"date": d.isoformat(), "revenue": revenue.get(d, 0), "bookings": created.get(d, 0)}
         for d in sorted(set(revenue) | set(created))
     ]
 
@@ -400,7 +400,7 @@ def get_staff_shift_stats(db: Session = Depends(deps.get_db), current_user: User
     since, until = vn_day_bounds_utc(today)
     scope = [venue.id]
 
-    def collected(**kwargs) -> float:
+    def collected(**kwargs) -> int:
         return ledger.sum_transactions(db, venue_ids=scope, since=since, until=until, **kwargs)
 
     def bookings_today(*statuses: str) -> int:

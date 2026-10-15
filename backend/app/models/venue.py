@@ -1,6 +1,6 @@
 import enum
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Table, Time, UniqueConstraint, text
+from sqlalchemy import BigInteger, Column, DateTime, Float, ForeignKey, Integer, String, Table, Time, UniqueConstraint, text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -77,7 +77,7 @@ class Court(Base):
     venue_id = Column(Integer, ForeignKey("venues.id"), nullable=False, index=True)
     name = Column(String, nullable=False)
     status = Column(String, default=CourtStatus.ACTIVE.value)
-    price = Column(Float, nullable=True)  # Giá riêng của sân (VNĐ/giờ); NULL = dùng bảng giá cụm sân
+    price = Column(BigInteger, nullable=True)  # Giá riêng của sân (VNĐ/giờ, số nguyên); NULL = dùng bảng giá cụm sân
 
     venue = relationship("Venue", back_populates="courts")
 
@@ -105,7 +105,7 @@ class PriceRule(Base):
     rule_type = Column(String, default=PriceRuleType.BASE.value)
     start_time = Column(Time, nullable=True)
     end_time = Column(Time, nullable=True)
-    price = Column(Float, nullable=False)
+    price = Column(BigInteger, nullable=False)  # VNĐ/giờ, số nguyên
 
     venue = relationship("Venue", back_populates="price_rules")
 

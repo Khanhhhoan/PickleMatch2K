@@ -6,11 +6,12 @@ from typing import Dict, List, Optional
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
+from app.core.money import vnd
 from app.models.booking import Booking, BookingDetail
 from app.models.payment import PaymentKind, PaymentMethod, PaymentTransaction
 from app.models.venue import Court
 from app.services.code_generator import generate_next_transaction_code
-from app.utils.timeutils import VN_TZ_NAME
+from app.utils.timeutils import VN_TZ_NAME, now_utc
 
 INCOMING_KINDS = (PaymentKind.DEPOSIT.value, PaymentKind.BALANCE.value)
 
@@ -19,7 +20,7 @@ def record_transaction(
     db: Session,
     booking: Booking,
     *,
-    amount: float,
+    amount: int,
     kind: str,
     method: str = PaymentMethod.BANK_TRANSFER.value,
     gateway: str = "SePay_VietQR",
@@ -36,12 +37,14 @@ def record_transaction(
         method=method,
         kind=kind,
         account_number=account_number,
-        amount_in=float(amount),
+        amount_in=vnd(amount),
         transaction_content=content,
         reference_number=reference_number or None,
         status="SUCCESS",
         raw_payload=json.dumps(raw_payload, default=str) if raw_payload is not None else None,
         created_by_id=created_by_id,
+        # Thời điểm ghi sổ lấy theo đồng hồ nghiệp vụ của ứng dụng (cùng nguồn với giờ kết ca), không theo đồng hồ CSDL
+        created_at=now_utc(),
     )
     db.add(txn)
     db.flush()
@@ -70,10 +73,10 @@ def sum_transactions(
     method: Optional[str] = None,
     since=None,
     until=None,
-) -> float:
+) -> int:
     """Tổng tiền các giao dịch thành công thuộc phạm vi cụm sân, lọc theo loại/phương thức/khoảng thời gian."""
     booking_ids = venue_booking_ids_subquery(db, venue_ids)
-    query = db.query(func.coalesce(func.sum(PaymentTransaction.amount_in), 0.0)).filter(
+    query = db.query(func.coalesce(func.sum(PaymentTransaction.amount_in), 0)).filter(
         PaymentTransaction.status == "SUCCESS",
         PaymentTransaction.kind.in_(kinds),
         PaymentTransaction.booking_id.in_(db.query(booking_ids.c.booking_id)),
@@ -84,7 +87,7 @@ def sum_transactions(
         query = query.filter(PaymentTransaction.created_at >= since)
     if until is not None:
         query = query.filter(PaymentTransaction.created_at < until)
-    return float(query.scalar() or 0.0)
+    return vnd(query.scalar())
 
 
 def vn_day(column):
@@ -100,7 +103,7 @@ def _signed_amount():
     )
 
 
-def daily_net_revenue(db: Session, *, venue_ids: Optional[List[int]]) -> Dict[date, float]:
+def daily_net_revenue(db: Session, *, venue_ids: Optional[List[int]]) -> Dict[date, int]:
     """Thực thu từng ngày (khoản thu trừ khoản hoàn) của các giao dịch thành công thuộc phạm vi cụm sân."""
     booking_ids = venue_booking_ids_subquery(db, venue_ids)
     day = vn_day(PaymentTransaction.created_at)
@@ -114,7 +117,7 @@ def daily_net_revenue(db: Session, *, venue_ids: Optional[List[int]]) -> Dict[da
         .group_by(day)
         .all()
     )
-    return {row[0]: float(row[1] or 0.0) for row in rows}
+    return {row[0]: vnd(row[1]) for row in rows}
 
 
 def booking_venue_subquery(db: Session):
@@ -131,7 +134,7 @@ def booking_venue_subquery(db: Session):
     )
 
 
-def daily_net_revenue_by_venue(db: Session, *, venue_ids: List[int]) -> Dict[int, Dict[date, float]]:
+def daily_net_revenue_by_venue(db: Session, *, venue_ids: List[int]) -> Dict[int, Dict[date, int]]:
     """Như daily_net_revenue nhưng tách theo cụm sân của đơn: {venue_id: {ngày: thực thu}}."""
     booking_venue = booking_venue_subquery(db)
     day = vn_day(PaymentTransaction.created_at)
@@ -147,7 +150,7 @@ def daily_net_revenue_by_venue(db: Session, *, venue_ids: List[int]) -> Dict[int
         .group_by(booking_venue.c.venue_id, day)
         .all()
     )
-    result: Dict[int, Dict[date, float]] = {}
+    result: Dict[int, Dict[date, int]] = {}
     for venue_id, day_value, amount in rows:
-        result.setdefault(venue_id, {})[day_value] = float(amount or 0.0)
+        result.setdefault(venue_id, {})[day_value] = vnd(amount)
     return result

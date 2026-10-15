@@ -267,15 +267,15 @@ def test_closings_sent_at_the_same_moment_count_each_payment_once(client, db, wo
     assert client.post("/api/v1/bookings/staff/walkin", json=walk_in, headers=auth(world.staff_a)).status_code == 200  # 100k tiền mặt
     venue_id, staff_id = world.venue_a.id, world.staff_a.id
 
-    # Kéo dài khoảng hở giữa lúc đọc số chưa kết và lúc ghi lần kết ca, để các luồng chắc chắn chồng lên nhau
-    read_open_figures = shift_service.open_figures
+    # Kéo dài khoảng hở giữa lúc đọc các khoản chưa kết và lúc gắn chúng vào lần kết ca, để các luồng chắc chắn chồng nhau
+    sum_up = shift_service._figures
 
-    def slow_open_figures(*args):
-        figures = read_open_figures(*args)
+    def slow_figures(*args):
+        figures = sum_up(*args)
         sleep(0.2)
         return figures
 
-    monkeypatch.setattr(shift_service, "open_figures", slow_open_figures)
+    monkeypatch.setattr(shift_service, "_figures", slow_figures)
 
     def close_shift(_: int) -> float:
         with SessionLocal() as session:
@@ -288,3 +288,5 @@ def test_closings_sent_at_the_same_moment_count_each_payment_once(client, db, wo
     # Đúng một lần kết ca nhận khoản 100k; các lần còn lại thấy không còn gì chưa kết
     assert sorted(results) == [0.0] * 7 + [100000.0]
     assert db.query(ShiftClosing).count() == 8
+    [payment] = db.query(PaymentTransaction).all()
+    assert payment.shift_closing_id == db.query(ShiftClosing).filter(ShiftClosing.cash_collected == 100000).one().id

@@ -13,7 +13,7 @@ class VenueSearchResult(VenueResponse):
 class TimeSlot(BaseModel):
     start_time: time
     end_time: time
-    price: float
+    price: int
     is_available: bool
     is_past: bool = False       # Khung giờ đã trôi qua
     is_held: bool = False       # Đang được người khác giữ tạm

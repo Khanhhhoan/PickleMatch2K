@@ -1,6 +1,6 @@
 import enum
 
-from sqlalchemy import Column, Date, DateTime, Float, ForeignKey, Index, Integer, String, text
+from sqlalchemy import BigInteger, Column, Date, DateTime, ForeignKey, Index, Integer, String, text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -37,13 +37,15 @@ class PaymentTransaction(Base):
     kind = Column(String, default=PaymentKind.DEPOSIT.value, server_default=PaymentKind.DEPOSIT.value, nullable=False)
     transaction_date = Column(DateTime(timezone=True), server_default=func.now())
     account_number = Column(String, nullable=True)
-    amount_in = Column(Float, nullable=False, default=0.0)
+    amount_in = Column(BigInteger, nullable=False, default=0)  # số nguyên đồng
     transaction_content = Column(String, nullable=True)
     reference_number = Column(String, nullable=True, index=True)
     status = Column(String, default="SUCCESS", nullable=False)  # SUCCESS, FAILED
     raw_payload = Column(String, nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Nhân viên ghi nhận (thu tiền mặt, hoàn tiền)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Lần kết ca đã tính khoản này (NULL = chưa kết ca). Mỗi giao dịch chỉ thuộc một ca, nên không bị tính hai lần.
+    shift_closing_id = Column(Integer, ForeignKey("shift_closings.id", ondelete="SET NULL"), nullable=True, index=True)
 
     booking = relationship("Booking")
 
@@ -51,8 +53,9 @@ class PaymentTransaction(Base):
 class ShiftClosing(Base):
     """
     Một lần kết ca tại quầy của một cụm sân. Người kết ca nhập tiền vốn đầu ca và tiền mặt đếm được; các khoản
-    thu, hoàn là số sổ giao dịch đã ghi tại thời điểm kết ca. Một ngày có thể kết ca nhiều lần: mỗi lần chỉ gồm
-    phần của ngày đó chưa nằm trong lần kết ca trước, nên cộng các lần của một ngày ra đúng số của cả ngày.
+    thu, hoàn là những giao dịch trong sổ chưa thuộc lần kết ca nào, và được gắn vào lần kết ca này
+    (PaymentTransaction.shift_closing_id). Ca không gắn với ngày lịch: ca 20:00 - 00:15 hôm sau vẫn là một ca, và
+    khoản ghi sổ muộn (sau khi đã kết ca) thuộc về lần kết ca kế tiếp, không bị bỏ sót hay tính hai lần.
     """
     __tablename__ = "shift_closings"
     __table_args__ = (Index("ix_shift_closings_venue_date", "venue_id", "business_date"),)
@@ -61,12 +64,14 @@ class ShiftClosing(Base):
     venue_id = Column(Integer, ForeignKey("venues.id", ondelete="CASCADE"), nullable=False)
     business_date = Column(Date, nullable=False)                       # ngày kết ca theo giờ Việt Nam
     closed_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # Ca kéo dài từ period_start (lần kết ca trước của cụm sân) tới closed_at, kể cả khi qua nửa đêm
+    period_start = Column(DateTime(timezone=True), nullable=True)
     closed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    opening_float = Column(Float, nullable=False)                      # tiền vốn có sẵn trong két đầu ca
-    counted_cash = Column(Float, nullable=False)                       # tiền mặt đếm được khi kết ca
-    cash_collected = Column(Float, nullable=False)                     # tiền mặt thu trong ca theo sổ giao dịch
-    transfer_collected = Column(Float, nullable=False)                 # chuyển khoản nhận trong ca theo sổ giao dịch
-    refunded = Column(Float, nullable=False, default=0.0, server_default="0")  # tiền đã hoàn cho khách trong ca
+    opening_float = Column(BigInteger, nullable=False)                 # tiền vốn có sẵn trong két đầu ca
+    counted_cash = Column(BigInteger, nullable=False)                  # tiền mặt đếm được khi kết ca
+    cash_collected = Column(BigInteger, nullable=False)                # tiền mặt thu trong ca theo sổ giao dịch
+    transfer_collected = Column(BigInteger, nullable=False)            # chuyển khoản nhận trong ca theo sổ giao dịch
+    refunded = Column(BigInteger, nullable=False, default=0, server_default="0")  # tiền đã hoàn cho khách trong ca
     note = Column(String(300), nullable=True)
 
     venue = relationship("Venue")

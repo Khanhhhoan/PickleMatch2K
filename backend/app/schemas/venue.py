@@ -10,7 +10,7 @@ from app.models.venue import CourtStatus, PriceRuleType, VenueStatus
 class CourtBase(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     status: str = CourtStatus.ACTIVE.value
-    price: Optional[float] = Field(default=None, ge=0)
+    price: Optional[int] = Field(default=None, ge=0)  # VNĐ/giờ, số nguyên
 
 
 class CourtCreate(CourtBase):
@@ -25,8 +25,8 @@ class CourtCreate(CourtBase):
 class CourtUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=80)
     status: Optional[CourtStatus] = None
-    # Giá riêng của sân (VNĐ/giờ); gửi 0 hoặc null để dùng bảng giá chung của cụm sân
-    price: Optional[float] = Field(default=None, ge=0)
+    # Giá riêng của sân (VNĐ/giờ, số nguyên); gửi 0 hoặc null để dùng bảng giá chung của cụm sân
+    price: Optional[int] = Field(default=None, ge=0)
 
 
 class CourtResponse(BaseModel):
@@ -34,7 +34,7 @@ class CourtResponse(BaseModel):
     venue_id: int
     name: str
     status: Optional[str] = CourtStatus.ACTIVE.value
-    price: Optional[float] = None
+    price: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -83,7 +83,7 @@ class PriceRuleBase(BaseModel):
     rule_type: str = PriceRuleType.BASE.value
     start_time: Optional[time] = None
     end_time: Optional[time] = None
-    price: float = Field(gt=0)
+    price: int = Field(gt=0)  # VNĐ/giờ, số nguyên
 
 
 class PriceRuleCreate(PriceRuleBase):
@@ -96,15 +96,15 @@ class PriceRuleResponse(BaseModel):
     rule_type: Optional[str] = PriceRuleType.BASE.value
     start_time: Optional[time] = None
     end_time: Optional[time] = None
-    price: float
+    price: int
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class VenuePricingUpdate(BaseModel):
-    base_price: float = Field(gt=0, le=100_000_000)
-    peak_price: Optional[float] = Field(default=None, gt=0, le=100_000_000)
-    weekend_price: Optional[float] = Field(default=None, ge=0, le=100_000_000)
+    base_price: int = Field(gt=0, le=100_000_000)
+    peak_price: Optional[int] = Field(default=None, gt=0, le=100_000_000)
+    weekend_price: Optional[int] = Field(default=None, ge=0, le=100_000_000)
     # Khung giờ cao điểm; bỏ trống thì giữ khung hiện tại (mặc định 17:00 - 23:00)
     peak_start: Optional[time] = None
     peak_end: Optional[time] = None
@@ -185,7 +185,7 @@ class AdminVenueCreate(BaseModel):
     owner_id: int
     status: VenueStatus = VenueStatus.ACTIVE
     courts_count: int = Field(default=2, ge=1, le=20)
-    base_price: float = Field(default=150000, gt=0)
+    base_price: int = Field(default=150000, gt=0)
     latitude: Optional[float] = Field(default=None, ge=-90, le=90)
     longitude: Optional[float] = Field(default=None, ge=-180, le=180)
 

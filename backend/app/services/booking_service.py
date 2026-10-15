@@ -24,6 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core import booking_policy as policy
+from app.core.money import split_evenly, vnd
 from app.core.websocket_manager import dispatch, manager
 from app.models.booking import Booking, BookingDetail, BookingSource, BookingStatus, PaymentStatus, RefundStatus
 from app.models.match import Match, MatchStatus
@@ -79,7 +80,7 @@ def last_slot_end(booking: Booking) -> datetime:
 
 
 def recalculate_payment_status(booking: Booking) -> None:
-    paid, total, deposit = float(booking.paid_amount or 0), float(booking.total_price or 0), float(booking.deposit_amount or 0)
+    paid, total, deposit = vnd(booking.paid_amount), vnd(booking.total_price), vnd(booking.deposit_amount)
     if paid > 0:
         booking.auto_release_at = None  # đã thu tiền thì đơn tại quầy không còn tự hủy
     if paid >= total - policy.PAYMENT_TOLERANCE and total > 0:
@@ -99,7 +100,7 @@ def _desk_release_deadline(booking: Booking, venue) -> Optional[datetime]:
     chỗ sát giờ cho khách đang tới thì không tự hủy).
     """
     minutes = getattr(venue, "unpaid_desk_release_minutes", 0) or 0
-    if not minutes or float(booking.paid_amount or 0) > 0 or not booking.details:
+    if not minutes or vnd(booking.paid_amount) > 0 or not booking.details:
         return None
     deadline = first_slot_start(booking) - timedelta(minutes=minutes)
     return deadline if deadline > now_vn() else None
@@ -331,10 +332,9 @@ def create_booking(
     ]
     if is_desk and price_override is not None and price_override > 0:
         # Nhân viên nhập tổng tiền thỏa thuận: chia đều cho các khung giờ
-        share = float(round(price_override / len(slots)))
-        prices = [share] * len(slots)
-        prices[-1] = float(price_override) - share * (len(slots) - 1)
-    total = float(sum(prices))
+        prices = split_evenly(vnd(price_override), len(slots))
+    prices = [vnd(price) for price in prices]
+    total = sum(prices)
 
     booking = Booking(
         user_id=user.id,
@@ -344,7 +344,7 @@ def create_booking(
         guest_phone=(guest_phone or None) if is_desk else None,
         total_price=total,
         deposit_amount=policy.deposit_for(total),
-        paid_amount=0.0,
+        paid_amount=0,
         status=S.PENDING.value,
         payment_status=PaymentStatus.UNPAID.value,
         expires_at=now_utc() + policy.PENDING_PAYMENT_TTL,
@@ -365,7 +365,7 @@ def create_booking(
     if is_desk:
         booking.status = S.CHECKED_IN.value if check_in_now else S.CONFIRMED.value
         booking.expires_at = None
-        amount = total if desk_paid == "FULL" else booking.deposit_amount if desk_paid == "DEPOSIT" else 0.0
+        amount = total if desk_paid == "FULL" else booking.deposit_amount if desk_paid == "DEPOSIT" else 0
         if amount > 0:
             ledger.record_transaction(
                 db, booking, amount=amount, kind=PaymentKind.DEPOSIT.value, method=desk_method,
@@ -439,20 +439,20 @@ def _slots_still_free(db: Session, booking: Booking) -> bool:
     return True
 
 
-def _request_refund(booking: Booking, amount: float, reason: str) -> None:
+def _request_refund(booking: Booking, amount: int, reason: str) -> None:
     booking.refund_status = RefundStatus.PENDING.value
-    booking.refund_amount = float(amount)
+    booking.refund_amount = vnd(amount)
     booking.refund_reason = reason
 
 
-def apply_payment(db: Session, booking: Booking, amount: float) -> str:
+def apply_payment(db: Session, booking: Booking, amount: int) -> str:
     """
     Cập nhật đơn sau khi một khoản tiền vào đã được ghi sổ. Không commit (người gọi commit).
     Trả về: confirmed | partial | updated | reactivated | late_refund | recorded.
     """
-    booking.paid_amount = float(booking.paid_amount or 0) + float(amount)
+    booking.paid_amount = vnd(booking.paid_amount) + vnd(amount)
     recalculate_payment_status(booking)
-    deposit_met = booking.paid_amount >= float(booking.deposit_amount or 0) - policy.PAYMENT_TOLERANCE
+    deposit_met = booking.paid_amount >= vnd(booking.deposit_amount) - policy.PAYMENT_TOLERANCE
 
     if booking.status == S.PENDING.value:
         if deposit_met:
@@ -469,7 +469,7 @@ def apply_payment(db: Session, booking: Booking, amount: float) -> str:
                     _set_slots_active(booking, True)
                     db.flush()
                 booking.status = S.CONFIRMED.value
-                booking.refund_status, booking.refund_amount, booking.refund_reason = None, 0.0, None
+                booking.refund_status, booking.refund_amount, booking.refund_reason = None, 0, None
                 return "reactivated"
             except IntegrityError:
                 _set_slots_active(booking, False)
@@ -477,8 +477,8 @@ def apply_payment(db: Session, booking: Booking, amount: float) -> str:
         return "late_refund"
 
     if booking.status == S.CANCELLED.value:
-        already = float(booking.refund_amount or 0) if booking.refund_status == RefundStatus.PENDING.value else 0.0
-        _request_refund(booking, already + float(amount), booking.refund_reason or "Thanh toán đến sau khi đơn đã bị hủy")
+        already = vnd(booking.refund_amount) if booking.refund_status == RefundStatus.PENDING.value else 0
+        _request_refund(booking, already + vnd(amount), booking.refund_reason or "Thanh toán đến sau khi đơn đã bị hủy")
         return "late_refund"
 
     if booking.status in (S.CONFIRMED.value, S.CHECKED_IN.value):
@@ -487,12 +487,13 @@ def apply_payment(db: Session, booking: Booking, amount: float) -> str:
 
 
 def collect_payment(
-    db: Session, booking: Booking, actor: User, amount: float, method: str = PaymentMethod.CASH.value
+    db: Session, booking: Booking, actor: User, amount: int, method: str = PaymentMethod.CASH.value
 ) -> Booking:
     """Nhân viên ghi nhận một khoản thu tại quầy (thu cọc cho đơn chờ, hoặc thu phần còn lại)."""
     if booking.status in (S.CANCELLED.value, S.EXPIRED.value):
         raise _error(400, "Đơn đã hủy hoặc hết hạn, không thể thu tiền.")
     remaining = booking.remaining_amount
+    amount = vnd(amount)
     if amount <= 0 or amount > remaining + policy.PAYMENT_TOLERANCE:
         raise _error(400, f"Số tiền thu phải lớn hơn 0 và không vượt quá số còn lại ({remaining:,.0f}đ).")
 
@@ -513,7 +514,7 @@ def collect_payment(
 # ---------------------------------------------------------------------------
 def preview_cancellation(booking: Booking) -> dict:
     """Số tiền người chơi được hoàn nếu hủy ngay lúc này, theo chính sách đã công bố."""
-    paid, deposit = float(booking.paid_amount or 0), float(booking.deposit_amount or 0)
+    paid, deposit = vnd(booking.paid_amount), vnd(booking.deposit_amount)
     base = {
         "booking_id": booking.id,
         "paid_amount": paid,
@@ -521,7 +522,7 @@ def preview_cancellation(booking: Booking) -> dict:
         "reschedule_hours": policy.CANCEL_RESCHEDULE_HOURS,
     }
     if booking.status not in (S.PENDING.value, S.CONFIRMED.value) or not booking.details:
-        return {**base, "can_cancel": False, "tier": "NOT_ALLOWED", "hours_before": 0.0, "refund_amount": 0.0,
+        return {**base, "can_cancel": False, "tier": "NOT_ALLOWED", "hours_before": 0.0, "refund_amount": 0,
                 "message": "Đơn ở trạng thái này không thể hủy."}
 
     hours_before = (first_slot_start(booking) - now_vn()).total_seconds() / 3600
@@ -532,14 +533,14 @@ def preview_cancellation(booking: Booking) -> dict:
         tier, refund = "FULL_REFUND", paid
         message = f"Hủy trước giờ chơi từ {policy.CANCEL_FULL_REFUND_HOURS} tiếng: hoàn 100% số tiền đã thanh toán."
     elif hours_before >= policy.CANCEL_RESCHEDULE_HOURS:
-        tier, refund = "RESCHEDULE_ONLY", max(0.0, paid - deposit)
+        tier, refund = "RESCHEDULE_ONLY", max(0, paid - deposit)
         message = (f"Còn dưới {policy.CANCEL_FULL_REFUND_HOURS} tiếng: tiền cọc không được hoàn. "
                    "Bạn có thể liên hệ sân để được hỗ trợ dời lịch thay vì hủy.")
     else:
-        tier, refund = "NO_REFUND", max(0.0, paid - deposit)
+        tier, refund = "NO_REFUND", max(0, paid - deposit)
         message = f"Còn dưới {policy.CANCEL_RESCHEDULE_HOURS} tiếng trước giờ chơi: tiền cọc không được hoàn."
     return {**base, "can_cancel": True, "tier": tier, "hours_before": round(hours_before, 2),
-            "refund_amount": float(refund), "message": message}
+            "refund_amount": refund, "message": message}
 
 
 def _mark_cancelled(db: Session, booking: Booking, actor: Optional[User], reason: Optional[str]) -> None:
@@ -614,7 +615,7 @@ def confirm_refund(db: Session, booking: Booking, actor: User, *, bank_reference
     if used:
         raise _error(status.HTTP_409_CONFLICT, f"Mã giao dịch {reference} đã được dùng để xác nhận hoàn tiền cho đơn {used[0]}.")
 
-    amount = float(booking.refund_amount or 0)
+    amount = vnd(booking.refund_amount)
     if amount > 0:
         content = f"Hoàn tiền đơn {booking.booking_code} - mã GD {reference}"
         if (note or "").strip():
@@ -644,7 +645,7 @@ def check_in(
     db: Session,
     booking: Booking,
     actor: User,
-    collected_amount: Optional[float] = None,
+    collected_amount: Optional[int] = None,
     method: str = PaymentMethod.CASH.value,
 ) -> Booking:
     """Khách đến nhận sân. Mặc định thu luôn phần còn lại; truyền collected_amount=0 nếu thu sau."""
@@ -658,7 +659,7 @@ def check_in(
         raise _error(400, "Khung giờ đặt đã kết thúc, không thể check-in.")
 
     remaining = booking.remaining_amount
-    amount = remaining if collected_amount is None else float(collected_amount)
+    amount = remaining if collected_amount is None else vnd(collected_amount)
     if amount < 0 or amount > remaining + policy.PAYMENT_TOLERANCE:
         raise _error(400, f"Số tiền thu không hợp lệ (còn lại {remaining:,.0f}đ).")
     if amount > 0:
@@ -666,7 +667,7 @@ def check_in(
             db, booking, amount=amount, kind=PaymentKind.BALANCE.value, method=method, gateway="Tại quầy",
             content=f"Thu phần còn lại {booking.booking_code}", created_by_id=actor.id,
         )
-        booking.paid_amount = float(booking.paid_amount or 0) + amount
+        booking.paid_amount = vnd(booking.paid_amount) + amount
         recalculate_payment_status(booking)
 
     booking.status = S.CHECKED_IN.value
@@ -795,9 +796,7 @@ def reschedule(db: Session, booking: Booking, actor: User, court_id: int, new_da
             raise _error(400, "Không thể dời lịch sang khung giờ đã qua.")
 
     old_slots = [_slot_payload(d, True) for d in booking.details]
-    share = float(round(float(booking.total_price or 0) / len(new_slots)))
-    prices = [share] * len(new_slots)
-    prices[-1] = float(booking.total_price or 0) - share * (len(new_slots) - 1)
+    prices = split_evenly(vnd(booking.total_price), len(new_slots))
 
     try:
         booking.details.clear()

@@ -5,12 +5,13 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.core.booking_policy import MAX_ADVANCE_DAYS, SLOT_MINUTES
+from app.core.money import vnd
 from app.models.booking import Booking, BookingDetail, BookingStatus
 from app.models.venue import Court, OperatingHour, PriceRule, Venue, VenueStatus
 from app.schemas.search import CourtAvailability, TimeSlot, VenueAvailabilityResponse
 from app.utils.timeutils import now_utc, now_vn, vn_datetime
 
-DEFAULT_HOURLY_PRICE = 160000.0
+DEFAULT_HOURLY_PRICE = 160000
 DEFAULT_PEAK_START = time(17, 0)
 DEFAULT_PEAK_END = time(23, 0)
 
@@ -34,15 +35,15 @@ def calculate_slot_price(
 
     court_price = getattr(court, "price", None) if court is not None else None
     if court_price and court_price > 0:
-        base_price = float(court_price)
+        base_price = vnd(court_price)
     elif base_rule:
-        base_price = float(base_rule.price)
+        base_price = vnd(base_rule.price)
     elif rules:
-        base_price = float(rules[0].price)
+        base_price = vnd(rules[0].price)
     else:
         base_price = DEFAULT_HOURLY_PRICE
 
-    peak_price = max(base_price, float(peak_rule.price)) if peak_rule else base_price
+    peak_price = max(base_price, vnd(peak_rule.price)) if peak_rule else base_price
     p_start = peak_rule.start_time if peak_rule and peak_rule.start_time else DEFAULT_PEAK_START
     p_end = peak_rule.end_time if peak_rule and peak_rule.end_time else DEFAULT_PEAK_END
 
@@ -50,7 +51,7 @@ def calculate_slot_price(
     is_weekend = target_date is not None and target_date.weekday() in (5, 6)
 
     if is_weekend and weekend_rule and weekend_rule.price:
-        weekend_price = max(base_price, float(weekend_rule.price))
+        weekend_price = max(base_price, vnd(weekend_rule.price))
         return max(peak_price, weekend_price) if is_peak_slot else weekend_price
     return peak_price if is_peak_slot else base_price
 

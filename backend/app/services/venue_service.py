@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
+from app.core.money import vnd
 from app.core.websocket_manager import dispatch, manager
 from app.models.venue import Court, CourtStatus, OperatingHour, PriceRule, Venue, VenueStatus
 from app.utils.timeutils import now_utc, now_vn
@@ -233,7 +234,7 @@ def _set_rule(db: Session, venue_id: int, rule_type: str, price: float,
         rule = PriceRule(venue_id=venue_id)
         db.add(rule)
     rule.rule_type = rule_type
-    rule.price = float(price)
+    rule.price = vnd(price)
     rule.start_time, rule.end_time = start_time, end_time
     return rule
 

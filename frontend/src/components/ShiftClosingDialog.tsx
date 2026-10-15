@@ -15,6 +15,7 @@ interface Closing {
   id: number;
   venue_id: number;
   business_date: string;
+  period_start?: string | null; // ca kéo dài từ đây (lần kết ca trước) tới closed_at
   closed_at: string;
   closed_by_name: string;
   opening_float: number;
@@ -32,6 +33,7 @@ interface Summary {
   venue_id: number;
   venue_name: string;
   business_date: string;
+  period_start: string; // ca đang chạy bắt đầu từ lần kết ca trước, có thể là hôm trước
   last_closed_at?: string | null;
   cash_collected: number;
   transfer_collected: number;
@@ -42,6 +44,12 @@ interface Summary {
 type Step = "count" | "review" | "done";
 
 const timeOf = (iso: string) => parseUtcDate(iso).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+/** Giờ, kèm ngày nếu không phải hôm nay: "20:00 15/10" cho ca bắt đầu từ hôm trước. */
+const momentOf = (iso: string) => {
+  const moment = parseUtcDate(iso);
+  const sameDay = moment.toDateString() === new Date().toDateString();
+  return sameDay ? timeOf(iso) : `${timeOf(iso)} ${moment.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })}`;
+};
 
 /** Số tiền nguyên, không âm; nhập sai (số âm, số lẻ, bỏ trống) trả về null. */
 const wholeAmount = (text: string): number | null => (/^\d{1,10}$/.test(text.trim()) ? Number(text.trim()) : null);
@@ -163,7 +171,7 @@ export default function ShiftClosingDialog({ onClose }: { onClose: () => void })
               <p className="text-sm font-black text-[#17253d] truncate">{summary.venue_name}</p>
               <p className="text-[11px] text-[#718096]">
                 {formatDisplayDate(summary.business_date)}
-                {step !== "done" && ` • ${summary.last_closed_at ? `Tính từ lần kết ca lúc ${timeOf(summary.last_closed_at)}` : "Tính từ đầu ngày"}`}
+                {step !== "done" && ` • ${summary.last_closed_at ? `Ca tính từ lần kết ca lúc ${momentOf(summary.period_start)}` : "Tính từ đầu ngày"}`}
               </p>
             </div>
             {venues.length > 1 && step === "count" && (
@@ -252,7 +260,7 @@ export default function ShiftClosingDialog({ onClose }: { onClose: () => void })
                   <li key={closing.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
                     <div className="min-w-0">
                       <p className="font-bold text-[#17253d]">
-                        {formatDisplayDate(closing.business_date)} • {timeOf(closing.closed_at)}
+                        {formatDisplayDate(closing.business_date)} • {closing.period_start ? `${momentOf(closing.period_start)} - ` : ""}{timeOf(closing.closed_at)}
                       </p>
                       <p className="text-[#8a97ab] truncate">
                         {closing.closed_by_name} • thu {formatVND(closing.total_collected)}

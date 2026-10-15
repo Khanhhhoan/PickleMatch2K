@@ -1,7 +1,9 @@
 """Kết ca tại quầy: đối chiếu tiền mặt đếm được với sổ giao dịch và lưu từng lần kết ca của cụm sân."""
+from datetime import datetime
+
 import pytest
 
-from app.models.payment import ShiftClosing
+from app.models.payment import PaymentTransaction, ShiftClosing
 from app.models.user import User
 from helpers import auth, confirmed_booking, create_booking, make_user, make_venue, sepay
 
@@ -28,6 +30,11 @@ def close(client, user, **body):
 
 def money(figures: dict) -> tuple:
     return figures["cash_collected"], figures["transfer_collected"], figures["refunded"]
+
+
+def instant(value: str) -> datetime:
+    """Một thời điểm API trả về (có thể ghi theo UTC hoặc giờ Việt Nam) để so sánh đúng."""
+    return datetime.fromisoformat(value)
 
 
 # ---------------------------------------------------------------------------
@@ -111,11 +118,61 @@ def test_a_stored_closing_does_not_change_when_money_arrives_later(client, world
     assert money(now) == (100000, 0, 0)
     assert now["closings"][0] == closing
 
-    # Sang ngày hôm sau, ca mới bắt đầu từ 0: tiền chưa kết của hôm trước không tự chuyển sang
+    # Hôm đó không kết ca lần nữa: sang hôm sau khoản 100k vẫn còn trong ca đang chạy, không bị bỏ sót,
+    # và giờ bắt đầu ca cho thấy ca này kéo từ hôm trước
     clock.set(clock.day(1), 8)
     tomorrow = summary(client, world.staff_a)
-    assert money(tomorrow) == (0, 0, 0) and tomorrow["last_closed_at"] is None
+    assert money(tomorrow) == (100000, 0, 0)
+    assert instant(tomorrow["period_start"]) == instant(closing["closed_at"]) == instant(tomorrow["last_closed_at"])
     assert tomorrow["business_date"] == clock.today.isoformat() and len(tomorrow["closings"]) == 1
+
+
+def test_a_shift_running_past_midnight_is_closed_once_with_everything_in_it(client, db, world, clock):
+    today, tomorrow = clock.today, clock.day(1)
+    court_1, court_2 = world.venue_a.courts
+    clock.set(today, 19, 55)
+    day_shift = close(client, world.staff_a, opening_float=0, counted_cash=0).json()
+
+    clock.set(today, 20, 30)
+    desk(client, world.staff_a, court_1, today, "20:00:00", "21:00:00", path="staff/walkin")                  # 150k (cao điểm)
+    clock.set(today, 23, 50)
+    desk(client, world.staff_a, court_1, tomorrow, "09:00:00", "10:00:00", payment_method="BANK_TRANSFER")    # 100k chuyển khoản
+    clock.set(tomorrow, 0, 5)
+    desk(client, world.staff_a, court_2, tomorrow, "10:00:00", "11:00:00")                                     # 100k tiền mặt
+
+    clock.set(tomorrow, 0, 15)
+    running = summary(client, world.staff_a)
+    assert money(running) == (250000, 100000, 0)                 # cả hai phía nửa đêm cùng một ca
+    assert instant(running["period_start"]) == instant(day_shift["closed_at"])
+    night = close(client, world.staff_a, opening_float=0, counted_cash=250000).json()
+    assert money(night) == (250000, 100000, 0) and night["difference"] == 0
+    assert instant(night["period_start"]) == instant(day_shift["closed_at"]) and night["business_date"] == tomorrow.isoformat()
+
+    clock.set(tomorrow, 8, 0)
+    morning = summary(client, world.staff_a)
+    assert money(morning) == (0, 0, 0) and instant(morning["period_start"]) == instant(night["closed_at"])
+    # Mỗi giao dịch thuộc đúng một lần kết ca
+    payments = db.query(PaymentTransaction).all()
+    assert len(payments) == 3 and {p.shift_closing_id for p in payments} == {night["id"]}
+
+
+def test_money_recorded_after_a_closing_but_dated_before_it_goes_to_the_next_closing(client, db, world, clock):
+    today = clock.today
+    unpaid = desk(client, world.staff_a, world.court, today, "18:00:00", "19:00:00", payment_method="UNPAID")
+    clock.set(today, 9, 30)
+    first = close(client, world.staff_a, opening_float=0, counted_cash=0).json()
+    assert money(first) == (0, 0, 0)
+
+    # Một khoản ghi sổ có giờ 09:20 nhưng được lưu sau lúc kết ca 09:30 (ví dụ máy chậm): không được rơi mất
+    clock.set(today, 9, 20)
+    collected = client.post(f"{BOOKINGS}/{unpaid['id']}/collect", json={"amount": 50000, "payment_method": "CASH"},
+                            headers=auth(world.staff_a))
+    assert collected.status_code == 200, collected.text
+    clock.set(today, 10, 0)
+    assert money(summary(client, world.staff_a)) == (50000, 0, 0)
+    second = close(client, world.staff_a, opening_float=0, counted_cash=50000).json()
+    assert money(second) == (50000, 0, 0)
+    assert db.query(PaymentTransaction).one().shift_closing_id == second["id"]
 
 
 @pytest.mark.parametrize("body, expected", [

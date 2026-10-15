@@ -16,8 +16,11 @@ CANCEL_FULL_REFUND_HOURS = 12             # Hủy trước >= 12 giờ: hoàn 10
 CANCEL_RESCHEDULE_HOURS = 6               # Từ 6 đến dưới 12 giờ: không hoàn cọc, được hỗ trợ dời lịch
                                           # Dưới 6 giờ hoặc không đến: không hoàn cọc
 
-PAYMENT_TOLERANCE = 1.0                   # Sai số làm tròn (VNĐ) khi so tiền chuyển khoản
+PAYMENT_TOLERANCE = 1                     # Sai số làm tròn (VNĐ) khi so tiền chuyển khoản
 
 
-def deposit_for(total_price: float) -> float:
-    return float(round(total_price * DEPOSIT_RATE))
+def deposit_for(total_price: int) -> int:
+    """Tiền cọc (đồng): DEPOSIT_RATE của tổng tiền, tính bằng số nguyên."""
+    from app.core.money import share
+
+    return share(total_price, DEPOSIT_RATE)

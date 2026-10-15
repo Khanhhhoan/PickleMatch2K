@@ -31,11 +31,11 @@ class CheckoutResponse(BaseModel):
     booking_id: int
     booking_code: Optional[str] = None
     status: str
-    total_price: float
-    deposit_amount: float
-    paid_amount: float = 0.0
-    amount_due: float                 # Phần tiền cọc còn phải chuyển
-    remaining_amount: float           # Phần trả tại sân sau khi đã cọc
+    total_price: int
+    deposit_amount: int
+    paid_amount: int = 0
+    amount_due: int                   # Phần tiền cọc còn phải chuyển
+    remaining_amount: int             # Phần trả tại sân sau khi đã cọc
     deposit_percentage: int = 50
     payment_status: str
     venue_name: str
@@ -57,7 +57,7 @@ class PaymentConfigResponse(BaseModel):
 class PaymentBookingSummary(BaseModel):
     id: int
     booking_code: Optional[str] = None
-    total_price: float
+    total_price: int
     payment_status: Optional[str] = None
     status: Optional[str] = None
 
@@ -71,7 +71,7 @@ class PaymentTransactionResponse(BaseModel):
     gateway: str
     method: Optional[str] = None
     kind: Optional[str] = None
-    amount_in: float
+    amount_in: int
     transaction_content: Optional[str] = None
     reference_number: Optional[str] = None
     status: str
@@ -93,27 +93,29 @@ class ShiftClosingResponse(BaseModel):
     id: int
     venue_id: int
     business_date: date
+    period_start: Optional[datetime] = None  # ca kéo dài từ đây (lần kết ca trước) tới closed_at
     closed_at: datetime
     closed_by_name: str
-    opening_float: float
-    counted_cash: float
-    cash_collected: float
-    transfer_collected: float
-    refunded: float
-    total_collected: float   # tiền mặt + chuyển khoản
-    expected_cash: float     # tiền vốn + tiền mặt thu trong ca
-    difference: float        # đếm được trừ phải có: dương là thừa, âm là thiếu
+    opening_float: int
+    counted_cash: int
+    cash_collected: int
+    transfer_collected: int
+    refunded: int
+    total_collected: int     # tiền mặt + chuyển khoản
+    expected_cash: int       # tiền vốn + tiền mặt thu trong ca
+    difference: int          # đếm được trừ phải có: dương là thừa, âm là thiếu
     note: Optional[str] = None
 
 
 class ShiftSummaryResponse(BaseModel):
-    """Phần của hôm nay chưa kết ca tại một cụm sân và những lần kết ca gần đây."""
+    """Ca đang chạy tại một cụm sân (các khoản chưa kết ca, giờ bắt đầu ca) và những lần kết ca gần đây."""
     venue_id: int
     venue_name: str
     business_date: date
-    last_closed_at: Optional[datetime] = None  # lần kết ca gần nhất trong hôm nay
-    cash_collected: float
-    transfer_collected: float
-    refunded: float
-    total_collected: float
+    period_start: datetime                     # ca đang chạy bắt đầu từ lần kết ca trước (có thể là hôm trước)
+    last_closed_at: Optional[datetime] = None  # lần kết ca gần nhất của cụm sân
+    cash_collected: int
+    transfer_collected: int
+    refunded: int
+    total_collected: int
     closings: List[ShiftClosingResponse]

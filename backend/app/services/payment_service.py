@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.money import vnd
 from app.core.websocket_manager import dispatch, manager
 from app.models.booking import Booking, BookingStatus
 from app.models.payment import PaymentKind, PaymentMethod
@@ -88,10 +89,10 @@ def generate_sepay_qr_url(bank_account: str, bank_code: str, amount: float, tran
 
 def get_checkout_info(db: Session, booking: Booking) -> CheckoutResponse:
     account = resolve_receiving_account(booking)
-    total = float(booking.total_price)
-    deposit = float(booking.deposit_amount or 0)
-    paid = float(booking.paid_amount or 0)
-    amount_due = max(0.0, deposit - paid)  # phần cọc còn thiếu
+    total = vnd(booking.total_price)
+    deposit = vnd(booking.deposit_amount)
+    paid = vnd(booking.paid_amount)
+    amount_due = max(0, deposit - paid)  # phần cọc còn thiếu
     transfer_content = booking.booking_code or f"PKL {booking.id}"
 
     expires_at = as_utc(booking.expires_at)
@@ -106,7 +107,7 @@ def get_checkout_info(db: Session, booking: Booking) -> CheckoutResponse:
         deposit_amount=deposit,
         paid_amount=paid,
         amount_due=amount_due,
-        remaining_amount=max(0.0, total - max(paid, deposit)),
+        remaining_amount=max(0, total - max(paid, deposit)),
         deposit_percentage=50,
         payment_status=booking.payment_status or "UNPAID",
         venue_name=venue_name,
@@ -167,7 +168,7 @@ def process_sepay_webhook(db: Session, payload: SepayWebhookPayload) -> dict:
         return {"status": "ignored", "reason": "Không phải giao dịch tiền vào"}
 
     content = payload.transactionContent or payload.content or payload.description or ""
-    amount = float(payload.transferAmount or payload.amountIn or 0.0)
+    amount = vnd(payload.transferAmount or payload.amountIn or 0)
     reference = payload.referenceCode or payload.referenceNumber or (f"sepay-{payload.id}" if payload.id else None)
     if amount <= 0:
         return {"status": "ignored", "reason": "Số tiền không hợp lệ"}
@@ -230,7 +231,7 @@ def simulate_sepay_payment(db: Session, booking: Booking) -> dict:
     if booking.status not in (BookingStatus.PENDING.value, BookingStatus.EXPIRED.value):
         raise HTTPException(status_code=400, detail="Chỉ giả lập thanh toán cho đơn đang chờ cọc.")
     account = resolve_receiving_account(booking)
-    due = max(0.0, float(booking.deposit_amount or 0) - float(booking.paid_amount or 0)) or float(booking.deposit_amount or 0)
+    due = max(0, vnd(booking.deposit_amount) - vnd(booking.paid_amount)) or vnd(booking.deposit_amount)
     payload = SepayWebhookPayload(
         gateway="SePay_Simulator_VietQR",
         accountNumber=account.account_number,
