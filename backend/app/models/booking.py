@@ -2,7 +2,8 @@ import enum
 from typing import Optional
 
 from sqlalchemy import (
-    BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, String, Time, text,
+    BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, LargeBinary, String,
+    Time, text,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -97,7 +98,8 @@ class Booking(Base):
     refund_reason = Column(String, nullable=True)
     refunded_at = Column(DateTime(timezone=True), nullable=True)
     refunded_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    # Đối soát lần chuyển hoàn: mã giao dịch ngân hàng (bắt buộc khi xác nhận) và tệp chứng từ (tùy chọn, lưu riêng)
+    # Đối soát lần chuyển hoàn: mã giao dịch ngân hàng (bắt buộc khi xác nhận) và tên tệp chứng từ hiện tại (tùy chọn;
+    # nội dung tệp nằm ở bảng refund_proofs)
     refund_reference = Column(String(64), nullable=True)
     refund_proof_file = Column(String(255), nullable=True)
 
@@ -215,3 +217,20 @@ class BookingDetail(Base):
     @property
     def venue_address(self) -> str:
         return self.court.venue.address if self.court and self.court.venue else ""
+
+
+class RefundProof(Base):
+    """
+    Nội dung tệp chứng từ chuyển hoàn của một đơn (mỗi đơn một tệp, tệp mới thay tệp cũ).
+
+    Lưu trong CSDL chứ không trên ổ đĩa: máy chủ kiểu Render xóa ổ đĩa mỗi lần khởi động lại hay deploy. Chỉ tải được
+    qua API có kiểm tra quyền (GET /bookings/{id}/refund-proof).
+    """
+    __tablename__ = "refund_proofs"
+
+    booking_id = Column(Integer, ForeignKey("bookings.id", ondelete="CASCADE"), primary_key=True)
+    name = Column(String(255), nullable=False)  # trùng bookings.refund_proof_file khi đây là chứng từ hiện tại
+    media_type = Column(String(50), nullable=False)
+    size = Column(Integer, nullable=False)
+    content = Column(LargeBinary, nullable=False)
+    uploaded_at = Column(DateTime(timezone=True), nullable=False)

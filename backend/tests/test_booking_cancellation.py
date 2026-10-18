@@ -1,7 +1,7 @@
 """Chính sách hủy theo mốc 12 giờ / 6 giờ, hoàn tiền và việc trả lại khung giờ."""
 import pytest
 
-from app.models.booking import Booking
+from app.models.booking import Booking, RefundProof
 from app.models.payment import PaymentTransaction
 from app.services import booking_service
 from helpers import auth, confirmed_booking, create_booking, sepay, slot
@@ -199,10 +199,7 @@ def _png_bytes() -> bytes:
     return buffer.getvalue()
 
 
-def test_refund_proof_is_stored_privately_and_only_shown_to_the_right_people(client, db, world, clock, tmp_path, monkeypatch):
-    from app.services import storage_service
-
-    monkeypatch.setattr(storage_service, "REFUND_PROOF_DIR", str(tmp_path))
+def test_refund_proof_is_stored_privately_and_only_shown_to_the_right_people(client, db, world, clock):
     booking = confirmed_booking(client, world.p1, world.court, clock.day(1), hours=(18,))
     cancel(client, world.p1, booking, BANK)
     proof_path = f"{BOOKINGS}/{booking['id']}/refund-proof"
@@ -222,10 +219,12 @@ def test_refund_proof_is_stored_privately_and_only_shown_to_the_right_people(cli
     stored = upload(world.staff_a, _png_bytes())
     assert stored.status_code == 200 and stored.json()["has_refund_proof"] is True
 
+    # Nội dung nằm trong CSDL (bảng refund_proofs): không trên ổ đĩa, không có đường dẫn công khai /uploads
     db.expire_all()
     name = db.get(Booking, booking["id"]).refund_proof_file
-    assert (tmp_path / name).is_file()
-    assert not name.startswith("/uploads") and str(tmp_path) != storage_service.UPLOAD_DIR
+    proof = db.get(RefundProof, booking["id"])
+    assert proof.name == name and not name.startswith("/uploads")
+    assert proof.content == _png_bytes() and proof.media_type == "image/png" and proof.size == len(_png_bytes())
 
     for viewer, expected in ((world.owner_a, 200), (world.staff_a, 200), (world.admin, 200), (world.p1, 200),
                              (world.p2, 403), (world.staff_b, 403), (world.owner_b, 403)):
@@ -235,7 +234,18 @@ def test_refund_proof_is_stored_privately_and_only_shown_to_the_right_people(cli
             assert response.content == _png_bytes() and response.headers["content-type"] == "image/png"
     assert client.get(proof_path).status_code == 401
 
-    # Thay chứng từ: tệp cũ bị xóa, chỉ còn tệp mới
+    # Thay chứng từ: tệp mới thay hẳn tệp cũ, đơn chỉ còn một chứng từ
     upload(world.staff_a, b"%PDF-1.4 chung tu moi", "moi.pdf")
     db.expire_all()
-    assert [p.name for p in tmp_path.iterdir()] == [db.get(Booking, booking["id"]).refund_proof_file]
+    current = db.get(Booking, booking["id"]).refund_proof_file
+    proofs = db.query(RefundProof).filter(RefundProof.booking_id == booking["id"]).all()
+    assert current != name and current.endswith(".pdf")
+    assert len(proofs) == 1 and proofs[0].name == current
+    response = client.get(proof_path, headers=auth(world.p1))
+    assert response.content == b"%PDF-1.4 chung tu moi" and response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"] == f'attachment; filename="chung-tu-hoan-tien-{booking["booking_code"]}.pdf"'
+
+    # Đơn còn tên chứng từ nhưng không có nội dung (ví dụ CSDL chép từ nơi khác): báo không tìm thấy
+    db.query(RefundProof).filter(RefundProof.booking_id == booking["id"]).delete()
+    db.commit()
+    assert client.get(proof_path, headers=auth(world.staff_a)).status_code == 404

@@ -1,0 +1,58 @@
+# ==============================================================================
+# Render Blueprint: Backend API PickleMatch2K (FastAPI) trên Render.
+# Hai cổng web chạy trên Vercel, CSDL PostgreSQL trên Neon. Hướng dẫn: README.md, mục 5, "Cách 4".
+#
+# Render -> New -> Blueprint -> chọn repo này. Các biến "sync: false" được hỏi lúc tạo; sửa sau ở tab Environment.
+# ==============================================================================
+
+services:
+  - type: web
+    name: picklematch2k-api
+    runtime: python
+    rootDir: backend
+    region: singapore
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # Nâng schema của CSDL lên bản mới nhất (Neon tự sao lưu, ở đây không có pg_dump) rồi chạy API ở cổng Render cấp.
+    # --forwarded-allow-ips: đọc IP thật của người dùng từ proxy của Render; giới hạn đăng nhập sai tính theo (IP, email),
+    # thiếu nó thì mọi người dùng chung một IP và có thể khóa tài khoản của nhau.
+    startCommand: 'python manage.py migrate --no-backup && uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips "*"'
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.7
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      # Chuỗi kết nối Neon (postgresql://...?sslmode=require), bản không qua connection pooling
+      - key: DATABASE_URL
+        sync: false
+      # Hai địa chỉ Vercel, cách nhau dấu phẩy: https://<cong-nguoi-dung>.vercel.app,https://<cong-quan-tri>.vercel.app
+      - key: CORS_ORIGINS
+        sync: false
+      # Ổ đĩa của Render bị xóa mỗi lần khởi động lại: ảnh phải nằm trên Cloudinary
+      - key: STORAGE_BACKEND
+        value: cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: SEPAY_BANK_NAME
+        sync: false
+      - key: SEPAY_BANK_CODE
+        sync: false
+      - key: SEPAY_BANK_ACCOUNT
+        sync: false
+      - key: SEPAY_ACCOUNT_HOLDER
+        sync: false
+      # Khi ENVIRONMENT=production, webhook SePay chỉ được nhận khi có khóa này (để trống nếu chỉ demo bằng giả lập)
+      - key: SEPAY_WEBHOOK_API_KEY
+        sync: false
+      - key: SEPAY_UNIFIED_TEST_MODE
+        value: "true"
+      # true: hiện nút giả lập thanh toán - chỉ dùng khi demo
+      - key: SEPAY_SIMULATOR_ENABLED
+        value: "true"

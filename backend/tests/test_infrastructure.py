@@ -684,6 +684,54 @@ def test_adding_the_age_criterion_keeps_real_survey_answers_and_clears_only_the_
         _rebuild_schema()   # các test sau cần schema mới nhất
 
 
+def test_moving_refund_proofs_into_the_database_copies_the_files_already_on_disk(db):
+    """Migration 0013: tệp chứng từ đang nằm trên ổ đĩa được chép vào bảng refund_proofs; hạ cấp ghi lại ra ổ đĩa."""
+    import uuid
+
+    from alembic import command
+
+    from app.db.migrations import alembic_config, run_migrations
+    from scripts._common import BACKEND_DIR
+
+    proof_dir = BACKEND_DIR / "private_uploads" / "refund_proofs"
+    created = [folder for folder in (proof_dir.parent, proof_dir) if not folder.exists()]
+    on_disk, missing = f"1_{uuid.uuid4().hex}.png", f"2_{uuid.uuid4().hex}.pdf"
+    content = b"\x89PNG\r\n\x1a\nchung tu cu"
+
+    db.rollback()
+    _rebuild_schema("0012")
+    try:
+        proof_dir.mkdir(parents=True, exist_ok=True)
+        (proof_dir / on_disk).write_bytes(content)
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO users (email, password_hash, role, is_active) VALUES ('old@example.com', 'x', 'PLAYER', true)"))
+            conn.execute(text("INSERT INTO bookings (user_id, total_price, refund_proof_file) VALUES (1, 0, :a), (1, 0, :b)"),
+                         {"a": on_disk, "b": missing})
+
+        run_migrations()
+
+        _assert_migrated_with_data_intact()
+        with engine.connect() as conn:
+            stored = [(row.booking_id, row.name, row.media_type, row.size, bytes(row.content)) for row in conn.execute(text(
+                "SELECT booking_id, name, media_type, size, content FROM refund_proofs"))]
+            assert stored == [(1, on_disk, "image/png", len(content), content)]
+            # tệp không còn trên máy này: đơn giữ nguyên tên chứng từ, không có dòng nội dung
+            assert conn.execute(text("SELECT refund_proof_file FROM bookings WHERE id = 2")).scalar() == missing
+
+        (proof_dir / on_disk).unlink()
+        command.downgrade(alembic_config(), "0012")          # quay lại được: nội dung được ghi lại ra ổ đĩa
+        assert (proof_dir / on_disk).read_bytes() == content
+    finally:
+        for name in (on_disk, missing):
+            (proof_dir / name).unlink(missing_ok=True)
+        for folder in reversed(created):
+            try:
+                folder.rmdir()
+            except OSError:
+                pass
+        _rebuild_schema()   # các test sau cần schema mới nhất
+
+
 def test_a_database_newer_than_the_code_is_reported_instead_of_migrated(db):
     import manage
     from app.db.migrations import migration_status, require_current_schema

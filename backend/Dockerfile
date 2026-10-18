@@ -1,4 +1,4 @@
-# Backend API PickleMatch2K (FastAPI + PostgreSQL). Dùng qua docker-compose.yml hoặc docker-compose.aws.yml ở thư mục gốc.
+# Backend API PickleMatch2K (FastAPI + PostgreSQL). Dùng qua docker-compose.yml ở thư mục gốc.
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -16,11 +16,10 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
-# Chạy bằng tài khoản thường. Ứng dụng chỉ ghi vào hai thư mục: ảnh tải lên (uploads) và chứng từ hoàn tiền
-# (private_uploads, không phục vụ công khai); thiếu quyền ghi thì tải chứng từ hoàn tiền sẽ lỗi.
+# Chạy bằng tài khoản thường; thư mục ảnh tải lên là nơi duy nhất ứng dụng cần ghi.
 RUN useradd --create-home --uid 10001 appuser \
-    && mkdir -p /app/uploads/venues /app/private_uploads/refund_proofs \
-    && chown -R appuser:appuser /app/uploads /app/private_uploads
+    && mkdir -p /app/uploads/venues \
+    && chown -R appuser:appuser /app/uploads
 USER appuser
 
 EXPOSE 8000

@@ -8,8 +8,11 @@ import uuid
 from typing import Optional
 
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.models.booking import Booking, RefundProof
+from app.utils.timeutils import now_utc
 
 logger = logging.getLogger("pickleball.storage")
 
@@ -22,10 +25,9 @@ LOCAL_URL_PREFIX = "/uploads/venues/"
 # Chỉ nhận ảnh bitmap. SVG bị loại vì có thể chứa mã script và được phục vụ cùng origin với API.
 _PIL_FORMAT_TO_EXT = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp", "GIF": ".gif"}
 
-# Chứng từ hoàn tiền là dữ liệu tài chính của khách: lưu NGOÀI thư mục /uploads công khai và chỉ tải được qua API có
-# kiểm tra quyền (GET /bookings/{id}/refund-proof). Không đưa lên Cloudinary vì liên kết ở đó ai có cũng mở được.
-PRIVATE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "private_uploads"))
-REFUND_PROOF_DIR = os.path.join(PRIVATE_DIR, "refund_proofs")
+# Chứng từ hoàn tiền là dữ liệu tài chính của khách: lưu trong CSDL (bảng refund_proofs), NGOÀI thư mục /uploads công
+# khai, và chỉ tải được qua API có kiểm tra quyền (GET /bookings/{id}/refund-proof). Không đưa lên Cloudinary vì liên
+# kết ở đó ai có cũng mở được; không để trên ổ đĩa vì máy chủ kiểu Render xóa ổ đĩa mỗi lần khởi động lại.
 MAX_PROOF_BYTES = 5 * 1024 * 1024
 _PROOF_MEDIA_TYPES = {".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".pdf": "application/pdf"}
 _PROOF_NAME = re.compile(r"^\d+_[0-9a-f]{32}\.(jpg|png|webp|pdf)$")
@@ -184,31 +186,26 @@ def _proof_extension(contents: bytes) -> str:
     return ext
 
 
-def save_refund_proof(booking_id: int, contents: bytes) -> str:
-    """Lưu chứng từ hoàn tiền của một đơn; trả về tên tệp (không phải đường dẫn công khai)."""
+def save_refund_proof(db: Session, booking: Booking, contents: bytes) -> None:
+    """Lưu chứng từ hoàn tiền của một đơn vào CSDL, thay tệp cũ nếu có. Người gọi commit (tệp và đơn cùng một giao dịch)."""
     ext = _proof_extension(contents)
-    os.makedirs(REFUND_PROOF_DIR, exist_ok=True)
-    name = f"{booking_id}_{uuid.uuid4().hex}{ext}"
-    with open(os.path.join(REFUND_PROOF_DIR, name), "wb") as handle:
-        handle.write(contents)
-    return name
+    name = f"{booking.id}_{uuid.uuid4().hex}{ext}"
+    proof = db.get(RefundProof, booking.id)
+    if proof is None:
+        proof = RefundProof(booking_id=booking.id)
+        db.add(proof)
+    proof.name = name
+    proof.media_type = _PROOF_MEDIA_TYPES[ext]
+    proof.size = len(contents)
+    proof.content = contents
+    proof.uploaded_at = now_utc()
+    booking.refund_proof_file = name
 
 
-def refund_proof_path(name: str) -> tuple:
-    """(đường dẫn tệp, media type) của một chứng từ đã lưu. Tên tệp được kiểm tra chặt để không đọc được tệp khác."""
-    if not _PROOF_NAME.fullmatch(name or ""):
+def load_refund_proof(db: Session, booking: Booking) -> tuple:
+    """(nội dung, media type, đuôi tệp) của chứng từ hiện tại của đơn; 404 nếu không có."""
+    name = booking.refund_proof_file or ""
+    proof = db.get(RefundProof, booking.id) if _PROOF_NAME.fullmatch(name) else None
+    if proof is None or proof.name != name:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tệp chứng từ.")
-    path = os.path.join(REFUND_PROOF_DIR, name)
-    if not os.path.isfile(path):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tệp chứng từ.")
-    return path, _PROOF_MEDIA_TYPES[os.path.splitext(name)[1]]
-
-
-def delete_refund_proof(name: str) -> None:
-    """Xóa chứng từ cũ khi được thay bằng tệp mới."""
-    if not _PROOF_NAME.fullmatch(name or ""):
-        return
-    try:
-        os.remove(os.path.join(REFUND_PROOF_DIR, name))
-    except FileNotFoundError:
-        pass
+    return proof.content, proof.media_type, os.path.splitext(name)[1]

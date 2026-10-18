@@ -1,9 +1,7 @@
-import os
 from datetime import date
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -230,11 +228,8 @@ async def upload_refund_proof(
     booking = _get_staff_booking(db, booking_id, current_user)
     if booking.refund_status != "COMPLETED":
         raise HTTPException(status_code=400, detail="Chỉ đính kèm chứng từ cho đơn đã xác nhận hoàn tiền.")
-    old = booking.refund_proof_file
-    booking.refund_proof_file = storage_service.save_refund_proof(booking.id, contents)
+    storage_service.save_refund_proof(db, booking, contents)
     db.commit()
-    if old:
-        storage_service.delete_refund_proof(old)
     db.refresh(booking)
     return booking
 
@@ -251,8 +246,10 @@ def download_refund_proof(
         require_booking_staff(db, current_user, booking)
     if not booking.refund_proof_file:
         raise HTTPException(status_code=404, detail="Đơn này chưa có chứng từ hoàn tiền.")
-    path, media_type = storage_service.refund_proof_path(booking.refund_proof_file)
-    return FileResponse(path, media_type=media_type, filename=f"chung-tu-hoan-tien-{booking.booking_code}{os.path.splitext(path)[1]}")
+    content, media_type, ext = storage_service.load_refund_proof(db, booking)
+    filename = f"chung-tu-hoan-tien-{booking.booking_code}{ext}"
+    return Response(content=content, media_type=media_type,
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 @router.put("/{booking_id}/status", response_model=BookingResponse)

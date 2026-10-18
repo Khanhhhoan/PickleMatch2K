@@ -47,16 +47,15 @@ cấu hình rừng ở `backend/app/ml/train_model.py`, kết quả đánh giá 
 ```text
 KLTN/
 ├── .env.example            Mẫu cấu hình (sao chép thành .env, không commit .env)
-├── .env.aws.example        Mẫu cấu hình cho máy chủ AWS (EC2 + RDS)
 ├── docker-compose.yml      Chạy toàn bộ hệ thống bằng Docker
-├── docker-compose.aws.yml  Chạy trên AWS EC2, CSDL là Amazon RDS
+├── render.yaml             Cấu hình API trên Render (mục 5, Cách 4)
 ├── start_all.bat           Chạy 3 dịch vụ trên máy phát triển
 ├── start_docker.bat        Chạy bằng Docker
 ├── pyproject.toml          Cấu hình pytest và ruff
 ├── .github/workflows/      Kiểm tra tự động (CI)
 ├── backend/                API FastAPI
 │   ├── app/                api, core, db, ml, models, schemas, services, utils
-│   ├── alembic/            Các phiên bản schema (0001 → 0012)
+│   ├── alembic/            Các phiên bản schema (0001 → 0013)
 │   ├── scripts/            Script quản trị CSDL (xem backend/scripts/README.md)
 │   ├── tests/              Bộ kiểm thử pytest (xem backend/tests/README.md)
 │   └── manage.py           Bộ lệnh quản trị
@@ -127,7 +126,7 @@ docker compose down
 - Docker dùng một **CSDL riêng** trong container (PostgreSQL 17, volume `pgdata17`), không phải PostgreSQL cài trên máy.
   Cổng 5432 và 6379 không mở ra ngoài.
 - Lần chạy đầu, backend tự dựng bảng và nạp dữ liệu demo (tắt bằng `SEED_DEMO_DATA=false`).
-- Ảnh sân tải lên được giữ trong volume `uploads`, chứng từ hoàn tiền trong volume `private_uploads`.
+- Ảnh sân tải lên được giữ trong volume `uploads`; chứng từ hoàn tiền nằm trong CSDL.
 - Sao lưu CSDL của container (hai bước, chạy được trên mọi loại terminal):
 
   ```powershell
@@ -143,29 +142,30 @@ docker compose down
 Địa chỉ sau khi chạy: API và tài liệu Swagger `http://localhost:8000/docs`, người dùng `http://localhost:3000`,
 quản trị `http://localhost:3001`.
 
-### Cách 4 - AWS: máy chủ EC2 + CSDL RDS
+### Cách 4 - Đưa lên Internet: Render (API) + Vercel (hai cổng web) + Neon (PostgreSQL)
 
-Dùng `docker-compose.aws.yml`: API, hai cổng web và Redis chạy trên một máy EC2 (Ubuntu, đã cài Docker), CSDL là
-Amazon RDS for PostgreSQL.
+Không cần Docker hay máy chủ riêng. Cả ba dịch vụ đăng nhập được bằng GitHub, có sẵn HTTPS và tự deploy lại mỗi lần
+push lên nhánh `main`.
 
-```bash
-git clone https://github.com/Khanhhhoan/PickleMatch2K.git && cd PickleMatch2K
-curl -fsSL -o global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
-cp .env.aws.example .env && nano .env        # DATABASE_URL của RDS, SECRET_KEY, CORS_ORIGINS...
-sudo docker compose -f docker-compose.aws.yml up -d --build
-sudo docker compose -f docker-compose.aws.yml logs -f backend
-```
+1. **Neon**: tạo project PostgreSQL 17, lấy chuỗi kết nối bản không qua connection pooling, rồi nạp dữ liệu từ một
+   bản sao lưu (hoặc để trống: API tự dựng bảng lúc khởi động, sau đó nạp dữ liệu demo bằng `python manage.py seed`):
 
-- Security group: máy EC2 mở cổng 3000, 3001, 8000; RDS nhận cổng 5432 từ security group của máy EC2.
-- Backend nối RDS qua SSL có kiểm tra chứng chỉ (`sslmode=verify-full`, file `global-bundle.pem` được gắn vào
-  container). Mỗi lần khởi động, backend tự nâng schema của RDS lên bản mới nhất (không tự sao lưu: dùng bản sao lưu
-  tự động của RDS) và không nạp dữ liệu demo.
-- Trình duyệt gọi API ở cùng địa chỉ máy, cổng 8000, nên IP của máy đổi thì không phải build lại: chỉ sửa
-  `CORS_ORIGINS` trong `.env` rồi chạy lại lệnh `up -d`.
-- Máy 1 GB RAM cần thêm swap trước khi build hai ứng dụng Next.js; ổ đĩa mặc định 8 GB không đủ chỗ cho các image,
-  nên tăng lên khoảng 20 GB.
-- Trang chạy bằng HTTP: định vị GPS của trình duyệt và quét QR bằng camera cần HTTPS (tên miền và chứng chỉ),
-  các chức năng còn lại dùng bình thường.
+   ```powershell
+   pg_restore --no-owner --no-privileges --single-transaction --exit-on-error -d "<chuỗi kết nối Neon>" backups\<bản sao lưu>.dump
+   ```
+
+2. **Render**: New → Blueprint → chọn repo. Render đọc `render.yaml`, tạo dịch vụ `picklematch2k-api` và hỏi các biến
+   còn thiếu: `DATABASE_URL` (chuỗi kết nối Neon), `CORS_ORIGINS`, khóa Cloudinary, thông tin SePay.
+3. **Vercel**: Add New → Project → chọn repo hai lần, Root Directory lần lượt là `frontend` và `admin-portal`. Cả hai
+   đặt `NEXT_PUBLIC_API_URL` = địa chỉ API trên Render; `frontend` đặt thêm `NEXT_PUBLIC_ADMIN_URL` = địa chỉ cổng
+   quản trị.
+4. Đặt `CORS_ORIGINS` của Render là hai địa chỉ Vercel, cách nhau dấu phẩy (Render tự chạy lại API).
+
+- Gói miễn phí của Render cho API ngủ sau khoảng 15 phút không có truy cập: lần mở đầu tiên chờ khoảng 1 phút, và
+  tác vụ nền tạm dừng trong lúc ngủ (chạy bù khi API thức dậy).
+- Ổ đĩa trên Render bị xóa mỗi lần khởi động lại: ảnh phải dùng `STORAGE_BACKEND=cloudinary` (đã đặt sẵn trong
+  `render.yaml`); chứng từ hoàn tiền nằm trong CSDL.
+- Mỗi lần khởi động, API tự nâng schema của CSDL lên bản mới nhất (`manage.py migrate --no-backup`).
 
 ## 6. Tài khoản demo
 
@@ -261,8 +261,8 @@ Sau khi nâng cấp:
   cho các tài khoản demo đang để trống bằng `python manage.py seed --preferences`.
 - Từ revision 0008 có thêm bảng `shift_closings` (sổ kết ca tại quầy). Bước nâng cấp này chỉ thêm bảng mới, không
   đổi dữ liệu đang có.
-- Từ revision 0009: xác nhận hoàn tiền bắt buộc có mã giao dịch ngân hàng (kèm chứng từ tùy chọn, lưu riêng trong
-  `backend/private_uploads/`), đơn tại quầy chưa thu tiền tự hủy trước giờ chơi (mặc định 30 phút, chủ sân chỉnh trong
+- Từ revision 0009: xác nhận hoàn tiền bắt buộc có mã giao dịch ngân hàng (kèm chứng từ tùy chọn, lưu riêng; từ 0013
+  nằm trong CSDL), đơn tại quầy chưa thu tiền tự hủy trước giờ chơi (mặc định 30 phút, chủ sân chỉnh trong
   "Giờ hoạt động"). Bước nâng cấp chỉ thêm cột; đơn tạo trước đó không bị tự hủy. Quay lại bản trước:
   `alembic downgrade 0008` (bỏ các cột mới) hoặc khôi phục bản sao lưu mà `manage.py migrate` tạo trước khi nâng cấp.
 - Từ revision 0010, một ca kết ca không còn gắn với ngày lịch: mỗi giao dịch được gắn vào đúng lần kết ca đã tính nó
@@ -271,6 +271,9 @@ Sau khi nâng cấp:
 - Từ revision 0011, 13 cột tiền lưu bằng số nguyên `BIGINT` thay cho số thực. Migration kiểm tra trước và dừng hẳn
   nếu có số tiền lẻ hoặc bất thường (không làm tròn ngầm); tổng từng cột giữ nguyên. Quay lại: `alembic downgrade 0010`.
 - Từ revision 0012 có bảng `notifications` (thông báo trong ứng dụng, ví dụ phòng đấu bị hủy). Chỉ thêm bảng mới.
+- Từ revision 0013, nội dung chứng từ hoàn tiền nằm trong bảng `refund_proofs` thay vì thư mục
+  `backend/private_uploads/` (máy chủ kiểu Render xóa ổ đĩa khi khởi động lại). Tệp đang có trên ổ đĩa được chép vào
+  bảng, tệp gốc giữ nguyên. Quay lại: `alembic downgrade 0012` (nội dung được ghi lại ra thư mục cũ).
 - Phiếu ghép cặp mô phỏng nạp từ bản cũ được sinh với nhiễu 0,08, khiến độ phù hợp của phòng thường hiện 100%. Mô hình
   đi kèm mã nguồn đã được huấn luyện lại với nhiễu 0,15; để bảng `pair_feedback` khớp với mô hình, sinh lại các phiếu
   mô phỏng bằng `python manage.py seed --feedback --regenerate` (câu trả lời khảo sát thật được giữ nguyên).
