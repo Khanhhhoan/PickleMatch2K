@@ -47,10 +47,8 @@ cấu hình rừng ở `backend/app/ml/train_model.py`, kết quả đánh giá 
 ```text
 KLTN/
 ├── .env.example            Mẫu cấu hình (sao chép thành .env, không commit .env)
-├── docker-compose.yml      Chạy toàn bộ hệ thống bằng Docker
-├── render.yaml             Triển khai toàn bộ hệ thống lên Render (mục 5, Cách 4)
+├── render.yaml             Triển khai toàn bộ hệ thống lên Render (mục 5, Cách 3)
 ├── start_all.bat           Chạy 3 dịch vụ trên máy phát triển
-├── start_docker.bat        Chạy bằng Docker
 ├── pyproject.toml          Cấu hình pytest và ruff
 ├── .github/workflows/      Kiểm tra tự động (CI)
 ├── backend/                API FastAPI
@@ -114,39 +112,14 @@ cd frontend; npm run dev              cd admin-portal; npm run dev
 
 API từ chối khởi động nếu schema CSDL chưa ở phiên bản mới nhất và in ra lệnh cần chạy.
 
-### Cách 3 - Docker
-
-```powershell
-# .env cần tối thiểu SECRET_KEY và POSTGRES_PASSWORD
-docker compose up --build -d          # hoặc chạy start_docker.bat
-docker compose logs -f backend
-docker compose down
-```
-
-- Docker dùng một **CSDL riêng** trong container (PostgreSQL 17, volume `pgdata17`), không phải PostgreSQL cài trên máy.
-  Cổng 5432 và 6379 không mở ra ngoài.
-- Lần chạy đầu, backend tự dựng bảng và nạp dữ liệu demo (tắt bằng `SEED_DEMO_DATA=false`).
-- Ảnh sân tải lên được giữ trong volume `uploads`; chứng từ hoàn tiền nằm trong CSDL.
-- Sao lưu CSDL của container (hai bước, chạy được trên mọi loại terminal):
-
-  ```powershell
-  docker compose exec -T postgres pg_dump -U postgres -Fc -f /tmp/pm2k.dump pickleball_db
-  docker compose cp postgres:/tmp/pm2k.dump backups/docker.dump
-  ```
-
-- Volume của cấu hình Docker cũ (`postgres_data`, dữ liệu PostgreSQL 15) không còn được dùng và không bị xóa.
-
-> Cấu hình Docker đã được viết lại và rà soát, nhưng **chưa được chạy thử** trên máy phát triển (máy không cài Docker).
-> Hãy chạy thử một lần trước khi dùng cho buổi demo.
-
 Địa chỉ sau khi chạy: API và tài liệu Swagger `http://localhost:8000/docs`, người dùng `http://localhost:3000`,
 quản trị `http://localhost:3001`.
 
-### Cách 4 - Đưa lên Internet bằng Render
+### Cách 3 - Đưa lên Internet bằng Render
 
 `render.yaml` mô tả toàn bộ hệ thống trên Render: API `picklematch2k-api`, cổng người dùng `picklematch2k-web`, cổng
-quản trị `picklematch2k-admin` và CSDL PostgreSQL 17 `picklematch2k-db`. Không cần Docker hay máy chủ riêng, có sẵn
-HTTPS, và mỗi lần push lên nhánh `main` Render tự deploy lại.
+quản trị `picklematch2k-admin` và CSDL PostgreSQL 17 `picklematch2k-db`. Không cần máy chủ riêng, có sẵn HTTPS, và mỗi
+lần push lên nhánh `main` Render tự deploy lại.
 
 1. Render → New → Blueprint → chọn repo này, điền các biến được hỏi (khóa Cloudinary, tài khoản nhận tiền SePay) →
    Deploy Blueprint.

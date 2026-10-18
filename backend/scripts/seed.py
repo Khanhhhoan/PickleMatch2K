@@ -2,7 +2,7 @@
 Nạp bộ dữ liệu demo của đồ án PickleMatch2K.
 
     python scripts/seed.py               # nạp khi CSDL còn trống (dừng nếu đã có dữ liệu)
-    python scripts/seed.py --if-empty    # đã có dữ liệu thì bỏ qua, không báo lỗi (dùng cho Docker)
+    python scripts/seed.py --if-empty    # đã có dữ liệu thì bỏ qua, không báo lỗi (dùng trong script tự động)
     python scripts/seed.py --reset       # XÓA toàn bộ dữ liệu rồi nạp lại (phải xác nhận, hoặc thêm --yes)
     python scripts/seed.py --preferences # chỉ bổ sung mục đích chơi và ngày sinh mẫu cho các tài khoản demo đang để trống
     python scripts/seed.py --feedback    # chỉ nạp phiếu ghép cặp MÔ PHỎNG để huấn luyện mô hình từ CSDL

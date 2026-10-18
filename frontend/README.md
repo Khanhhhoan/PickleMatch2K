@@ -61,7 +61,8 @@ src/
     └── location.ts         Vị trí người dùng
 ```
 
-Trước khi sửa mã, đọc `AGENTS.md`: Next.js 16 có nhiều thay đổi so với các phiên bản trước.
+Trước khi sửa mã, xem tài liệu của đúng phiên bản trong `node_modules/next/dist/docs/`: Next.js 16 có nhiều thay đổi
+so với các phiên bản trước.
 
 ## Ghi chú
 

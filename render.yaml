@@ -1,6 +1,6 @@
 # ==============================================================================
 # Render Blueprint: toàn bộ PickleMatch2K trên Render - API (FastAPI), cổng người dùng và cổng quản trị (Next.js),
-# CSDL PostgreSQL. Hướng dẫn: README.md, mục 5, "Cách 4 - Render".
+# CSDL PostgreSQL. Hướng dẫn: README.md, mục 5, "Cách 3 - Đưa lên Internet bằng Render".
 #
 # Render -> New -> Blueprint -> chọn repo này. Các biến "sync: false" được hỏi lúc tạo; sửa sau ở tab Environment.
 # Ba địa chỉ https://picklematch2k-{api,web,admin}.onrender.com đi theo tên dịch vụ: đổi tên dịch vụ (hoặc Render cấp

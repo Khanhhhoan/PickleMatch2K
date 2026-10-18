@@ -9,7 +9,7 @@ trong file `.env`; schema luôn được tạo/cập nhật bằng migration Ale
 | `python manage.py migrate --check` | Chỉ báo CSDL đang ở phiên bản nào (mã thoát 3 nếu cần nâng cấp) | Không (chỉ đọc) |
 | `python manage.py show` | Báo cáo tổng quan dữ liệu | Không (chỉ đọc) |
 | `python manage.py seed` | Nạp bộ dữ liệu demo vào CSDL **trống** | Không |
-| `python manage.py seed --if-empty` | Như trên, nhưng bỏ qua nếu đã có dữ liệu (dùng cho Docker) | Không |
+| `python manage.py seed --if-empty` | Như trên, nhưng bỏ qua nếu đã có dữ liệu (dùng trong script tự động) | Không |
 | `python manage.py seed --feedback` | Chỉ nạp 10.000 phiếu ghép cặp **mô phỏng** vào bảng `pair_feedback` (nguồn `simulated`) để huấn luyện mô hình từ CSDL; bỏ qua nếu đã có | Không |
 | `python manage.py seed --feedback --regenerate` | Thay các phiếu mô phỏng bằng bộ sinh theo quy tắc hiện tại (dùng sau khi đổi quy tắc sinh nhãn); câu trả lời khảo sát thật được giữ nguyên | Chỉ phiếu mô phỏng |
 | `python manage.py seed --preferences` | Chỉ bổ sung mục đích chơi và ngày sinh mẫu cho tài khoản demo đang để trống (kể cả các tài khoản `ghepNN`) | Không |
