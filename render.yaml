@@ -1,8 +1,10 @@
 # ==============================================================================
-# Render Blueprint: Backend API PickleMatch2K (FastAPI) trên Render.
-# Hai cổng web chạy trên Vercel, CSDL PostgreSQL trên Neon. Hướng dẫn: README.md, mục 5, "Cách 4".
+# Render Blueprint: toàn bộ PickleMatch2K trên Render - API (FastAPI), cổng người dùng và cổng quản trị (Next.js),
+# CSDL PostgreSQL. Hướng dẫn: README.md, mục 5, "Cách 4 - Render".
 #
 # Render -> New -> Blueprint -> chọn repo này. Các biến "sync: false" được hỏi lúc tạo; sửa sau ở tab Environment.
+# Ba địa chỉ https://picklematch2k-{api,web,admin}.onrender.com đi theo tên dịch vụ: đổi tên dịch vụ (hoặc Render cấp
+# tên khác) thì sửa NEXT_PUBLIC_API_URL, NEXT_PUBLIC_ADMIN_URL và CORS_ORIGINS bên dưới.
 # ==============================================================================
 
 services:
@@ -13,7 +15,7 @@ services:
     region: singapore
     plan: free
     buildCommand: pip install -r requirements.txt
-    # Nâng schema của CSDL lên bản mới nhất (Neon tự sao lưu, ở đây không có pg_dump) rồi chạy API ở cổng Render cấp.
+    # Nâng schema của CSDL lên bản mới nhất (ở đây không có pg_dump) rồi chạy API ở cổng Render cấp.
     # --forwarded-allow-ips: đọc IP thật của người dùng từ proxy của Render; giới hạn đăng nhập sai tính theo (IP, email),
     # thiếu nó thì mọi người dùng chung một IP và có thể khóa tài khoản của nhau.
     startCommand: 'python manage.py migrate --no-backup && uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips "*"'
@@ -25,12 +27,12 @@ services:
         value: production
       - key: SECRET_KEY
         generateValue: true
-      # Chuỗi kết nối Neon (postgresql://...?sslmode=require), bản không qua connection pooling
       - key: DATABASE_URL
-        sync: false
-      # Hai địa chỉ Vercel, cách nhau dấu phẩy: https://<cong-nguoi-dung>.vercel.app,https://<cong-quan-tri>.vercel.app
+        fromDatabase:
+          name: picklematch2k-db
+          property: connectionString
       - key: CORS_ORIGINS
-        sync: false
+        value: https://picklematch2k-web.onrender.com,https://picklematch2k-admin.onrender.com
       # Ổ đĩa của Render bị xóa mỗi lần khởi động lại: ảnh phải nằm trên Cloudinary
       - key: STORAGE_BACKEND
         value: cloudinary
@@ -40,6 +42,7 @@ services:
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
+      # Tài khoản nhận tiền hiện trên mã VietQR
       - key: SEPAY_BANK_NAME
         sync: false
       - key: SEPAY_BANK_CODE
@@ -48,11 +51,52 @@ services:
         sync: false
       - key: SEPAY_ACCOUNT_HOLDER
         sync: false
-      # Khi ENVIRONMENT=production, webhook SePay chỉ được nhận khi có khóa này (để trống nếu chỉ demo bằng giả lập)
-      - key: SEPAY_WEBHOOK_API_KEY
-        sync: false
       - key: SEPAY_UNIFIED_TEST_MODE
         value: "true"
       # true: hiện nút giả lập thanh toán - chỉ dùng khi demo
       - key: SEPAY_SIMULATOR_ENABLED
         value: "true"
+
+  - type: web
+    name: picklematch2k-web
+    runtime: node
+    rootDir: frontend
+    region: singapore
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npx next start -p $PORT
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      # Hai biến NEXT_PUBLIC_* được nhúng vào mã lúc build: đổi giá trị thì phải deploy lại
+      - key: NEXT_PUBLIC_API_URL
+        value: https://picklematch2k-api.onrender.com
+      - key: NEXT_PUBLIC_ADMIN_URL
+        value: https://picklematch2k-admin.onrender.com
+
+  - type: web
+    name: picklematch2k-admin
+    runtime: node
+    rootDir: admin-portal
+    region: singapore
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npx next start -p $PORT
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: NEXT_PUBLIC_API_URL
+        value: https://picklematch2k-api.onrender.com
+
+databases:
+  # Gói miễn phí: một CSDL cho mỗi workspace, hết hạn sau 30 ngày (theo chính sách của Render lúc viết)
+  - name: picklematch2k-db
+    plan: free
+    region: singapore
+    postgresMajorVersion: "17"
+    databaseName: pickleball_db
+    user: pickleball

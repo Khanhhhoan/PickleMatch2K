@@ -48,7 +48,7 @@ cấu hình rừng ở `backend/app/ml/train_model.py`, kết quả đánh giá 
 KLTN/
 ├── .env.example            Mẫu cấu hình (sao chép thành .env, không commit .env)
 ├── docker-compose.yml      Chạy toàn bộ hệ thống bằng Docker
-├── render.yaml             Cấu hình API trên Render (mục 5, Cách 4)
+├── render.yaml             Triển khai toàn bộ hệ thống lên Render (mục 5, Cách 4)
 ├── start_all.bat           Chạy 3 dịch vụ trên máy phát triển
 ├── start_docker.bat        Chạy bằng Docker
 ├── pyproject.toml          Cấu hình pytest và ruff
@@ -142,30 +142,33 @@ docker compose down
 Địa chỉ sau khi chạy: API và tài liệu Swagger `http://localhost:8000/docs`, người dùng `http://localhost:3000`,
 quản trị `http://localhost:3001`.
 
-### Cách 4 - Đưa lên Internet: Render (API) + Vercel (hai cổng web) + Neon (PostgreSQL)
+### Cách 4 - Đưa lên Internet bằng Render
 
-Không cần Docker hay máy chủ riêng. Cả ba dịch vụ đăng nhập được bằng GitHub, có sẵn HTTPS và tự deploy lại mỗi lần
-push lên nhánh `main`.
+`render.yaml` mô tả toàn bộ hệ thống trên Render: API `picklematch2k-api`, cổng người dùng `picklematch2k-web`, cổng
+quản trị `picklematch2k-admin` và CSDL PostgreSQL 17 `picklematch2k-db`. Không cần Docker hay máy chủ riêng, có sẵn
+HTTPS, và mỗi lần push lên nhánh `main` Render tự deploy lại.
 
-1. **Neon**: tạo project PostgreSQL 17, lấy chuỗi kết nối bản không qua connection pooling, rồi nạp dữ liệu từ một
-   bản sao lưu (hoặc để trống: API tự dựng bảng lúc khởi động, sau đó nạp dữ liệu demo bằng `python manage.py seed`):
+1. Render → New → Blueprint → chọn repo này, điền các biến được hỏi (khóa Cloudinary, tài khoản nhận tiền SePay) →
+   Deploy Blueprint.
+2. Nạp dữ liệu từ một bản sao lưu (tùy chọn): lấy External Database URL của `picklematch2k-db` rồi chạy trên máy
+   (`--clean` vì API đã dựng sẵn bảng trống lúc khởi động):
 
    ```powershell
-   pg_restore --no-owner --no-privileges --single-transaction --exit-on-error -d "<chuỗi kết nối Neon>" backups\<bản sao lưu>.dump
+   pg_restore --clean --if-exists --no-owner --no-privileges --single-transaction --exit-on-error -d "<External Database URL>" backups\<bản sao lưu>.dump
    ```
 
-2. **Render**: New → Blueprint → chọn repo. Render đọc `render.yaml`, tạo dịch vụ `picklematch2k-api` và hỏi các biến
-   còn thiếu: `DATABASE_URL` (chuỗi kết nối Neon), `CORS_ORIGINS`, khóa Cloudinary, thông tin SePay.
-3. **Vercel**: Add New → Project → chọn repo hai lần, Root Directory lần lượt là `frontend` và `admin-portal`. Cả hai
-   đặt `NEXT_PUBLIC_API_URL` = địa chỉ API trên Render; `frontend` đặt thêm `NEXT_PUBLIC_ADMIN_URL` = địa chỉ cổng
-   quản trị.
-4. Đặt `CORS_ORIGINS` của Render là hai địa chỉ Vercel, cách nhau dấu phẩy (Render tự chạy lại API).
+3. Mở `https://picklematch2k-web.onrender.com` (người dùng) và `https://picklematch2k-admin.onrender.com` (quản trị).
 
-- Gói miễn phí của Render cho API ngủ sau khoảng 15 phút không có truy cập: lần mở đầu tiên chờ khoảng 1 phút, và
-  tác vụ nền tạm dừng trong lúc ngủ (chạy bù khi API thức dậy).
-- Ổ đĩa trên Render bị xóa mỗi lần khởi động lại: ảnh phải dùng `STORAGE_BACKEND=cloudinary` (đã đặt sẵn trong
-  `render.yaml`); chứng từ hoàn tiền nằm trong CSDL.
+- Ba địa chỉ đi theo tên dịch vụ. Render cấp tên khác thì sửa `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_ADMIN_URL` của hai
+  cổng web (rồi deploy lại) và `CORS_ORIGINS` của API.
+- Gói miễn phí (theo chính sách của Render lúc viết): mỗi dịch vụ ngủ sau khoảng 15 phút không có truy cập, lần mở
+  đầu tiên chờ khoảng 1 phút, tác vụ nền tạm dừng khi API ngủ (chạy bù khi thức dậy); CSDL miễn phí hết hạn sau
+  30 ngày, muốn giữ lâu hơn thì nâng lên gói trả phí.
+- Ổ đĩa trên Render bị xóa mỗi lần khởi động lại: ảnh dùng Cloudinary (đặt sẵn trong `render.yaml`), chứng từ hoàn
+  tiền nằm trong CSDL.
 - Mỗi lần khởi động, API tự nâng schema của CSDL lên bản mới nhất (`manage.py migrate --no-backup`).
+- Muốn nhận webhook SePay thật, thêm biến `SEPAY_WEBHOOK_API_KEY` cho API: thiếu khóa này, webhook bị từ chối vì API
+  chạy ở chế độ production.
 
 ## 6. Tài khoản demo
 
