@@ -68,6 +68,7 @@ services:
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
     volumes:
       - uploads:/app/uploads
+      - private_uploads:/app/private_uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -105,3 +106,5 @@ volumes:
   # gắn nhầm vào bản 17 và vẫn còn nguyên trên máy cho tới khi bạn tự xóa.
   pgdata17:
   uploads:
+  # Chứng từ hoàn tiền (riêng tư): giữ lại khi build lại hay tạo lại container
+  private_uploads:

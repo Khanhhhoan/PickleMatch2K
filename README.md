@@ -47,7 +47,9 @@ cấu hình rừng ở `backend/app/ml/train_model.py`, kết quả đánh giá 
 ```text
 KLTN/
 ├── .env.example            Mẫu cấu hình (sao chép thành .env, không commit .env)
+├── .env.aws.example        Mẫu cấu hình cho máy chủ AWS (EC2 + RDS)
 ├── docker-compose.yml      Chạy toàn bộ hệ thống bằng Docker
+├── docker-compose.aws.yml  Chạy trên AWS EC2, CSDL là Amazon RDS
 ├── start_all.bat           Chạy 3 dịch vụ trên máy phát triển
 ├── start_docker.bat        Chạy bằng Docker
 ├── pyproject.toml          Cấu hình pytest và ruff
@@ -125,7 +127,7 @@ docker compose down
 - Docker dùng một **CSDL riêng** trong container (PostgreSQL 17, volume `pgdata17`), không phải PostgreSQL cài trên máy.
   Cổng 5432 và 6379 không mở ra ngoài.
 - Lần chạy đầu, backend tự dựng bảng và nạp dữ liệu demo (tắt bằng `SEED_DEMO_DATA=false`).
-- Ảnh sân tải lên được giữ trong volume `uploads`.
+- Ảnh sân tải lên được giữ trong volume `uploads`, chứng từ hoàn tiền trong volume `private_uploads`.
 - Sao lưu CSDL của container (hai bước, chạy được trên mọi loại terminal):
 
   ```powershell
@@ -140,6 +142,30 @@ docker compose down
 
 Địa chỉ sau khi chạy: API và tài liệu Swagger `http://localhost:8000/docs`, người dùng `http://localhost:3000`,
 quản trị `http://localhost:3001`.
+
+### Cách 4 - AWS: máy chủ EC2 + CSDL RDS
+
+Dùng `docker-compose.aws.yml`: API, hai cổng web và Redis chạy trên một máy EC2 (Ubuntu, đã cài Docker), CSDL là
+Amazon RDS for PostgreSQL.
+
+```bash
+git clone https://github.com/Khanhhhoan/PickleMatch2K.git && cd PickleMatch2K
+curl -fsSL -o global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+cp .env.aws.example .env && nano .env        # DATABASE_URL của RDS, SECRET_KEY, CORS_ORIGINS...
+sudo docker compose -f docker-compose.aws.yml up -d --build
+sudo docker compose -f docker-compose.aws.yml logs -f backend
+```
+
+- Security group: máy EC2 mở cổng 3000, 3001, 8000; RDS nhận cổng 5432 từ security group của máy EC2.
+- Backend nối RDS qua SSL có kiểm tra chứng chỉ (`sslmode=verify-full`, file `global-bundle.pem` được gắn vào
+  container). Mỗi lần khởi động, backend tự nâng schema của RDS lên bản mới nhất (không tự sao lưu: dùng bản sao lưu
+  tự động của RDS) và không nạp dữ liệu demo.
+- Trình duyệt gọi API ở cùng địa chỉ máy, cổng 8000, nên IP của máy đổi thì không phải build lại: chỉ sửa
+  `CORS_ORIGINS` trong `.env` rồi chạy lại lệnh `up -d`.
+- Máy 1 GB RAM cần thêm swap trước khi build hai ứng dụng Next.js; ổ đĩa mặc định 8 GB không đủ chỗ cho các image,
+  nên tăng lên khoảng 20 GB.
+- Trang chạy bằng HTTP: định vị GPS của trình duyệt và quét QR bằng camera cần HTTPS (tên miền và chứng chỉ),
+  các chức năng còn lại dùng bình thường.
 
 ## 6. Tài khoản demo
 

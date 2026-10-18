@@ -6,6 +6,7 @@
 *.db-wal
 *.db-shm
 uploads
+private_uploads
 
 # Không cần lúc chạy
 tests
