@@ -40,6 +40,8 @@ const puppeteer = loadPuppeteer();
 const WEB = process.env.E2E_WEB_URL || "http://localhost:3000";
 const ADMIN = process.env.E2E_ADMIN_URL || "http://localhost:3001";
 const PASSWORD = process.env.E2E_PASSWORD || "123456";
+// Mã giao dịch hoàn tiền phải khác nhau giữa các lần chạy: một mã ngân hàng chỉ dùng được cho một lần hoàn tiền
+const REFUND_REFERENCE = `FT26E2E${String(Date.now()).slice(-6)}`;
 const API = process.env.E2E_API_URL || "http://localhost:8000/api/v1";
 const SHOTS = path.join(__dirname, "../test-results/screenshots");
 const TIMEOUT = 15000;
@@ -70,6 +72,10 @@ const waitForText = (page, text, timeout = TIMEOUT) =>
   page.waitForFunction((t) => document.body.innerText.toLowerCase().includes(t), { timeout }, text.toLowerCase());
 
 const hasText = (page, text) => page.evaluate((t) => document.body.innerText.toLowerCase().includes(t), text.toLowerCase());
+// Như hasText nhưng bỏ qua điểm phù hợp trên thẻ phòng ("Rất hợp với bạn • 70%", "Độ phù hợp 70%"): đó là điểm thật
+// của từng phòng và có thể trùng với chữ đang tìm.
+const hasTextOutsideScores = (page, text) => page.evaluate((t) => document.body.innerText.toLowerCase()
+  .replace(/(rất hợp với bạn\s*•\s*|độ phù hợp\s*)\d{1,3}%/g, "").includes(t), text.toLowerCase());
 
 /**
  * Nhãn độ phù hợp trên thẻ phòng có tên chủ phòng cho trước: true = "Rất hợp với bạn" (phòng được đề xuất),
@@ -344,7 +350,7 @@ async function main() {
       await waitForText(page, "Lê Hoàng Long");
       await waitForText(page, "Rất hợp với bạn");
       for (const jargon of ["Random Forest", "mô phỏng", "70%"]) {
-        if (await hasText(page, jargon)) throw new Error(`Trang ghép trận còn chữ kỹ thuật: ${jargon}`);
+        if (await hasTextOutsideScores(page, jargon)) throw new Error(`Trang ghép trận còn chữ kỹ thuật: ${jargon}`);
       }
       // thẻ phòng gọn: mã đơn sân, ghi chú và danh sách thành viên chỉ hiện sau khi bấm Chi tiết
       if (await hasText(page, "Đã có sân (")) throw new Error("Thẻ phòng chưa thu gọn: vẫn hiện phần chi tiết");
@@ -532,10 +538,10 @@ async function main() {
       // thiếu mã giao dịch ngân hàng thì không xác nhận được
       await clickText(page, "button", "Xác nhận đã chuyển hoàn");
       await waitForText(page, "Nhập mã giao dịch ngân hàng");
-      await page.type('input[id^="refund-reference-"]', "FT26E2E000001");
+      await page.type('input[id^="refund-reference-"]', REFUND_REFERENCE);
       await clickText(page, "button", "Xác nhận đã chuyển hoàn");
       await waitForText(page, "Đã ghi nhận hoàn tiền");
-      await waitForText(page, "FT26E2E000001");
+      await waitForText(page, REFUND_REFERENCE);
       // đính kèm chứng từ (ảnh) sau khi xác nhận; tệp lưu riêng, chỉ xem được khi đã đăng nhập
       fs.mkdirSync(SHOTS, { recursive: true });
       const proof = path.join(SHOTS, "chung-tu-e2e.png");
