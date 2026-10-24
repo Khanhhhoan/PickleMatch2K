@@ -35,14 +35,6 @@ def create_venue(db: Session, venue_in: VenueCreate, owner_id: int) -> Venue:
     return db_venue
 
 
-def get_venues_by_owner(db: Session, owner_id: int) -> List[Venue]:
-    return db.query(Venue).filter(Venue.owner_id == owner_id).order_by(Venue.id.asc()).all()
-
-
-def get_venue(db: Session, venue_id: int) -> Optional[Venue]:
-    return db.query(Venue).filter(Venue.id == venue_id).first()
-
-
 # ---------------------------------------------------------------------------
 # Courts
 # ---------------------------------------------------------------------------

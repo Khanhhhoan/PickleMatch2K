@@ -9,7 +9,6 @@ export function getApiBaseUrl(): string {
   return "http://localhost:8000";
 }
 
-export const API_BASE_URL = getApiBaseUrl();
 export const TOKEN_KEY = "admin_token";
 export const UNAUTHORIZED_EVENT = "pm2k-admin:unauthorized";
 

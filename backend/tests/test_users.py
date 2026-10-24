@@ -127,6 +127,39 @@ def test_new_owner_gets_a_starter_venue_that_stays_hidden_until_it_has_an_addres
     assert "Sân Có Địa Chỉ" in public and "Cụm Sân Chủ Mới" not in public
 
 
+def test_admin_user_list_takes_the_same_number_of_queries_however_many_accounts(client, db, world):
+    """Hồ sơ, cụm sân và chủ sân của nhân viên được nạp theo lô, không thêm truy vấn cho từng tài khoản (lỗi N+1)."""
+    from sqlalchemy import event
+
+    from app.db.database import engine
+
+    def list_users():
+        statements = []
+
+        def count(conn, cursor, statement, *_):
+            statements.append(statement)
+
+        event.listen(engine, "before_cursor_execute", count)
+        try:
+            response = client.get(f"{USERS}/admin/users", headers=auth(world.admin))
+        finally:
+            event.remove(engine, "before_cursor_execute", count)
+        assert response.status_code == 200, response.text
+        return len(statements), response.json()
+
+    queries_before, users_before = list_users()
+    for _ in range(5):
+        make_user(db)
+    for venue in (world.venue_a, world.venue_b):
+        make_user(db, "STAFF", venue=venue)
+    queries_after, users_after = list_users()
+
+    assert len(users_after) == len(users_before) + 7
+    assert queries_after == queries_before
+    staff = [u["staff_profile"] for u in users_after if u["staff_profile"]]
+    assert all(s["venue_name"] and s["owner_name"] for s in staff)
+
+
 def test_admin_updates_and_locks_accounts(client, db, world):
     target = f"{USERS}/admin/users/{world.p1.id}"
     admin = auth(world.admin)

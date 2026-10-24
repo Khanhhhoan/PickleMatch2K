@@ -838,8 +838,3 @@ def reschedule(db: Session, booking: Booking, actor: User, court_id: int, new_da
         "message": f"Đơn {booking.booking_code} đã được đổi lịch.",
     }))
     return booking
-
-
-def is_expired_pending(booking: Booking) -> bool:
-    expires_at = as_utc(booking.expires_at)
-    return booking.status == S.PENDING.value and expires_at is not None and expires_at <= now_utc()

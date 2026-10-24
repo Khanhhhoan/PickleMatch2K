@@ -15,7 +15,6 @@ interface VenueImageHoverSliderProps {
   className?: string;
   showBadges?: boolean;
   showDistance?: boolean;
-  isLoggedIn?: boolean;
   /** Thứ hạng khi danh sách xếp theo "Phù hợp nhất" (1 = phù hợp nhất); không truyền thì không hiện. */
   rank?: number;
 }
@@ -25,7 +24,6 @@ export default function VenueImageHoverSlider({
   className = "h-48 sm:h-56",
   showBadges = true,
   showDistance = true,
-  isLoggedIn = false,
   rank,
 }: VenueImageHoverSliderProps) {
   const [currentIndex, setCurrentIndex] = useState(0);

@@ -11,8 +11,6 @@ export function getApiBaseUrl(): string {
   return "http://localhost:8000";
 }
 
-export const API_BASE_URL = getApiBaseUrl();
-
 /** Sự kiện phát ra khi máy chủ từ chối token (hết hạn hoặc tài khoản bị khóa). */
 export const UNAUTHORIZED_EVENT = "pm2k:unauthorized";
 

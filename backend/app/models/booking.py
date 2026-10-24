@@ -39,23 +39,6 @@ class BookingSource(str, enum.Enum):
     DESK = "DESK"      # Nhân viên/chủ sân tạo tại quầy cho khách vãng lai
 
 
-# Trạng thái mà đơn còn chiếm slot trên lịch sân
-SLOT_HOLDING_STATUSES = (
-    BookingStatus.PENDING.value,
-    BookingStatus.CONFIRMED.value,
-    BookingStatus.CHECKED_IN.value,
-    BookingStatus.COMPLETED.value,
-    BookingStatus.NO_SHOW.value,
-)
-# Trạng thái kết thúc, không còn chuyển tiếp
-FINAL_STATUSES = (
-    BookingStatus.COMPLETED.value,
-    BookingStatus.NO_SHOW.value,
-    BookingStatus.CANCELLED.value,
-    BookingStatus.EXPIRED.value,
-)
-
-
 class Booking(Base):
     __tablename__ = "bookings"
     __table_args__ = (

@@ -63,7 +63,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   const [liveNotice, setLiveNotice] = useState<string | null>(null);
 
   // Real-time WebSocket connection for this venue
-  const { isConnected, lastMessage } = useWebSocket(`/api/v1/ws/venues/${id}`);
+  const { lastMessage } = useWebSocket(`/api/v1/ws/venues/${id}`);
 
   const requestedDate = useRef(selectedDate);       // ngày được yêu cầu gần nhất
   const loadedDate = useRef<string | null>(null);   // ngày của bảng giờ đang hiển thị

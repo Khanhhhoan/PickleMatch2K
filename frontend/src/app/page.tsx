@@ -332,7 +332,6 @@ export default function HomePage() {
                     className="h-48 sm:h-56"
                     showBadges={true}
                     showDistance={true}
-                    isLoggedIn={!!user}
                     rank={rankOf.get(venue.id)}
                   />
 
@@ -435,7 +434,6 @@ export default function HomePage() {
                     className="h-56 sm:h-72"
                     showBadges={true}
                     showDistance={false}
-                    isLoggedIn={false}
                   />
                 </div>
 

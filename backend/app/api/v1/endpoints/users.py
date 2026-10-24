@@ -1,7 +1,7 @@
 from datetime import time
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api import deps
 from app.api.permissions import managed_venue_ids, require_venue_owner
@@ -125,7 +125,17 @@ def change_my_password(
 @router.get("", response_model=list[UserResponse])
 @router.get("/admin/users", response_model=list[UserResponse])
 def get_all_users_admin(db: Session = Depends(deps.get_db), _: User = Depends(admin_only)):
-    return db.query(User).order_by(User.id.desc()).all()
+    # Nạp theo lô mọi thứ UserResponse đọc tới (kể cả tên cụm sân và chủ sân của nhân viên): số truy vấn cố định
+    return (
+        db.query(User)
+        .options(
+            selectinload(User.player_profile),
+            selectinload(User.owner_profile),
+            selectinload(User.staff_profile).selectinload(StaffProfile.venue).selectinload(Venue.owner).selectinload(User.owner_profile),
+        )
+        .order_by(User.id.desc())
+        .all()
+    )
 
 
 @router.post("/admin/users", response_model=UserResponse)

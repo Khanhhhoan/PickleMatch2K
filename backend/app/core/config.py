@@ -17,7 +17,6 @@ _DEV_LAN_ORIGIN_REGEX = (
 
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "PickleMatch2K"
     API_V1_STR: str = "/api/v1"
     ENVIRONMENT: str = "development"  # development | production | test
 

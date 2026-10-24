@@ -146,21 +146,6 @@ export function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lo
   return Math.round(R * c * 10) / 10;
 }
 
-// Find closest preset location for fallback naming
-export function findClosestPreset(lat: number, lng: number): PresetLocation {
-  let closest = PRESET_LOCATIONS[0];
-  let minDistance = Infinity;
-
-  for (const preset of PRESET_LOCATIONS) {
-    const dist = calculateDistanceKm(lat, lng, preset.lat, preset.lng);
-    if (dist < minDistance) {
-      minDistance = dist;
-      closest = preset;
-    }
-  }
-  return closest;
-}
-
 // Reverse geocode with BigDataCloud (fast, accurate for VN) & OpenStreetMap fallback
 export async function reverseGeocode(lat: number, lng: number): Promise<string> {
   // 1. Try BigDataCloud Client Geocoding (Rất chính xác cấp Quận/Phường tại Việt Nam, không giới hạn CORS)
