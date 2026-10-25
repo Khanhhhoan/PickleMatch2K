@@ -93,6 +93,12 @@ function parseBankAccount(raw?: string | null): { number: string; bank: string }
   return { number, bank };
 }
 
+/** Lời giải thích trong hộp thoại "còn đơn đặt sắp tới": việc chưa làm được và cách xử lý các đơn đó. */
+function conflictMessage(blocked: string, count: number, moveTo: string): string {
+  return `Chưa thể ${blocked} vì còn ${count} lượt đặt bên dưới. Hãy dời các đơn này sang ${moveTo} khác hoặc hủy và hoàn tiền `
+    + "cho khách ở trang Lịch đặt, rồi thử lại. Hệ thống không tự hủy đơn của khách.";
+}
+
 function parseImages(venue: Venue): string[] {
   try {
     const parsed = venue.images ? JSON.parse(venue.images) : [];
@@ -122,7 +128,7 @@ function OwnerVenueManagementContent() {
   const [hours, setHours] = useState(WEEKDAYS.map(() => ({ open: false, open_time: "06:00", close_time: "22:00" })));
   const [newCourt, setNewCourt] = useState({ name: "", price: "" });
   const [releaseMinutes, setReleaseMinutes] = useState("30");
-  const [conflicts, setConflicts] = useState<{ title: string; items: UpcomingBooking[] } | null>(null);
+  const [conflicts, setConflicts] = useState<{ title: string; message: string; items: UpcomingBooking[] } | null>(null);
   const [staffForm, setStaffForm] = useState({ id: 0, email: "", password: "", full_name: "", phone: "" });
   const [showStaffForm, setShowStaffForm] = useState(false);
   const [newVenue, setNewVenue] = useState({ name: "", address: "" });
@@ -278,14 +284,18 @@ function OwnerVenueManagementContent() {
     if (!venue) return;
     if (venue.status === "ACTIVE" && status !== "ACTIVE") {
       const items = await upcomingOf();
-      if (items.length > 0) return setConflicts({ title: "Cụm sân còn đơn đặt sắp tới", items });
+      if (items.length > 0) {
+        return setConflicts({ title: "Cụm sân còn đơn đặt sắp tới", message: conflictMessage("tạm ngưng", items.length, "sân"), items });
+      }
     }
     run("status", () => put(`/venues/${venue.id}/status`, { status }), `Đã chuyển cụm sân sang “${STATUS_LABEL[status]}”.`);
   };
 
   const pauseCourt = async (court: Court) => {
     const items = await upcomingOf(court.id);
-    if (items.length > 0) return setConflicts({ title: `${court.name} còn đơn đặt sắp tới`, items });
+    if (items.length > 0) {
+      return setConflicts({ title: `${court.name} còn đơn đặt sắp tới`, message: conflictMessage("tạm ngưng", items.length, "sân"), items });
+    }
     updateCourt(court, { status: "MAINTENANCE" }, "Đã chuyển sân sang bảo trì.");
   };
 
@@ -354,13 +364,29 @@ function OwnerVenueManagementContent() {
     run(`court-${court.id}`, () => fetchApi(`/venues/${venue.id}/courts/${court.id}`, { method: "DELETE" }), "Đã xóa sân.");
   };
 
-  const saveHours = (e: React.FormEvent) => {
+  // Lượt đặt sắp tới không còn nằm trọn trong giờ mới: rơi vào ngày nghỉ hoặc ra ngoài giờ mở - đóng (máy chủ cũng chặn)
+  const outsideNewHours = (items: UpcomingBooking[]) =>
+    items.filter((item) => {
+      const weekday = (new Date(`${item.date}T00:00:00`).getDay() + 6) % 7; // 0 = Thứ Hai, như máy chủ
+      const day = hours[weekday];
+      return !day.open || item.start_time.slice(0, 5) < day.open_time || item.end_time.slice(0, 5) > day.close_time;
+    });
+
+  const saveHours = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!venue) return;
     const invalid = hours.find((h) => h.open && h.open_time >= h.close_time);
     if (invalid) {
       toastError("Giờ mở cửa phải trước giờ đóng cửa.");
       return;
+    }
+    const affected = outsideNewHours(await upcomingOf());
+    if (affected.length > 0) {
+      return setConflicts({
+        title: "Giờ mới không còn chứa các đơn đặt sắp tới",
+        message: conflictMessage("lưu giờ mới", affected.length, "giờ"),
+        items: affected,
+      });
     }
     run("hours", () => put(`/venues/${venue.id}/operating-hours`, {
       hours: hours.map((h, day) => ({ ...h, day })).filter((h) => h.open)
@@ -778,10 +804,7 @@ function OwnerVenueManagementContent() {
       {conflicts && venue && (
         <Modal title={conflicts.title} onClose={() => setConflicts(null)}>
           <div className="space-y-3">
-            <p className="text-xs text-[#51627c] leading-relaxed">
-              Chưa thể tạm ngưng vì còn {conflicts.items.length} lượt đặt bên dưới. Hãy dời các đơn này sang sân khác hoặc hủy và
-              hoàn tiền cho khách ở trang Lịch đặt, rồi thử lại. Hệ thống không tự hủy đơn của khách.
-            </p>
+            <p className="text-xs text-[#51627c] leading-relaxed">{conflicts.message}</p>
             <ul className="space-y-2 max-h-80 overflow-y-auto">
               {conflicts.items.map((item) => (
                 <li key={`${item.booking_id}-${item.court_name}-${item.date}`} className={ROW}>

@@ -81,6 +81,20 @@ class PaymentTransactionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class DailyRevenueResponse(BaseModel):
+    """Doanh thu một ngày (giờ Việt Nam) của các cụm sân đang quản lý, lấy từ sổ giao dịch."""
+    date: date
+    venue_names: List[str]
+    collected: int        # tiền cọc + thu tại sân, mọi hình thức
+    cash: int             # phần thu bằng tiền mặt
+    transfer: int         # phần thu bằng chuyển khoản
+    refunded: int         # tiền đã hoàn cho khách
+    net: int              # thực thu = collected - refunded
+    plays_total: int      # lượt chơi trong ngày: đơn đã xác nhận, đang chơi hoặc đã xong
+    plays_arrived: int    # trong đó khách đã nhận sân
+    transactions: List[PaymentTransactionResponse]
+
+
 class ShiftClosingCreate(BaseModel):
     """Kết ca: người dùng chỉ nhập tiền vốn và tiền mặt đếm được; các khoản thu, hoàn do máy chủ lấy từ sổ giao dịch."""
     venue_id: Optional[int] = None  # bỏ trống = cụm sân đầu tiên người dùng quản lý

@@ -602,7 +602,8 @@ async function main() {
     await waitForText(page, "Thu hôm nay");
     await waitForText(page, "Tổng thực thu");
     await waitForText(page, "Lịch hôm nay");
-    await waitForText(page, "Giao dịch gần đây");
+    await waitForText(page, "Doanh thu theo ngày");
+    await waitForText(page, "Giao dịch trong ngày");
   });
   await step(owner, "lưu bảng giá và giờ hoạt động", async (page) => {
     await page.goto(`${WEB}/owner/venues?tab=courts_pricing`, { waitUntil: "networkidle2" });

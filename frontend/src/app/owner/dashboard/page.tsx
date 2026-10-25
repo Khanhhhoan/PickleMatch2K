@@ -2,9 +2,10 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { fetchApi, formatLocalDate, formatVND, parseUtcDate } from "@/lib/api";
+import { fetchApi, formatLocalDate, formatVND } from "@/lib/api";
 import { Booking, bookingCode, bookingStatusLabel, bookingStatusTone, mergeSlots, paymentStatusLabel } from "@/lib/booking";
 import { useWebSocket } from "@/lib/use-websocket";
+import DailyRevenue from "@/components/DailyRevenue";
 import ShiftClosingDialog from "@/components/ShiftClosingDialog";
 
 interface Stats {
@@ -18,43 +19,36 @@ interface Stats {
   total_bookings: number;
   total_courts: number;
   venue_names: string[];
-}
-
-interface Transaction {
-  id: number;
-  transaction_code?: string | null;
-  kind?: string | null;
-  method?: string | null;
-  amount_in: number;
-  status: string;
-  created_at?: string | null;
-  booking?: { booking_code?: string | null } | null;
+  daily: { date: string; revenue: number; bookings: number }[]; // thực thu theo ngày (giờ Việt Nam), chỉ ngày có phát sinh
 }
 
 const CARD = "bg-white rounded-2xl border border-[#e8edf3] shadow-[0_12px_35px_rgba(29,51,87,0.035)]";
-const KIND_LABEL: Record<string, string> = { DEPOSIT: "Tiền cọc", BALANCE: "Thu tại sân", REFUND: "Hoàn tiền" };
-const METHOD_LABEL: Record<string, string> = { BANK_TRANSFER: "Chuyển khoản", CASH: "Tiền mặt" };
 const WEEKDAY_SHORT = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+const DAY_BUTTON =
+  "h-9 min-w-9 px-2.5 bg-white hover:bg-[#f1f4fb] border border-[#d5dfed] rounded-xl text-xs font-bold text-[#405c94] cursor-pointer disabled:opacity-40 disabled:cursor-default";
+
+/** Ngày cách `day` (YYYY-MM-DD) một số ngày. */
+function shiftDay(day: string, offset: number): string {
+  const [year, month, date] = day.split("-").map(Number);
+  return formatLocalDate(new Date(year, month - 1, date + offset));
+}
 
 export default function OwnerOverviewDashboard() {
+  const today = formatLocalDate();
   const [stats, setStats] = useState<Stats | null>(null);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [closingShift, setClosingShift] = useState(false);
+  const [day, setDay] = useState(today); // ngày đang xem doanh thu
   const { lastMessage } = useWebSocket("/api/v1/ws/live");
-
-  const today = formatLocalDate();
 
   const loadData = useCallback(() => {
     Promise.all([
       fetchApi("/bookings/owner/stats").catch(() => null),
-      fetchApi("/payments/transactions").catch(() => []),
       fetchApi("/bookings/owner/list").catch(() => []),
     ])
-      .then(([statsData, txnData, bookingData]) => {
+      .then(([statsData, bookingData]) => {
         setStats(statsData);
-        setTransactions(Array.isArray(txnData) ? txnData : []);
         setBookings(Array.isArray(bookingData) ? bookingData : []);
       })
       .finally(() => setLoading(false));
@@ -70,22 +64,16 @@ export default function OwnerOverviewDashboard() {
     }
   }, [lastMessage, loadData]);
 
-  // Tiền thu từng ngày trong 7 ngày gần nhất (khoản thu trừ khoản hoàn), theo giờ máy người xem
+  // Thực thu (khoản thu trừ khoản hoàn) từng ngày trong 7 ngày gần nhất, do máy chủ tính theo giờ Việt Nam
   const sevenDays = useMemo(() => {
-    const days = Array.from({ length: 7 }, (_, index) => {
+    const revenue = new Map((stats?.daily || []).map((d) => [d.date, d.revenue]));
+    return Array.from({ length: 7 }, (_, index) => {
       const d = new Date();
       d.setDate(d.getDate() - (6 - index));
-      return { key: formatLocalDate(d), label: index === 6 ? "Hôm nay" : WEEKDAY_SHORT[d.getDay()], amount: 0 };
+      const key = formatLocalDate(d);
+      return { key, label: index === 6 ? "Hôm nay" : WEEKDAY_SHORT[d.getDay()], amount: revenue.get(key) ?? 0 };
     });
-    const byKey = new Map(days.map((day) => [day.key, day]));
-    transactions
-      .filter((t) => t.status === "SUCCESS" && t.created_at)
-      .forEach((t) => {
-        const day = byKey.get(formatLocalDate(parseUtcDate(t.created_at)));
-        if (day) day.amount += t.kind === "REFUND" ? -t.amount_in : t.amount_in;
-      });
-    return days;
-  }, [transactions]);
+  }, [stats]);
 
   const maxDay = Math.max(1, ...sevenDays.map((d) => Math.abs(d.amount)));
   const weekTotal = sevenDays.reduce((sum, d) => sum + d.amount, 0);
@@ -148,6 +136,10 @@ export default function OwnerOverviewDashboard() {
     },
   ];
   const todayLabel = new Date().toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
+  const dayLabel =
+    day === today
+      ? `Hôm nay, ${todayLabel}`
+      : new Date(`${day}T00:00:00`).toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
 
   return (
     <div className="space-y-6 font-sans">
@@ -261,71 +253,83 @@ export default function OwnerOverviewDashboard() {
         </section>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <section className={`${CARD} p-5 lg:col-span-2`}>
+      <section className={`${CARD} p-5 space-y-5`}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-black text-[#17253d] m-0">Doanh thu theo ngày</h2>
+            <p className="text-xs text-[#51627c] mt-1 first-letter:uppercase">{dayLabel}</p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button type="button" className={DAY_BUTTON} onClick={() => setDay(shiftDay(day, -1))} aria-label="Ngày trước" title="Ngày trước">
+              ‹
+            </button>
+            <input
+              type="date"
+              value={day}
+              max={today}
+              onChange={(e) => e.target.value && setDay(e.target.value > today ? today : e.target.value)}
+              aria-label="Chọn ngày xem doanh thu"
+              className="h-9 px-2.5 bg-white border border-[#d5dfed] rounded-xl text-xs font-bold text-[#263b53] outline-none focus:border-[#476cf3]"
+            />
+            <button type="button" className={DAY_BUTTON} onClick={() => setDay(shiftDay(day, 1))} disabled={day >= today} aria-label="Ngày sau" title="Ngày sau">
+              ›
+            </button>
+            <button type="button" className={DAY_BUTTON} onClick={() => setDay(today)} disabled={day === today}>
+              Hôm nay
+            </button>
+          </div>
+        </div>
+
+        <div>
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-black text-[#17253d] m-0">Doanh thu 7 ngày</h2>
-              <p className="text-xl font-black text-[#17253d] mt-1">{formatVND(weekTotal)}</p>
+              <p className="text-[11px] font-bold text-[#718096]">7 ngày gần nhất</p>
+              <p className="text-sm font-black text-[#17253d]">{formatVND(weekTotal)}</p>
             </div>
             <div className="text-right">
               <p className="text-[11px] font-bold text-[#718096]">Tổng thực thu</p>
               <p className="text-sm font-black text-[#17253d]">{formatVND(stats?.total_revenue)}</p>
             </div>
           </div>
-          <div className="relative mt-4">
-            <div className="flex items-end gap-3 h-40 border-b border-[#e8edf3]">
-              {sevenDays.map((day) => (
-                <div key={day.key} className="flex-1 flex flex-col items-center justify-end h-full gap-1.5">
-                  <span className="text-[10px] font-bold text-[#51627c]">{day.amount !== 0 ? `${Math.round(day.amount / 1000).toLocaleString("vi-VN")}k` : ""}</span>
+          <div className="relative mt-3">
+            <div className="flex items-end gap-3 h-32 border-b border-[#e8edf3]">
+              {sevenDays.map((d) => (
+                <button
+                  key={d.key}
+                  type="button"
+                  onClick={() => setDay(d.key)}
+                  aria-pressed={d.key === day}
+                  title={`${d.key}: ${formatVND(d.amount)}`}
+                  className="group flex-1 flex flex-col items-center justify-end h-full gap-1.5 cursor-pointer"
+                >
+                  <span className="text-[10px] font-bold text-[#51627c]">{d.amount !== 0 ? `${Math.round(d.amount / 1000).toLocaleString("vi-VN")}k` : ""}</span>
                   <div
-                    className={`w-full max-w-14 rounded-t-lg ${day.amount < 0 ? "bg-rose-300" : day.label === "Hôm nay" ? "bg-[#476cf3]" : "bg-[#c7d3f6]"}`}
-                    style={{ height: day.amount === 0 ? "3px" : `${Math.max(6, (Math.abs(day.amount) / maxDay) * 100)}%` }}
-                    title={`${day.key}: ${formatVND(day.amount)}`}
+                    className={`w-full max-w-14 rounded-t-lg transition ${
+                      d.amount < 0 ? "bg-rose-300" : d.key === day ? "bg-[#476cf3]" : "bg-[#c7d3f6] group-hover:bg-[#a9bbef]"
+                    }`}
+                    style={{ height: d.amount === 0 ? "3px" : `${Math.max(6, (Math.abs(d.amount) / maxDay) * 100)}%` }}
                   />
-                </div>
+                </button>
               ))}
             </div>
             <div className="flex gap-3 mt-1.5">
-              {sevenDays.map((day) => (
-                <span key={day.key} className={`flex-1 text-center text-[10px] font-bold ${day.label === "Hôm nay" ? "text-[#476cf3]" : "text-[#718096]"}`}>
-                  {day.label}
+              {sevenDays.map((d) => (
+                <span key={d.key} className={`flex-1 text-center text-[10px] font-bold ${d.key === day ? "text-[#476cf3]" : "text-[#718096]"}`}>
+                  {d.label}
                 </span>
               ))}
             </div>
             {!hasWeekData && (
-              <p className="absolute inset-x-0 top-14 text-center text-xs text-[#8a97ab]">Chưa có khoản thu nào trong 7 ngày qua.</p>
+              <p className="absolute inset-x-0 top-10 text-center text-xs text-[#8a97ab] pointer-events-none">Chưa có khoản thu nào trong 7 ngày qua.</p>
             )}
           </div>
-        </section>
+          <p className="text-[11px] text-[#8a97ab] mt-2">Bấm vào một cột để xem chi tiết ngày đó.</p>
+        </div>
 
-        <section className={`${CARD} p-5`}>
-          <h2 className="text-sm font-black text-[#17253d] m-0 mb-3">Giao dịch gần đây</h2>
-          {transactions.length === 0 ? (
-            <p className="text-xs text-[#8a97ab] py-6 text-center">Chưa có giao dịch nào.</p>
-          ) : (
-            <ul className="divide-y divide-[#f1f4f9]">
-              {transactions.slice(0, 6).map((t) => (
-                <li key={t.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
-                  <div className="min-w-0">
-                    <p className="font-bold text-[#17253d]">
-                      {KIND_LABEL[t.kind || ""] || t.kind} <span className="text-[#718096] font-semibold">• {METHOD_LABEL[t.method || ""] || t.method}</span>
-                    </p>
-                    <p className="text-[#8a97ab]">
-                      <span className="font-mono">{t.booking?.booking_code || ""}</span>
-                      {t.created_at ? ` • ${parseUtcDate(t.created_at).toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}
-                    </p>
-                  </div>
-                  <span className={`font-black shrink-0 ${t.kind === "REFUND" ? "text-rose-600" : "text-emerald-700"}`}>
-                    {t.kind === "REFUND" ? "-" : "+"}
-                    {formatVND(t.amount_in)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+        <div className="pt-4 border-t border-[#f1f4f9]">
+          <DailyRevenue day={day} lastMessage={lastMessage} />
+        </div>
+      </section>
 
       {closingShift && <ShiftClosingDialog onClose={() => setClosingShift(false)} />}
     </div>

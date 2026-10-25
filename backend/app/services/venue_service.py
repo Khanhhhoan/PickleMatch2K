@@ -3,7 +3,7 @@ Nghiệp vụ cấu hình cụm sân. Các hàm nhận sẵn đối tượng Ven
 ở tầng API (xem app.api.permissions), không tự kiểm tra quyền lại.
 """
 from datetime import time
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, or_
@@ -111,10 +111,38 @@ def ensure_no_upcoming_bookings(db: Session, venue: Venue, court_id: Optional[in
         )
 
 
-def ensure_venue_can_pause(db: Session, venue: Venue) -> None:
-    """Trước khi chuyển cả cụm sân khỏi ACTIVE: khóa mọi sân (theo thứ tự id như lúc đặt sân) rồi kiểm tra đơn sắp tới."""
+def _lock_courts(db: Session, venue: Venue) -> None:
+    """Khóa mọi sân của cụm sân (theo thứ tự id như lúc đặt sân) để không có đơn mới chen vào giữa lúc kiểm tra và lúc ghi."""
     db.query(Court.id).filter(Court.venue_id == venue.id).order_by(Court.id).with_for_update().all()
+
+
+def ensure_venue_can_pause(db: Session, venue: Venue) -> None:
+    """Trước khi chuyển cả cụm sân khỏi ACTIVE: khóa mọi sân rồi kiểm tra đơn sắp tới."""
+    _lock_courts(db, venue)
     ensure_no_upcoming_bookings(db, venue, None, "Cụm sân")
+
+
+def ensure_hours_keep_bookings(db: Session, venue: Venue, changed: Dict[int, Optional[Tuple[time, time]]]) -> None:
+    """
+    Chặn đổi giờ hoạt động khi giờ mới không còn chứa trọn đơn đặt sắp tới của khách (ngày nghỉ hoặc ngoài giờ mở - đóng).
+    `changed`: ngày trong tuần (0 = Thứ Hai) -> (giờ mở, giờ đóng) mới, None = nghỉ; ngày không có mặt thì giữ nguyên.
+    """
+    _lock_courts(db, venue)
+    affected = []
+    for item in upcoming_bookings(db, venue):
+        weekday = item["date"].weekday()
+        if weekday not in changed:
+            continue
+        window = changed[weekday]
+        if window is None or item["start_time"] < window[0] or item["end_time"] > window[1]:
+            affected.append(item)
+    if affected:
+        codes = ", ".join(sorted({c["booking_code"] for c in affected}))
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Giờ mới không còn chứa {len({c['booking_id'] for c in affected})} đơn đặt sắp tới ({codes}). "
+                   "Hãy dời các đơn này sang giờ khác hoặc hủy và hoàn tiền cho khách trước khi đổi giờ.",
+        )
 
 
 def create_court(db: Session, venue: Venue, court_in: CourtCreate) -> Court:
@@ -169,6 +197,7 @@ def delete_court(db: Session, venue: Venue, court_id: int) -> None:
 # Operating hours
 # ---------------------------------------------------------------------------
 def upsert_operating_hour(db: Session, venue: Venue, oh_in: OperatingHourBase) -> OperatingHour:
+    ensure_hours_keep_bookings(db, venue, {oh_in.day_of_week: (oh_in.open_time, oh_in.close_time)})
     rows = (
         db.query(OperatingHour)
         .filter(OperatingHour.venue_id == venue.id, OperatingHour.day_of_week == oh_in.day_of_week)
@@ -190,6 +219,8 @@ def upsert_operating_hour(db: Session, venue: Venue, oh_in: OperatingHourBase) -
 
 def replace_operating_hours(db: Session, venue: Venue, hours: List[OperatingHourBase]) -> List[OperatingHour]:
     """Thay toàn bộ lịch hoạt động trong tuần; ngày không được gửi lên là ngày nghỉ."""
+    new_hours = {item.day_of_week: (item.open_time, item.close_time) for item in hours}
+    ensure_hours_keep_bookings(db, venue, {day: new_hours.get(day) for day in range(7)})
     db.query(OperatingHour).filter(OperatingHour.venue_id == venue.id).delete(synchronize_session=False)
     for item in hours:
         db.add(OperatingHour(venue_id=venue.id, **item.model_dump()))

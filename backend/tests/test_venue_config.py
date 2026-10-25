@@ -231,6 +231,55 @@ def test_operating_hours(client, world, clock):
     assert availability(client, world.venue_a, clock.day(2))["courts"] == []     # các ngày khác thành ngày nghỉ
 
 
+def test_new_hours_must_still_hold_upcoming_bookings(client, world, clock):
+    owner, venue = auth(world.owner_a), world.venue_a
+    path = f"{VENUES}/{venue.id}/operating-hours"
+    day = clock.day(2)
+    booking = confirmed_booking(client, world.p1, world.court, day, hours=(18,))
+
+    def week(booked_day):
+        """Cả tuần 05:00 - 23:00 như lúc tạo cụm sân; riêng ngày có đơn theo `booked_day` (None = nghỉ)."""
+        rows = [{"day_of_week": d, "open_time": "05:00", "close_time": "23:00"} for d in range(7) if d != day.weekday()]
+        if booked_day:
+            rows.append({"day_of_week": day.weekday(), "open_time": booked_day[0], "close_time": booked_day[1]})
+        return {"hours": rows}
+
+    # Giờ mới cắt mất khung 18-19h đã đặt, hoặc cho ngày đó nghỉ: bị chặn, báo mã đơn, giờ cũ giữ nguyên
+    attempts = [
+        client.put(path, json=week(("05:00", "18:00")), headers=owner),
+        client.put(path, json=week(None), headers=owner),
+        client.post(path, json={"day_of_week": day.weekday(), "open_time": "18:30", "close_time": "23:00"}, headers=owner),
+    ]
+    for blocked in attempts:
+        assert blocked.status_code == 409, blocked.text
+        assert booking["booking_code"] in blocked.json()["detail"]
+    assert len(availability(client, venue, day)["courts"][0]["slots"]) == 18
+
+    # Giờ mới vẫn chứa trọn đơn, hoặc đổi một ngày khác trong tuần: lưu được
+    assert client.put(path, json=week(("06:00", "19:00")), headers=owner).status_code == 200
+    other_day = (day.weekday() + 1) % 7
+    assert client.post(path, json={"day_of_week": other_day, "open_time": "08:00", "close_time": "12:00"},
+                       headers=owner).status_code == 200
+
+    # Khách hủy đơn rồi thì cho ngày đó nghỉ được
+    client.post(f"{BOOKINGS}/{booking['id']}/cancel", json={"bank_account": "1", "bank_name": "MB", "account_holder": "B"},
+                headers=auth(world.p1))
+    assert client.put(path, json=week(None), headers=owner).status_code == 200
+
+
+def test_finished_and_expired_bookings_do_not_block_new_hours(client, world, clock):
+    owner, path = auth(world.owner_a), f"{VENUES}/{world.venue_a.id}/operating-hours"
+    today, tomorrow = clock.today, clock.day(1)
+    confirmed_booking(client, world.p1, world.court, today, hours=(9,))
+    create_booking(client, world.p2, world.court, tomorrow, hours=(18,))       # chờ cọc, chưa trả
+
+    clock.set(today, 10, 30)  # khung 9-10h đã qua, đơn chờ cọc đã quá hạn giữ chỗ
+    open_days = [d for d in range(7) if d not in (today.weekday(), tomorrow.weekday())]
+    response = client.put(path, json={"hours": [{"day_of_week": d, "open_time": "05:00", "close_time": "23:00"}
+                                                for d in open_days]}, headers=owner)
+    assert response.status_code == 200, response.text
+
+
 def test_pricing_update_replaces_the_three_rules(client, db, world, clock):
     owner, path = auth(world.owner_a), f"{VENUES}/{world.venue_a.id}/pricing"
     assert client.put(path, json={"base_price": 0}, headers=owner).status_code == 422

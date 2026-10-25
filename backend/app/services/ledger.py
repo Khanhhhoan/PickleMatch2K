@@ -4,7 +4,7 @@ from datetime import date
 from typing import Dict, List, Optional
 
 from sqlalchemy import case, func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.money import vnd
 from app.models.booking import Booking, BookingDetail
@@ -88,6 +88,23 @@ def sum_transactions(
     if until is not None:
         query = query.filter(PaymentTransaction.created_at < until)
     return vnd(query.scalar())
+
+
+def transactions_between(db: Session, *, venue_ids: Optional[List[int]], since, until) -> List[PaymentTransaction]:
+    """Các giao dịch thành công thuộc phạm vi cụm sân trong khoảng [since, until), mới trước cũ sau."""
+    booking_ids = venue_booking_ids_subquery(db, venue_ids)
+    return (
+        db.query(PaymentTransaction)
+        .options(joinedload(PaymentTransaction.booking))
+        .filter(
+            PaymentTransaction.status == "SUCCESS",
+            PaymentTransaction.booking_id.in_(db.query(booking_ids.c.booking_id)),
+            PaymentTransaction.created_at >= since,
+            PaymentTransaction.created_at < until,
+        )
+        .order_by(PaymentTransaction.created_at.desc(), PaymentTransaction.id.desc())
+        .all()
+    )
 
 
 def vn_day(column):

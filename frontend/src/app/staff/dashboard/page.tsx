@@ -5,6 +5,7 @@ import Link from "next/link";
 import { fetchApi, formatLocalDate, formatVND } from "@/lib/api";
 import { Booking, bookingCode, bookingStatusLabel, bookingStatusTone, formatDisplayDate, mergeSlots } from "@/lib/booking";
 import { useWebSocket } from "@/lib/use-websocket";
+import DailyRevenue from "@/components/DailyRevenue";
 import ShiftClosingDialog from "@/components/ShiftClosingDialog";
 
 interface ShiftStats {
@@ -12,13 +13,7 @@ interface ShiftStats {
   venue_name: string;
   venue_address: string;
   staff_name: string;
-  today_date: string;
-  today_revenue: number;
-  today_cash_collected: number;
-  today_transfer_collected: number;
-  today_total_bookings: number;
-  today_completed_bookings: number;
-  today_pending_bookings: number;
+  today_date: string; // hôm nay theo giờ Việt Nam: nhân viên chỉ xem doanh thu của ngày này
   today_courts_count: number;
 }
 
@@ -102,18 +97,6 @@ export default function StaffDashboardPage() {
     );
   }
 
-  const kpis = [
-    { label: "Thu trong ngày", value: formatVND(stats.today_revenue), hint: "Mọi khoản thu ghi nhận hôm nay", dot: "bg-[#476cf3]" },
-    { label: "Tiền mặt tại quầy", value: formatVND(stats.today_cash_collected), hint: "Cần đối chiếu cuối ca", dot: "bg-emerald-500" },
-    { label: "Chuyển khoản", value: formatVND(stats.today_transfer_collected), hint: "Cọc qua VietQR và chuyển khoản tại quầy", dot: "bg-sky-500" },
-    {
-      label: "Lượt hôm nay",
-      value: `${stats.today_completed_bookings}/${stats.today_total_bookings}`,
-      hint: `${stats.today_pending_bookings} lượt chưa đến`,
-      dot: "bg-amber-500",
-    },
-  ];
-
   return (
     <div className="space-y-6 font-sans">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
@@ -138,18 +121,13 @@ export default function StaffDashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpis.map((kpi) => (
-          <div key={kpi.label} className={`${CARD} p-5`}>
-            <p className="flex items-center gap-2 text-[11px] font-bold text-[#718096]">
-              <span className={`w-2 h-2 rounded-full ${kpi.dot}`} />
-              {kpi.label}
-            </p>
-            <p className="text-2xl sm:text-[28px] font-black text-[#17253d] mt-2 leading-none">{kpi.value}</p>
-            <p className="text-[11px] text-[#8a97ab] mt-2">{kpi.hint}</p>
-          </div>
-        ))}
-      </div>
+      <section className={`${CARD} p-5 space-y-4`}>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-black text-[#17253d] m-0">Doanh thu hôm nay</h2>
+          <span className="text-xs font-semibold text-[#6b7ba1]">{formatDisplayDate(stats.today_date)}</span>
+        </div>
+        <DailyRevenue day={stats.today_date} lastMessage={lastMessage} />
+      </section>
 
       {refunds.length > 0 && (
         <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-3">

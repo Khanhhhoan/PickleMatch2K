@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,7 @@ from app.schemas.booking import (
     ReleaseSlotRequest,
     RescheduleRequest,
 )
+from app.schemas.payment import DailyRevenueResponse
 from app.services import booking_service, ledger, storage_service
 from app.services.availability_service import is_valid_slot
 from app.services.booking_service import SlotRequest
@@ -306,6 +307,21 @@ def _count_bookings(db: Session, venue_ids: Optional[List[int]], *filters) -> in
     return db.query(Booking.id).filter(Booking.id.in_(db.query(booking_ids.c.booking_id)), *filters).count()
 
 
+ARRIVED_STATUSES = (BookingStatus.CHECKED_IN.value, BookingStatus.COMPLETED.value)  # khách đã nhận sân
+
+
+def _plays_on(db: Session, venue_ids: List[int], day: date, *statuses: str) -> int:
+    """Số đơn có lượt chơi trong một ngày trên các cụm sân cho trước, ở các trạng thái cho trước."""
+    return (
+        db.query(Booking.id)
+        .join(BookingDetail, BookingDetail.booking_id == Booking.id)
+        .join(Court, Court.id == BookingDetail.court_id)
+        .filter(Court.venue_id.in_(venue_ids or [0]), BookingDetail.date == day, Booking.status.in_(statuses))
+        .distinct()
+        .count()
+    )
+
+
 def _daily_series(revenue: Dict[date, int], created: Dict[date, int]) -> List[dict]:
     return [
         {"date": d.isoformat(), "revenue": revenue.get(d, 0), "bookings": created.get(d, 0)}
@@ -400,19 +416,9 @@ def get_staff_shift_stats(db: Session = Depends(deps.get_db), current_user: User
     def collected(**kwargs) -> int:
         return ledger.sum_transactions(db, venue_ids=scope, since=since, until=until, **kwargs)
 
-    def bookings_today(*statuses: str) -> int:
-        return (
-            db.query(Booking.id)
-            .join(BookingDetail, BookingDetail.booking_id == Booking.id)
-            .join(Court, Court.id == BookingDetail.court_id)
-            .filter(Court.venue_id == venue.id, BookingDetail.date == today, Booking.status.in_(statuses))
-            .distinct()
-            .count()
-        )
-
     profile = current_user.staff_profile
-    checked_in = bookings_today(BookingStatus.CHECKED_IN.value, BookingStatus.COMPLETED.value)
-    waiting = bookings_today(BookingStatus.CONFIRMED.value)
+    checked_in = _plays_on(db, scope, today, *ARRIVED_STATUSES)
+    waiting = _plays_on(db, scope, today, BookingStatus.CONFIRMED.value)
     return {
         "venue_id": venue.id,
         "venue_name": venue.name,
@@ -428,6 +434,47 @@ def get_staff_shift_stats(db: Session = Depends(deps.get_db), current_user: User
         "today_completed_bookings": checked_in,
         "today_pending_bookings": waiting,
         "today_courts_count": len(venue.courts),
+    }
+
+
+@router.get("/revenue/daily", response_model=DailyRevenueResponse)
+def get_daily_revenue(
+    target_date: Optional[date] = Query(None, alias="date", description="Ngày cần xem (YYYY-MM-DD, giờ Việt Nam), mặc định hôm nay"),
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(venue_staff),
+):
+    """Doanh thu một ngày của các cụm sân đang quản lý, lấy từ sổ giao dịch. Nhân viên chỉ xem được hôm nay."""
+    today = today_vn()
+    day = target_date or today
+    if day > today:
+        raise HTTPException(status_code=400, detail="Ngày này chưa tới nên chưa có doanh thu.")
+    if current_user.role == UserRole.STAFF.value and day != today:
+        raise HTTPException(status_code=403, detail="Nhân viên chỉ xem được doanh thu của hôm nay.")
+
+    venue_ids = managed_venue_ids(db, current_user)
+    venue_query = db.query(Venue)
+    if venue_ids is not None:
+        venue_query = venue_query.filter(Venue.id.in_(venue_ids or [0]))
+    venues = venue_query.order_by(Venue.id.asc()).all()
+    scope = [v.id for v in venues]
+    since, until = vn_day_bounds_utc(day)
+
+    def total(kinds: tuple, method: Optional[str] = None) -> int:
+        return ledger.sum_transactions(db, venue_ids=scope, kinds=kinds, method=method, since=since, until=until)
+
+    collected = total(ledger.INCOMING_KINDS)
+    refunded = total((PaymentKind.REFUND.value,))
+    return {
+        "date": day,
+        "venue_names": [v.name for v in venues],
+        "collected": collected,
+        "cash": total(ledger.INCOMING_KINDS, PaymentMethod.CASH.value),
+        "transfer": total(ledger.INCOMING_KINDS, PaymentMethod.BANK_TRANSFER.value),
+        "refunded": refunded,
+        "net": collected - refunded,
+        "plays_total": _plays_on(db, scope, day, BookingStatus.CONFIRMED.value, *ARRIVED_STATUSES),
+        "plays_arrived": _plays_on(db, scope, day, *ARRIVED_STATUSES),
+        "transactions": ledger.transactions_between(db, venue_ids=scope, since=since, until=until),
     }
 
 
