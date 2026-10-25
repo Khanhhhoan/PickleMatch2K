@@ -18,13 +18,23 @@ interface LocationPickerModalProps {
   onSelectLocation: (location: UserLocation) => void;
 }
 
+type AreaTab = "all" | "central" | "east" | "south" | "north";
+
+const AREA_TABS: { id: AreaTab; label: string }[] = [
+  { id: "all", label: "Tất cả 10 sân" },
+  { id: "central", label: "Trung tâm" },
+  { id: "east", label: "Thủ Đức" },
+  { id: "south", label: "Quận 7" },
+  { id: "north", label: "Tân Bình/Khác" },
+];
+
 export default function LocationPickerModal({
   isOpen,
   onClose,
   currentLocation,
   onSelectLocation,
 }: LocationPickerModalProps) {
-  const [activeAreaTab, setActiveAreaTab] = useState<"all" | "central" | "east" | "south" | "north">("all");
+  const [activeAreaTab, setActiveAreaTab] = useState<AreaTab>("all");
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
 
@@ -52,7 +62,7 @@ export default function LocationPickerModal({
         isGps: true,
       };
       setSelectedCandidate(loc);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       setGpsError(
         "Không thể lấy GPS từ trình duyệt hoặc thiết bị chưa cấp quyền. Bạn có thể chọn cụm sân bên dưới."
@@ -222,17 +232,11 @@ export default function LocationPickerModal({
                 Hoặc chọn nhanh 10 cụm sân tại TP.HCM:
               </label>
               <div className="flex items-center gap-1 bg-zinc-100 p-0.5 rounded-lg overflow-x-auto no-scrollbar">
-                {[
-                  { id: "all", label: "Tất cả 10 sân" },
-                  { id: "central", label: "Trung tâm" },
-                  { id: "east", label: "Thủ Đức" },
-                  { id: "south", label: "Quận 7" },
-                  { id: "north", label: "Tân Bình/Khác" },
-                ].map((tab) => (
+                {AREA_TABS.map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() => setActiveAreaTab(tab.id as any)}
+                    onClick={() => setActiveAreaTab(tab.id)}
                     className={`px-2 py-0.5 text-[10px] font-medium rounded-md whitespace-nowrap transition cursor-pointer ${
                       activeAreaTab === tab.id
                         ? "bg-white text-zinc-900 shadow-xs font-semibold"

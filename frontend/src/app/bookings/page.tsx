@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { fetchApi, formatVND, parseUtcDate } from "@/lib/api";
+import { fetchApi, formatVND, parseUtcDate, errorMessage } from "@/lib/api";
 import {
   Booking,
   BookingGroup,
@@ -56,9 +56,14 @@ const EMPTY_MESSAGE: Record<Filter, string> = {
 /** Đếm ngược tới hạn thanh toán cọc do máy chủ trả về (expires_at). */
 function PendingCountdownBadge({ expiresAt, onExpired }: { expiresAt?: string | null; onExpired: () => void }) {
   const [timeLeft, setTimeLeft] = useState(() => secondsUntil(expiresAt));
+  // Hạn mới: tính lại ngay, không đợi nhịp đếm kế tiếp
+  const [countingTo, setCountingTo] = useState(expiresAt);
+  if (countingTo !== expiresAt) {
+    setCountingTo(expiresAt);
+    setTimeLeft(secondsUntil(expiresAt));
+  }
 
   useEffect(() => {
-    setTimeLeft(secondsUntil(expiresAt));
     let overdueTicks = 0;
     const timer = setInterval(() => {
       const remaining = secondsUntil(expiresAt);
@@ -106,7 +111,7 @@ function PlayerBookingsContent() {
   const searchParams = useSearchParams();
   const { success: toastSuccess, error: toastError } = useToast();
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [matches, setMatches] = useState<any[]>([]);
+  const [matches, setMatches] = useState<{ booking_id?: number | null; status: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<number[]>([]);
   const [filter, setFilter] = useState<Filter>("upcoming");
@@ -129,10 +134,13 @@ function PlayerBookingsContent() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    const tab = searchParams?.get("tab");
-    if (tab && FILTERS.some((f) => f.key === tab)) setFilter(tab as Filter);
-  }, [searchParams]);
+  // Đường dẫn có ?tab=... (lúc mở trang hoặc khi đổi sang tab khác): chuyển bộ lọc sang tab đó
+  const tabParam = searchParams?.get("tab") ?? null;
+  const [appliedTab, setAppliedTab] = useState<string | null>(null);
+  if (tabParam !== appliedTab) {
+    setAppliedTab(tabParam);
+    if (tabParam && FILTERS.some((f) => f.key === tabParam)) setFilter(tabParam as Filter);
+  }
 
   const { lastMessage } = useWebSocket("/api/v1/ws/live");
   useEffect(() => {
@@ -163,8 +171,8 @@ function PlayerBookingsContent() {
       setCancelPreview(preview);
       setRefundForm({ bank_account: "", bank_name: VIETNAMESE_BANKS[0], account_holder: "", reason: "" });
       setCancelTarget(booking);
-    } catch (err: any) {
-      toastError(err.message || "Không kiểm tra được điều kiện hủy đơn.");
+    } catch (err) {
+      toastError(errorMessage(err, "Không kiểm tra được điều kiện hủy đơn."));
     }
   };
 
@@ -190,8 +198,8 @@ function PlayerBookingsContent() {
           ? `Đã hủy đơn. Cụm sân sẽ chuyển hoàn ${formatVND(updated.refund_amount || 0)} cho bạn.`
           : "Đã hủy đơn và trả lại khung giờ.",
       );
-    } catch (err: any) {
-      toastError(err.message || "Hủy đơn thất bại. Vui lòng thử lại.");
+    } catch (err) {
+      toastError(errorMessage(err, "Hủy đơn thất bại. Vui lòng thử lại."));
     } finally {
       setCancelling(false);
     }
@@ -318,7 +326,7 @@ function PlayerBookingsContent() {
               const venueId = first?.venue_id;
               const group = bookingGroup(b);
               const isExpanded = expandedIds.includes(b.id);
-              const match = matches.find((m: any) => m.booking_id === b.id && m.status !== "CANCELLED");
+              const match = matches.find((m) => m.booking_id === b.id && m.status !== "CANCELLED");
               const refund = refundLabel(b);
 
               return (

@@ -1,4 +1,4 @@
-# Kiểm tra tự động mỗi lần đẩy mã: backend (ruff + pytest trên PostgreSQL thật) và hai ứng dụng Next.js (build + kiểu).
+# Kiểm tra tự động mỗi lần đẩy mã: backend (ruff + pytest trên PostgreSQL thật) và hai ứng dụng Next.js (lint + build + kiểu).
 name: CI
 
 on:
@@ -79,6 +79,10 @@ jobs:
 
       - name: Cài thư viện
         run: npm ci
+
+      # Cảnh báo cũng tính là lỗi, để danh sách lint không tồn đọng lại
+      - name: Lint (ESLint)
+        run: npm run lint -- --max-warnings 0
 
       # next build sinh các file kiểu trong .next/ mà tsconfig tham chiếu, nên chạy trước tsc
       - name: Build

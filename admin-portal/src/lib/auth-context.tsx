@@ -29,6 +29,21 @@ interface AdminAuthContextType {
 
 const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefined);
 
+/** Kiểm tra token đã lưu trong trình duyệt: trả về tài khoản Admin của nó; không dùng được nữa thì xóa token và trả về null. */
+async function checkStoredToken(storedToken: string): Promise<AdminUser | null> {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/v1/users/me`, {
+      headers: { Authorization: `Bearer ${storedToken}` },
+    });
+    const data = res.ok ? await res.json() : null;
+    if (data?.role === "ADMIN") return data;
+  } catch {
+    // Không gọi được máy chủ: coi như chưa đăng nhập
+  }
+  localStorage.removeItem(TOKEN_KEY);
+  return null;
+}
+
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AdminUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -55,7 +70,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         setToken(null);
         setUser(null);
       }
-    } catch (err: any) {
+    } catch (err) {
       localStorage.removeItem(TOKEN_KEY);
       setToken(null);
       setUser(null);
@@ -63,18 +78,21 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Lần đầu mở trang: kiểm tra token đã lưu xong mới đổ token và tài khoản vào state.
+  // Token cũ không còn hợp lệ thì coi như chưa đăng nhập (trang chủ sẽ chuyển về màn đăng nhập)
   useEffect(() => {
     const storedToken = localStorage.getItem(TOKEN_KEY);
-    if (storedToken) {
-      setToken(storedToken);
-      // Token cũ không còn hợp lệ thì coi như chưa đăng nhập (trang chủ sẽ chuyển về màn đăng nhập)
-      fetchUser(storedToken)
-        .catch(() => undefined)
-        .finally(() => setIsLoading(false));
-    } else {
+    let cancelled = false;
+    (storedToken ? checkStoredToken(storedToken) : Promise.resolve(null)).then((admin) => {
+      if (cancelled) return;
+      setToken(admin ? storedToken : null);
+      setUser(admin);
       setIsLoading(false);
-    }
-  }, [fetchUser]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Máy chủ từ chối token giữa phiên làm việc (hết hạn hoặc tài khoản bị khóa)
   useEffect(() => {

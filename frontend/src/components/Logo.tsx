@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 
 interface LogoProps {
   size?: "sm" | "md" | "lg";
@@ -34,9 +35,13 @@ export default function Logo({
       <div
         className={`${iconSizes[size]} shrink-0 flex items-center justify-center relative transition-transform duration-200 group-hover:scale-105`}
       >
-        <img
+        <Image
           src="/images/logo_transparent.png"
           alt="PickleMatch2K Logo"
+          width={256}
+          height={256}
+          unoptimized
+          loading="eager"
           className="w-full h-full object-contain filter drop-shadow-xs"
         />
       </div>

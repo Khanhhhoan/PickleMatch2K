@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { getMediaUrl } from "@/lib/api";
 
 interface VenueImageHoverSliderProps {
@@ -9,7 +9,7 @@ interface VenueImageHoverSliderProps {
     name: string;
     image_url?: string | null;
     images?: string | string[] | null;
-    courts?: any[];
+    courts?: unknown[];
     distance_km?: number | null;
   };
   className?: string;
@@ -28,7 +28,6 @@ export default function VenueImageHoverSlider({
 }: VenueImageHoverSliderProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Extract and compile all images
   const imageList = useMemo(() => {
@@ -72,25 +71,15 @@ export default function VenueImageHoverSlider({
 
   // Handle auto-cycle on hover
   useEffect(() => {
-    if (isHovered && imageList.length > 1) {
-      timerRef.current = setInterval(() => {
-        setCurrentIndex((prev) => (prev + 1) % imageList.length);
-      }, 1600); // Transitions every 1.6s on hover
-    } else {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      // Reset back to primary cover image smoothly
-      setCurrentIndex(0);
-    }
-
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
+    if (!isHovered || imageList.length <= 1) return;
+    const timer = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % imageList.length);
+    }, 1600); // Transitions every 1.6s on hover
+    return () => clearInterval(timer);
   }, [isHovered, imageList.length]);
+
+  // Danh sách ảnh ngắn lại thì quay về ảnh đầu
+  const shownIndex = currentIndex < imageList.length ? currentIndex : 0;
 
   const handlePrev = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -114,21 +103,26 @@ export default function VenueImageHoverSlider({
     <div
       className={`relative w-full overflow-hidden bg-zinc-950 select-none ${className}`}
       onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        // Reset back to primary cover image smoothly
+        setCurrentIndex(0);
+      }}
     >
       {/* Slides (Stacked Images for Cross-Fade Animation) */}
       {imageList.map((imgUrl, idx) => (
         <div
           key={idx}
           className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${
-            idx === currentIndex ? "opacity-100 z-0" : "opacity-0 pointer-events-none"
+            idx === shownIndex ? "opacity-100 z-0" : "opacity-0 pointer-events-none"
           }`}
         >
+          {/* eslint-disable-next-line @next/next/no-img-element -- ảnh do chủ sân tải lên (máy chủ API hoặc Cloudinary), kích thước tùy ảnh, có ảnh thay thế khi lỗi */}
           <img
             src={imgUrl}
             alt={`${venue.name} - Ảnh ${idx + 1}`}
             className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700 ease-out"
-            onError={(e: any) => {
+            onError={(e) => {
               e.currentTarget.src = "/images/hero_bg.jpg";
             }}
           />
@@ -151,9 +145,9 @@ export default function VenueImageHoverSlider({
             >
               <div
                 className={`h-full transition-all duration-300 ${
-                  idx === currentIndex
+                  idx === shownIndex
                     ? "bg-white w-full shadow-xs"
-                    : idx < currentIndex && isHovered
+                    : idx < shownIndex && isHovered
                     ? "bg-white/70 w-full"
                     : "w-0"
                 }`}
@@ -227,7 +221,7 @@ export default function VenueImageHoverSlider({
 
         {imageList.length > 1 && (
           <span className="text-[10px] font-bold text-zinc-200 bg-zinc-950/75 backdrop-blur-md px-2 py-0.5 rounded-md shrink-0 border border-white/10">
-            {currentIndex + 1}/{imageList.length}
+            {shownIndex + 1}/{imageList.length}
           </span>
         )}
       </div>

@@ -27,6 +27,28 @@ const TAB_TITLE: Record<Tab, string> = {
 const EMPTY: AdminData = { users: [], venues: [], bookings: [], matches: [], transactions: [], stats: null };
 const LIVE_EVENTS = ["PAYMENT_CONFIRMED", "SLOT_BOOKED", "SLOT_RELEASED", "BOOKING_STATUS_CHANGED", "BOOKING_RESCHEDULED", "MATCH_CREATED", "MATCH_UPDATED"];
 
+/** Mọi dữ liệu quản trị, kèm tên các phần tải lỗi (phần lỗi lấy giá trị rỗng). */
+async function fetchAdminData(): Promise<{ data: AdminData; failed: string[] }> {
+  const failed: string[] = [];
+  const load = async <T,>(label: string, path: string, fallback: T): Promise<T> => {
+    try {
+      return await apiGet(path);
+    } catch {
+      failed.push(label);
+      return fallback;
+    }
+  };
+  const [users, venues, bookings, matches, transactions, stats] = await Promise.all([
+    load("tài khoản", "/users/admin/users", EMPTY.users),
+    load("cụm sân", "/venues/admin/all", EMPTY.venues),
+    load("đơn đặt", "/bookings/admin/all", EMPTY.bookings),
+    load("phòng đấu", "/matches/admin/all", EMPTY.matches),
+    load("giao dịch", "/payments/transactions", EMPTY.transactions),
+    load("thống kê", "/bookings/owner/stats", EMPTY.stats),
+  ]);
+  return { data: { users, venues, bookings, matches, transactions, stats }, failed };
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
   const { user, logout, isLoading: authLoading } = useAdminAuth();
@@ -57,28 +79,15 @@ export default function AdminDashboard() {
   );
 
   /** Tải mọi dữ liệu quản trị; phần nào lỗi thì báo rõ thay vì âm thầm hiển thị danh sách rỗng. */
-  const loadData = useCallback(async () => {
-    const failed: string[] = [];
-    const load = async <T,>(label: string, path: string, fallback: T): Promise<T> => {
-      try {
-        return await apiGet(path);
-      } catch {
-        failed.push(label);
-        return fallback;
-      }
-    };
-    const [users, venues, bookings, matches, transactions, stats] = await Promise.all([
-      load("tài khoản", "/users/admin/users", EMPTY.users),
-      load("cụm sân", "/venues/admin/all", EMPTY.venues),
-      load("đơn đặt", "/bookings/admin/all", EMPTY.bookings),
-      load("phòng đấu", "/matches/admin/all", EMPTY.matches),
-      load("giao dịch", "/payments/transactions", EMPTY.transactions),
-      load("thống kê", "/bookings/owner/stats", EMPTY.stats),
-    ]);
-    setData({ users, venues, bookings, matches, transactions, stats });
-    setLoading(false);
-    if (failed.length > 0) notify(`Không tải được: ${failed.join(", ")}.`, "error");
-  }, [notify]);
+  const loadData = useCallback(
+    () =>
+      fetchAdminData().then((result) => {
+        setData(result.data);
+        setLoading(false);
+        if (result.failed.length > 0) notify(`Không tải được: ${result.failed.join(", ")}.`, "error");
+      }),
+    [notify],
+  );
 
   useEffect(() => {
     if (isAdmin) loadData();

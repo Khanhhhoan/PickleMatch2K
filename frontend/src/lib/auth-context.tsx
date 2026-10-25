@@ -55,6 +55,23 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/** Kiểm tra token đã lưu trong trình duyệt: trả về token còn dùng được và tài khoản của nó. */
+async function checkStoredToken(storedToken: string | null): Promise<{ token: string | null; user: UserProfile | null }> {
+  if (!storedToken) return { token: null, user: null };
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/v1/users/me`, {
+      headers: { Authorization: `Bearer ${storedToken}` },
+    });
+    if (res.ok) return { token: storedToken, user: await res.json() };
+    // Token invalid
+    localStorage.removeItem("token");
+    return { token: null, user: null };
+  } catch {
+    console.error("Failed to fetch user");
+    return { token: storedToken, user: null };
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -80,15 +97,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Lần đầu mở trang: kiểm tra token đã lưu xong mới đổ token và tài khoản vào state
   useEffect(() => {
-    const storedToken = localStorage.getItem("token");
-    if (storedToken) {
-      setToken(storedToken);
-      fetchUser(storedToken).finally(() => setIsLoading(false));
-    } else {
+    let cancelled = false;
+    checkStoredToken(localStorage.getItem("token")).then((session) => {
+      if (cancelled) return;
+      setToken(session.token);
+      setUser(session.user);
       setIsLoading(false);
-    }
-  }, [fetchUser]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Máy chủ từ chối token (hết hạn, tài khoản bị khóa): đưa giao diện về trạng thái chưa đăng nhập
   useEffect(() => {

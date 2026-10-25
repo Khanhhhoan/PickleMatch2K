@@ -28,8 +28,8 @@ export default function AdminLoginPage() {
     try {
       await login(email, password);
       router.push("/");
-    } catch (err: any) {
-      setError(err.message || "Đăng nhập không thành công. Vui lòng kiểm tra lại email và mật khẩu.");
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : "Đăng nhập không thành công. Vui lòng kiểm tra lại email và mật khẩu.");
     } finally {
       setLoading(false);
     }

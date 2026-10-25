@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { fetchApi } from "@/lib/api";
+import { fetchApi, errorMessage } from "@/lib/api";
 import { formatDisplayDate } from "@/lib/booking";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/components/Toast";
@@ -82,6 +82,22 @@ const STATUS_TONE: Record<Match["status"], string> = {
   COMPLETED: "bg-purple-50 text-purple-700 border-purple-200",
 };
 
+interface MatchesData {
+  matches: Match[];
+  model: ModelInfo | null;
+}
+
+/** Danh sách phòng và thông tin mô hình; vị trí đang chọn (nếu có) cho kết quả sát thực tế hơn vị trí lưu trong hồ sơ. */
+async function fetchMatchesData(): Promise<MatchesData> {
+  const here = getSavedLocation();
+  const position = here ? `latitude=${here.lat}&longitude=${here.lng}` : "";
+  const [matchData, modelData] = await Promise.all([
+    fetchApi(`/matches${position ? `?${position}` : ""}`).catch(() => []),
+    fetchApi("/ml/model-info").catch(() => null),
+  ]);
+  return { matches: Array.isArray(matchData) ? matchData : [], model: modelData };
+}
+
 function MatchesContent() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
@@ -102,24 +118,21 @@ function MatchesContent() {
     if (!authLoading && !user) router.push("/login?next=/matches");
   }, [user, authLoading, router]);
 
-  useEffect(() => {
-    const tab = searchParams?.get("tab");
-    if (tab === "my" || tab === "my_matches") setActiveTab("my_matches");
-    else if (tab && TABS.some((t) => t.key === tab)) setActiveTab(tab as Tab);
-  }, [searchParams]);
+  // Đường dẫn có ?tab=... (lúc mở trang hoặc khi đổi sang tab khác): chuyển sang tab đó
+  const tabParam = searchParams?.get("tab") ?? null;
+  const [appliedTab, setAppliedTab] = useState<string | null>(null);
+  if (tabParam !== appliedTab) {
+    setAppliedTab(tabParam);
+    if (tabParam === "my" || tabParam === "my_matches") setActiveTab("my_matches");
+    else if (tabParam && TABS.some((t) => t.key === tabParam)) setActiveTab(tabParam as Tab);
+  }
 
-  const loadData = useCallback(async () => {
-    // Vị trí hiện tại (nếu người dùng đã chọn) cho kết quả sát thực tế hơn vị trí lưu trong hồ sơ
-    const here = getSavedLocation();
-    const position = here ? `latitude=${here.lat}&longitude=${here.lng}` : "";
-    const [matchData, modelData] = await Promise.all([
-      fetchApi(`/matches${position ? `?${position}` : ""}`).catch(() => []),
-      fetchApi("/ml/model-info").catch(() => null),
-    ]);
-    setMatches(Array.isArray(matchData) ? matchData : []);
-    setModel(modelData);
+  const showData = useCallback((data: MatchesData) => {
+    setMatches(data.matches);
+    setModel(data.model);
     setLoading(false);
   }, []);
+  const loadData = useCallback(() => fetchMatchesData().then(showData), [showData]);
 
   useEffect(() => {
     if (user) loadData();
@@ -163,8 +176,8 @@ function MatchesContent() {
       toastSuccess("Đã gửi yêu cầu tham gia. Chủ phòng duyệt xong, bạn sẽ thấy số điện thoại các thành viên.");
       await loadData();
       setActiveTab("my_matches");
-    } catch (err: any) {
-      toastError(err.message || "Không gửi được yêu cầu tham gia.");
+    } catch (err) {
+      toastError(errorMessage(err, "Không gửi được yêu cầu tham gia."));
     } finally {
       setBusyMatchId(null);
     }
@@ -178,7 +191,7 @@ function MatchesContent() {
       toastSuccess(accept ? `Đã nhận ${name} vào phòng.` : `Đã từ chối yêu cầu của ${name}.`);
       await loadData();
     } catch (err) {
-      toastError(err instanceof Error ? err.message : "Không thực hiện được.");
+      toastError(errorMessage(err, "Không thực hiện được."));
     } finally {
       setBusyMatchId(null);
     }
@@ -201,8 +214,8 @@ function MatchesContent() {
           await fetchApi(`/matches/${match.id}/leave`, { method: "POST" });
           toastSuccess(isHost ? "Đã hủy phòng." : pending ? "Đã rút yêu cầu tham gia." : "Đã rời phòng.");
           await loadData();
-        } catch (err: any) {
-          toastError(err.message || "Không thực hiện được.");
+        } catch (err) {
+          toastError(errorMessage(err, "Không thực hiện được."));
         } finally {
           setBusyMatchId(null);
         }

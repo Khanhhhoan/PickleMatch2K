@@ -1,18 +1,18 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
+
+// Địa chỉ cổng quản trị: theo biến môi trường, không có thì cùng máy với trang đang mở (cổng 3001).
+// Lúc dựng trang ở máy chủ chưa biết máy đó nên tạm dùng localhost.
+const subscribeNothing = () => () => {};
+const adminUrlInBrowser = () =>
+  process.env.NEXT_PUBLIC_ADMIN_URL || `${window.location.protocol}//${window.location.hostname}:3001`;
+const adminUrlOnServer = () => process.env.NEXT_PUBLIC_ADMIN_URL || "http://localhost:3001";
 
 export default function AdminRedirectPage() {
   const [countdown, setCountdown] = useState(3);
-  const [adminUrl, setAdminUrl] = useState("http://localhost:3001");
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const target = process.env.NEXT_PUBLIC_ADMIN_URL || `${window.location.protocol}//${window.location.hostname}:3001`;
-      setAdminUrl(target);
-    }
-  }, []);
+  const adminUrl = useSyncExternalStore(subscribeNothing, adminUrlInBrowser, adminUrlOnServer);
 
   useEffect(() => {
     const timer = setInterval(() => {

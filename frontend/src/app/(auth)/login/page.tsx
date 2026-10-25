@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { errorMessage } from "@/lib/api";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -36,8 +37,8 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-    } catch (err: any) {
-      setError(err.message || "Email hoặc mật khẩu không chính xác.");
+    } catch (err) {
+      setError(errorMessage(err, "Email hoặc mật khẩu không chính xác."));
     } finally {
       setLoading(false);
     }

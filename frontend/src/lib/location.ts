@@ -1,3 +1,5 @@
+import { useMemo, useSyncExternalStore } from "react";
+
 export interface UserLocation {
   name: string;
   lat: number;
@@ -110,22 +112,54 @@ export const PRESET_LOCATIONS: PresetLocation[] = [
 ];
 
 const LOCAL_STORAGE_KEY = "pickleball_user_location";
+// Sự kiện "storage" chỉ tới các tab khác; trong cùng tab thì saveLocation tự báo bằng sự kiện này
+const LOCATION_SAVED_EVENT = "pickleball_user_location_saved";
 
-export function getSavedLocation(): UserLocation | null {
+function readSavedLocationRaw(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (!raw) return null;
+    return localStorage.getItem(LOCAL_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function parseSavedLocation(raw: string | null): UserLocation | null {
+  if (!raw) return null;
+  try {
     return JSON.parse(raw);
   } catch {
     return null;
   }
 }
 
+function subscribeSavedLocation(onChange: () => void): () => void {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(LOCATION_SAVED_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(LOCATION_SAVED_EVENT, onChange);
+  };
+}
+
+export function getSavedLocation(): UserLocation | null {
+  return parseSavedLocation(readSavedLocationRaw());
+}
+
+/**
+ * Vị trí đã lưu, dùng trong component: lúc dựng trang ở máy chủ và lần hydrate đầu là null,
+ * sau đó là giá trị thật trong trình duyệt và tự cập nhật mỗi khi có vị trí mới được lưu.
+ */
+export function useSavedLocation(): UserLocation | null {
+  const raw = useSyncExternalStore(subscribeSavedLocation, readSavedLocationRaw, () => null);
+  return useMemo(() => parseSavedLocation(raw), [raw]);
+}
+
 export function saveLocation(loc: UserLocation): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(loc));
+    window.dispatchEvent(new Event(LOCATION_SAVED_EVENT));
   } catch (err) {
     console.error("Failed to save location to localStorage", err);
   }
@@ -238,7 +272,8 @@ export async function searchAddressGeocode(query: string): Promise<UserLocation[
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data) && data.length > 0) {
-        return data.map((item: any) => ({
+        // Mỗi kết quả của Nominatim: tên đầy đủ và tọa độ dạng chuỗi
+        return data.map((item: { display_name: string; lat: string; lon: string }) => ({
           name: item.display_name,
           lat: parseFloat(item.lat),
           lng: parseFloat(item.lon),

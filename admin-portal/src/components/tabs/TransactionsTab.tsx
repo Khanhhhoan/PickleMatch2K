@@ -16,10 +16,7 @@ export default function TransactionsTab({ data }: TabProps) {
 
   // Lọc theo chủ sân được thực hiện ở máy chủ (theo các cụm sân của chủ sân đó)
   useEffect(() => {
-    if (!ownerId) {
-      setOwnerTransactions(null);
-      return;
-    }
+    if (!ownerId) return;
     let cancelled = false;
     apiGet(`/payments/transactions?owner_id=${ownerId}`)
       .then((rows) => !cancelled && setOwnerTransactions(Array.isArray(rows) ? rows : []))
@@ -29,7 +26,8 @@ export default function TransactionsTab({ data }: TabProps) {
     };
   }, [ownerId, data.transactions]);
 
-  const source = ownerTransactions ?? data.transactions;
+  // Bỏ lọc chủ sân thì quay về toàn bộ sổ giao dịch
+  const source = (ownerId ? ownerTransactions : null) ?? data.transactions;
   const rows = source.filter((t) => kind === "ALL" || t.kind === kind);
   const successful = source.filter((t) => t.status === "SUCCESS");
   const collected = successful.filter((t) => t.kind !== "REFUND").reduce((sum, t) => sum + t.amount_in, 0);

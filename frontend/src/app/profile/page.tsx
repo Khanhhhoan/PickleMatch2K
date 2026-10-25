@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useCallback, useEffect, useState, Suspense } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { fetchApi, formatVND, parseUtcDate } from "@/lib/api";
-import { useAuth } from "@/lib/auth-context";
+import { fetchApi, formatVND, parseUtcDate, errorMessage } from "@/lib/api";
+import { PlayerProfile, useAuth } from "@/lib/auth-context";
 import { useToast } from "@/components/Toast";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -98,9 +98,11 @@ function ProfileContent() {
     if (!isLoading && !user) router.push("/login?next=/profile");
   }, [user, isLoading, router]);
 
-  // Nạp biểu mẫu từ hồ sơ thật; trường chưa khai để trống, không điền giá trị mặc định thay người dùng
-  useEffect(() => {
-    if (!profile) return;
+  // Nạp biểu mẫu từ hồ sơ thật mỗi khi hồ sơ đổi (lúc mở trang, sau khi lưu); trường chưa khai để trống,
+  // không điền giá trị mặc định thay người dùng
+  const [formProfile, setFormProfile] = useState<PlayerProfile | null>(null);
+  if (profile && profile !== formProfile) {
+    setFormProfile(profile);
     setForm({
       full_name: profile.full_name || "",
       phone: profile.phone || "",
@@ -113,24 +115,48 @@ function ProfileContent() {
       latitude: profile.latitude ?? null,
       longitude: profile.longitude ?? null,
     });
-    if (profile.latitude != null && profile.longitude != null) {
-      reverseGeocode(profile.latitude, profile.longitude).then(setLocationName);
-    } else {
-      setLocationName("");
-    }
-  }, [profile]);
+    if (profile.latitude == null || profile.longitude == null) setLocationName("");
+  }
 
-  const loadTransactions = useCallback(() => {
-    setLoadingTxns(true);
-    fetchApi("/payments/transactions")
-      .then((data) => setTransactions(Array.isArray(data) ? data : []))
-      .catch(() => setTransactions([]))
-      .finally(() => setLoadingTxns(false));
-  }, []);
+  // Tên khu vực của tọa độ trong hồ sơ
+  const profileLat = profile?.latitude;
+  const profileLng = profile?.longitude;
+  useEffect(() => {
+    if (profileLat == null || profileLng == null) return;
+    let cancelled = false;
+    reverseGeocode(profileLat, profileLng).then((name) => {
+      if (!cancelled) setLocationName(name);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileLat, profileLng]);
+
+  // Mỗi lần mở tab Thanh toán: tải lại danh sách giao dịch
+  const showPayments = !!user && activeTab === "payments";
+  const [paymentsShown, setPaymentsShown] = useState(false);
+  if (showPayments !== paymentsShown) {
+    setPaymentsShown(showPayments);
+    if (showPayments) setLoadingTxns(true);
+  }
 
   useEffect(() => {
-    if (user && activeTab === "payments") loadTransactions();
-  }, [user, activeTab, loadTransactions]);
+    if (!showPayments) return;
+    let cancelled = false;
+    fetchApi("/payments/transactions")
+      .then((data) => {
+        if (!cancelled) setTransactions(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setTransactions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingTxns(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showPayments]);
 
   const applyLocation = (lat: number, lng: number, name: string) => {
     setForm((prev) => ({ ...prev, latitude: lat, longitude: lng }));
@@ -181,8 +207,8 @@ function ProfileContent() {
       });
       await refreshUser();
       toastSuccess("Đã lưu hồ sơ.");
-    } catch (err: any) {
-      toastError(err.message || "Không thể cập nhật hồ sơ. Vui lòng thử lại.");
+    } catch (err) {
+      toastError(errorMessage(err, "Không thể cập nhật hồ sơ. Vui lòng thử lại."));
     } finally {
       setSaving(false);
     }
@@ -207,8 +233,8 @@ function ProfileContent() {
       toastSuccess(res?.message || "Đổi mật khẩu thành công.");
       setPasswordForm({ current_password: "", new_password: "", confirm_password: "" });
       setShowPasswordSection(false);
-    } catch (err: any) {
-      toastError(err.message || "Đổi mật khẩu thất bại.");
+    } catch (err) {
+      toastError(errorMessage(err, "Đổi mật khẩu thất bại."));
     } finally {
       setChangingPassword(false);
     }

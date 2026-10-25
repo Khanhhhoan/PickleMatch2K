@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useCallback, useEffect, useState, Suspense } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { fetchApi } from "@/lib/api";
+import { fetchApi, errorMessage } from "@/lib/api";
 import { Booking, bookingCode, formatDisplayDate, mergeSlots } from "@/lib/booking";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/components/Toast";
@@ -12,6 +12,18 @@ import Footer from "@/components/Footer";
 import { PURPOSES, SKILL_LEVELS } from "@/lib/player";
 
 const INPUT = "w-full px-3 py-2 border border-zinc-200 rounded-xl text-sm text-zinc-900 bg-white focus:outline-none focus:border-zinc-900";
+
+/** Lịch sân mở phòng được: đơn đã cọc (CONFIRMED) và chưa gắn với phòng đang hoạt động nào. */
+async function loadOpenableBookings(): Promise<{ available: Booking[]; hasConfirmed: boolean }> {
+  const [bookingData, matchData] = await Promise.all([
+    fetchApi("/bookings/me").catch(() => []),
+    fetchApi("/matches").catch(() => []),
+  ]);
+  const confirmed: Booking[] = (Array.isArray(bookingData) ? bookingData : []).filter((b: Booking) => b.status === "CONFIRMED");
+  const matches: { status: string; booking_id?: number | null }[] = Array.isArray(matchData) ? matchData : [];
+  const usedBookingIds = new Set(matches.filter((m) => m.status !== "CANCELLED" && m.booking_id).map((m) => m.booking_id));
+  return { available: confirmed.filter((b) => !usedBookingIds.has(b.id)), hasConfirmed: confirmed.length > 0 };
+}
 
 function CreateMatchContent() {
   const { user, isLoading: authLoading } = useAuth();
@@ -24,44 +36,39 @@ function CreateMatchContent() {
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ num_players: "4", required_skill: "", purpose: "recreational", notes: "" });
+  // required_skill null: người dùng chưa chọn, dùng gợi ý theo trình độ của chủ phòng (vẫn chỉnh được)
+  const [form, setForm] = useState<{ num_players: string; required_skill: string | null; purpose: string; notes: string }>({
+    num_players: "4",
+    required_skill: null,
+    purpose: "recreational",
+    notes: "",
+  });
+  const profileLevel = user?.player_profile?.skill_level;
+  const requiredSkill = form.required_skill ?? (profileLevel != null ? Number(profileLevel).toFixed(1) : "");
 
   useEffect(() => {
     if (!authLoading && !user) router.push("/login?next=/matches/create");
   }, [user, authLoading, router]);
 
-  const loadData = useCallback(async () => {
-    const [bookingData, matchData] = await Promise.all([
-      fetchApi("/bookings/me").catch(() => []),
-      fetchApi("/matches").catch(() => []),
-    ]);
-    // Chỉ mở phòng được trên đơn đã cọc (CONFIRMED) và chưa gắn với phòng đang hoạt động nào
-    const confirmed: Booking[] = (Array.isArray(bookingData) ? bookingData : []).filter((b: Booking) => b.status === "CONFIRMED");
-    const usedBookingIds = new Set(
-      (Array.isArray(matchData) ? matchData : []).filter((m: any) => m.status !== "CANCELLED" && m.booking_id).map((m: any) => m.booking_id),
-    );
-    const available = confirmed.filter((b) => !usedBookingIds.has(b.id));
-    setHasConfirmedBooking(confirmed.length > 0);
-    setBookings(available);
-
-    const requested = Number(searchParams?.get("booking_id"));
-    setSelectedId((prev) => {
-      if (requested && available.some((b) => b.id === requested)) return requested;
-      if (prev && available.some((b) => b.id === prev)) return prev;
-      return available[0]?.id ?? null;
+  const requestedId = Number(searchParams?.get("booking_id"));
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    loadOpenableBookings().then(({ available, hasConfirmed }) => {
+      if (cancelled) return;
+      setHasConfirmedBooking(hasConfirmed);
+      setBookings(available);
+      setSelectedId((prev) => {
+        if (requestedId && available.some((b) => b.id === requestedId)) return requestedId;
+        if (prev && available.some((b) => b.id === prev)) return prev;
+        return available[0]?.id ?? null;
+      });
+      setLoading(false);
     });
-    setLoading(false);
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (user) loadData();
-  }, [user, loadData]);
-
-  // Gợi ý trình độ yêu cầu theo trình độ của chủ phòng (người dùng vẫn chỉnh được)
-  useEffect(() => {
-    const level = user?.player_profile?.skill_level;
-    if (level != null) setForm((prev) => (prev.required_skill ? prev : { ...prev, required_skill: Number(level).toFixed(1) }));
-  }, [user]);
+    return () => {
+      cancelled = true;
+    };
+  }, [user, requestedId]);
 
   const selected = bookings.find((b) => b.id === selectedId) || null;
 
@@ -75,15 +82,15 @@ function CreateMatchContent() {
         body: JSON.stringify({
           booking_id: selected.id,
           num_players: parseInt(form.num_players, 10),
-          required_skill: form.required_skill ? parseFloat(form.required_skill) : null,
+          required_skill: requiredSkill ? parseFloat(requiredSkill) : null,
           purpose: form.purpose,
           notes: form.notes.trim() || null,
         }),
       });
       toastSuccess("Đã mở phòng đấu trên lịch sân của bạn.");
       router.push("/matches?tab=my_matches");
-    } catch (err: any) {
-      toastError(err.message || "Không mở được phòng đấu.");
+    } catch (err) {
+      toastError(errorMessage(err, "Không mở được phòng đấu."));
     } finally {
       setSubmitting(false);
     }
@@ -179,7 +186,7 @@ function CreateMatchContent() {
                 </label>
                 <label className="block">
                   <span className="block text-xs font-semibold text-zinc-800 mb-1">Trình độ mong muốn</span>
-                  <select className={INPUT} value={form.required_skill} onChange={(e) => setForm({ ...form, required_skill: e.target.value })}>
+                  <select className={INPUT} value={requiredSkill} onChange={(e) => setForm({ ...form, required_skill: e.target.value })}>
                     <option value="">Mọi trình độ</option>
                     {SKILL_LEVELS.map((level) => (
                       <option key={level.value} value={level.value}>{level.value}</option>

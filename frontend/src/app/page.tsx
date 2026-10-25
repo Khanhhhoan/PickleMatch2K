@@ -10,23 +10,74 @@ import VenueImageHoverSlider from "@/components/VenueImageHoverSlider";
 import LocationPickerModal from "@/components/LocationPickerModal";
 import {
   UserLocation,
-  getSavedLocation,
   getGoogleMapsUrl,
   saveLocation,
+  useSavedLocation,
 } from "@/lib/location";
+import { Venue } from "@/lib/venue";
 
 const WEEKDAY_INDEX = (new Date().getDay() + 6) % 7; // 0 = Thứ Hai, khớp day_of_week của máy chủ
+
+const ALL_DISTRICTS = [
+  { id: "all", name: "Tất cả khu vực TP.HCM", label: "Tất cả", keywords: [] },
+  { id: "govap", name: "Quận Gò Vấp", label: "Gò Vấp", keywords: ["gò vấp"] },
+  { id: "thuduc", name: "TP. Thủ Đức", label: "Thủ Đức", keywords: ["thủ đức", "quận 2", "quận 9", "an khánh", "thảo điền", "thủ thiêm", "hiệp bình", "linh trung", "linh tây"] },
+  { id: "q1", name: "Quận 1", label: "Quận 1", keywords: ["quận 1,", "quận 1 ", "bến thành", "bến nghé", "đakao"] },
+  { id: "q3", name: "Quận 3", label: "Quận 3", keywords: ["quận 3"] },
+  { id: "q4", name: "Quận 4", label: "Quận 4", keywords: ["quận 4"] },
+  { id: "q5", name: "Quận 5", label: "Quận 5", keywords: ["quận 5"] },
+  { id: "q6", name: "Quận 6", label: "Quận 6", keywords: ["quận 6"] },
+  { id: "q7", name: "Quận 7", label: "Quận 7", keywords: ["quận 7", "tân thuận", "tân phong", "phú mỹ hưng"] },
+  { id: "q8", name: "Quận 8", label: "Quận 8", keywords: ["quận 8"] },
+  { id: "q10", name: "Quận 10", label: "Quận 10", keywords: ["quận 10", "cách mạng tháng 8"] },
+  { id: "q11", name: "Quận 11", label: "Quận 11", keywords: ["quận 11"] },
+  { id: "q12", name: "Quận 12", label: "Quận 12", keywords: ["quận 12", "an phú đông", "tân chánh hiệp"] },
+  { id: "binhthanh", name: "Quận Bình Thạnh", label: "Bình Thạnh", keywords: ["bình thạnh"] },
+  { id: "tanbinh", name: "Quận Tân Bình", label: "Tân Bình", keywords: ["tân bình", "cộng hòa"] },
+  { id: "tanphu", name: "Quận Tân Phú", label: "Tân Phú", keywords: ["tân phú", "chế lan viên"] },
+  { id: "phunhuan", name: "Quận Phú Nhuận", label: "Phú Nhuận", keywords: ["phú nhuận", "hoa phượng"] },
+  { id: "binhtan", name: "Quận Bình Tân", label: "Bình Tân", keywords: ["bình tân", "tên lửa"] },
+  { id: "binhchanh", name: "Huyện Bình Chánh", label: "Bình Chánh", keywords: ["bình chánh"] },
+  { id: "hocmon", name: "Huyện Hóc Môn", label: "Hóc Môn", keywords: ["hóc môn"] },
+  { id: "cuchi", name: "Huyện Củ Chi", label: "Củ Chi", keywords: ["củ chi"] },
+  { id: "nhabe", name: "Huyện Nhà Bè", label: "Nhà Bè", keywords: ["nhà bè"] },
+  { id: "cangio", name: "Huyện Cần Giờ", label: "Cần Giờ", keywords: ["cần giờ"] },
+];
+
+/** Tìm cụm sân theo từ khóa; có tọa độ thì kết quả kèm khoảng cách, xếp từ gần đến xa. */
+function searchVenues(keyword: string, lat: number | null, lng: number | null): Promise<Venue[]> {
+  const params = new URLSearchParams();
+  if (keyword) params.append("keyword", keyword);
+  if (lat != null && lng != null) {
+    params.append("latitude", lat.toString());
+    params.append("longitude", lng.toString());
+  }
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return fetchApi(`/search/venues${qs}`);
+}
 
 export default function HomePage() {
   const { user } = useAuth();
   const [keyword, setKeyword] = useState("");
-  const [venues, setVenues] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
+  // Lần tìm gần nhất: từ khóa đã gửi; run tăng mỗi lần tìm để tìm lại cả khi từ khóa không đổi
+  const [search, setSearch] = useState({ keyword: "", run: 0 });
+  const [result, setResult] = useState<{ key: string; venues: Venue[] } | null>(null);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [ranking, setRanking] = useState<Map<number, number> | null>(null);
   // Người chơi đã đăng nhập thấy danh sách xếp sẵn theo gợi ý; khách thấy danh sách từ gần đến xa
   const suggesting = user?.role === "PLAYER";
+
+  // Vị trí: ưu tiên nơi người dùng đã chọn, rồi tới hồ sơ. Chưa có thì KHÔNG giả định vị trí nào.
+  const savedLocation = useSavedLocation();
+  const profileLat = user?.player_profile?.latitude;
+  const profileLng = user?.player_profile?.longitude;
+  const userLocation = useMemo<UserLocation | null>(() => {
+    if (savedLocation) return savedLocation;
+    if (profileLat != null && profileLng != null) {
+      return { name: "Vị trí trong hồ sơ", lat: profileLat, lng: profileLng, isGps: false };
+    }
+    return null;
+  }, [savedLocation, profileLat, profileLng]);
 
   // Thứ tự gợi ý do mô-đun gợi ý cụm sân tính (khoảng cách, giá, giờ còn trống hôm nay)
   useEffect(() => {
@@ -49,83 +100,39 @@ export default function HomePage() {
     };
   }, [suggesting, userLocation]);
 
-  // Load venues based on keyword and coordinates
-  const loadVenues = async (searchKeyword = "", coords?: { lat: number; lng: number }) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (searchKeyword) params.append("keyword", searchKeyword);
-      
-      const activeCoords = coords || (userLocation ? { lat: userLocation.lat, lng: userLocation.lng } : undefined);
-      if (activeCoords) {
-        params.append("latitude", activeCoords.lat.toString());
-        params.append("longitude", activeCoords.lng.toString());
-      }
-      
-      const qs = params.toString() ? `?${params.toString()}` : "";
-      const data = await fetchApi(`/search/venues${qs}`);
-      setVenues(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Vị trí: ưu tiên nơi người dùng vừa chọn, rồi tới hồ sơ. Chưa có thì KHÔNG giả định vị trí nào.
+  // Danh sách cụm sân theo lần tìm gần nhất và vị trí đang chọn; đang tải khi kết quả chưa ứng với yêu cầu mới nhất
+  const lat = userLocation?.lat ?? null;
+  const lng = userLocation?.lng ?? null;
+  const requestKey = `${search.run}|${lat}|${lng}`;
   useEffect(() => {
-    const saved = getSavedLocation();
-    const profile = user?.player_profile;
-    let initialLoc: UserLocation | null = null;
-    if (saved) {
-      initialLoc = saved;
-    } else if (profile?.latitude != null && profile?.longitude != null) {
-      initialLoc = { name: "Vị trí trong hồ sơ", lat: profile.latitude, lng: profile.longitude, isGps: false };
-    }
-
-    setUserLocation(initialLoc);
-    const coords = initialLoc ? { lat: initialLoc.lat, lng: initialLoc.lng } : undefined;
-    loadVenues(keyword, coords);
-  }, [user]);
+    let cancelled = false;
+    searchVenues(search.keyword, lat, lng)
+      .then((data) => {
+        if (!cancelled) setResult({ key: requestKey, venues: data });
+      })
+      .catch((err) => {
+        console.error(err);
+        // Lỗi thì giữ danh sách đang có
+        if (!cancelled) setResult((prev) => ({ key: requestKey, venues: prev?.venues ?? [] }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [search.keyword, lat, lng, requestKey]);
+  const venues = useMemo(() => result?.venues ?? [], [result]);
+  const loading = result?.key !== requestKey;
 
   const handleSelectLocation = (loc: UserLocation) => {
     saveLocation(loc);
-    setUserLocation(loc);
-    loadVenues(keyword, { lat: loc.lat, lng: loc.lng });
+    setSearch((s) => ({ keyword, run: s.run + 1 }));
   };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    loadVenues(keyword);
+    setSearch((s) => ({ keyword, run: s.run + 1 }));
   };
 
   const [selectedDistrict, setSelectedDistrict] = useState("all");
-
-  const ALL_DISTRICTS = [
-    { id: "all", name: "Tất cả khu vực TP.HCM", label: "Tất cả", keywords: [] },
-    { id: "govap", name: "Quận Gò Vấp", label: "Gò Vấp", keywords: ["gò vấp"] },
-    { id: "thuduc", name: "TP. Thủ Đức", label: "Thủ Đức", keywords: ["thủ đức", "quận 2", "quận 9", "an khánh", "thảo điền", "thủ thiêm", "hiệp bình", "linh trung", "linh tây"] },
-    { id: "q1", name: "Quận 1", label: "Quận 1", keywords: ["quận 1,", "quận 1 ", "bến thành", "bến nghé", "đakao"] },
-    { id: "q3", name: "Quận 3", label: "Quận 3", keywords: ["quận 3"] },
-    { id: "q4", name: "Quận 4", label: "Quận 4", keywords: ["quận 4"] },
-    { id: "q5", name: "Quận 5", label: "Quận 5", keywords: ["quận 5"] },
-    { id: "q6", name: "Quận 6", label: "Quận 6", keywords: ["quận 6"] },
-    { id: "q7", name: "Quận 7", label: "Quận 7", keywords: ["quận 7", "tân thuận", "tân phong", "phú mỹ hưng"] },
-    { id: "q8", name: "Quận 8", label: "Quận 8", keywords: ["quận 8"] },
-    { id: "q10", name: "Quận 10", label: "Quận 10", keywords: ["quận 10", "cách mạng tháng 8"] },
-    { id: "q11", name: "Quận 11", label: "Quận 11", keywords: ["quận 11"] },
-    { id: "q12", name: "Quận 12", label: "Quận 12", keywords: ["quận 12", "an phú đông", "tân chánh hiệp"] },
-    { id: "binhthanh", name: "Quận Bình Thạnh", label: "Bình Thạnh", keywords: ["bình thạnh"] },
-    { id: "tanbinh", name: "Quận Tân Bình", label: "Tân Bình", keywords: ["tân bình", "cộng hòa"] },
-    { id: "tanphu", name: "Quận Tân Phú", label: "Tân Phú", keywords: ["tân phú", "chế lan viên"] },
-    { id: "phunhuan", name: "Quận Phú Nhuận", label: "Phú Nhuận", keywords: ["phú nhuận", "hoa phượng"] },
-    { id: "binhtan", name: "Quận Bình Tân", label: "Bình Tân", keywords: ["bình tân", "tên lửa"] },
-    { id: "binhchanh", name: "Huyện Bình Chánh", label: "Bình Chánh", keywords: ["bình chánh"] },
-    { id: "hocmon", name: "Huyện Hóc Môn", label: "Hóc Môn", keywords: ["hóc môn"] },
-    { id: "cuchi", name: "Huyện Củ Chi", label: "Củ Chi", keywords: ["củ chi"] },
-    { id: "nhabe", name: "Huyện Nhà Bè", label: "Nhà Bè", keywords: ["nhà bè"] },
-    { id: "cangio", name: "Huyện Cần Giờ", label: "Cần Giờ", keywords: ["cần giờ"] },
-  ];
 
   // Dynamic District/Area Venue Counts
   const districtCounts = useMemo(() => {
@@ -170,17 +177,17 @@ export default function HomePage() {
   const handleResetFilters = () => {
     setSelectedDistrict("all");
     setKeyword("");
-    loadVenues("");
+    setSearch((s) => ({ keyword: "", run: s.run + 1 }));
   };
 
-  const [detailModalVenue, setDetailModalVenue] = useState<any | null>(null);
+  const [detailModalVenue, setDetailModalVenue] = useState<Venue | null>(null);
 
   // Chỉ hiển thị thông tin cụm sân thật sự có trong hệ thống; thiếu thì nói là chưa có
-  const getVenueDetails = (v: any) => {
-    const today = (v.operating_hours || []).find((h: any) => h.day_of_week === WEEKDAY_INDEX);
+  const getVenueDetails = (v: Venue) => {
+    const today = (v.operating_hours || []).find((h) => h.day_of_week === WEEKDAY_INDEX);
     return {
       description: v.description || "",
-      amenities: (Array.isArray(v.amenities) ? v.amenities : []).map((a: any) => a.name).filter(Boolean) as string[],
+      amenities: (Array.isArray(v.amenities) ? v.amenities : []).map((a) => a.name).filter(Boolean),
       openHours: today ? `Hôm nay mở ${today.open_time.slice(0, 5)} - ${today.close_time.slice(0, 5)}` : "Hôm nay nghỉ",
       courtCount: v.courts?.length || 0,
     };
@@ -318,7 +325,7 @@ export default function HomePage() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
             {sortedVenues.map((venue) => {
-              const baseRule = venue.price_rules?.find((r: any) => r.rule_type === "BASE");
+              const baseRule = venue.price_rules?.find((r) => r.rule_type === "BASE");
               const mapDirUrl = getGoogleMapsUrl(venue);
 
               return (

@@ -122,15 +122,19 @@ export default function BookingDesk({ heading }: { heading: string }) {
   const venue = useMemo(() => venues.find((v) => v.id === venueId) || venues[0] || null, [venues, venueId]);
   const { lastMessage } = useWebSocket("/api/v1/ws/live");
 
-  const loadBookings = useCallback(async () => {
-    const data = await fetchApi("/bookings/owner/list").catch(() => []);
-    setBookings(Array.isArray(data) ? data : []);
-  }, []);
+  const loadBookings = useCallback(
+    () =>
+      fetchApi("/bookings/owner/list")
+        .catch(() => [])
+        .then((data) => setBookings(Array.isArray(data) ? data : [])),
+    [],
+  );
 
-  const loadGrid = useCallback(async () => {
-    if (!venue) return;
-    const data = await fetchApi(`/search/venues/${venue.id}/availability?target_date=${date}`).catch(() => null);
-    setGrid(data);
+  const loadGrid = useCallback(() => {
+    if (!venue) return Promise.resolve();
+    return fetchApi(`/search/venues/${venue.id}/availability?target_date=${date}`)
+      .catch(() => null)
+      .then(setGrid);
   }, [venue, date]);
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { fetchApi, formatVND } from "@/lib/api";
 import { formatCountdown } from "@/lib/booking";
 import { useWebSocket } from "@/lib/use-websocket";
@@ -49,36 +49,45 @@ export default function SepayCheckoutModal({
   const [simulating, setSimulating] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState(0);
-  const [notified, setNotified] = useState(false);
+  const notifiedRef = useRef(false); // đã báo trang mẹ "thanh toán xong" trong lần mở này
 
   // Kênh công khai chỉ báo "đơn X vừa đổi trạng thái"; số liệu luôn được tải lại qua API có xác thực
   const { lastMessage } = useWebSocket("/api/v1/ws/live");
 
-  const loadCheckout = useCallback(async () => {
-    try {
-      const data: CheckoutInfo = await fetchApi(`/payments/checkout/${bookingId}`);
-      setCheckout(data);
-      setTimeLeft(data.expires_in_seconds || 0);
-      setLoadError(null);
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Không tải được thông tin thanh toán.");
-    } finally {
-      setLoading(false);
-    }
-  }, [bookingId]);
+  const loadCheckout = useCallback(
+    () =>
+      fetchApi(`/payments/checkout/${bookingId}`)
+        .then((data: CheckoutInfo) => {
+          setCheckout(data);
+          setTimeLeft(data.expires_in_seconds || 0);
+          setLoadError(null);
+        })
+        .catch((err) => setLoadError(err instanceof Error ? err.message : "Không tải được thông tin thanh toán."))
+        .finally(() => setLoading(false)),
+    [bookingId],
+  );
 
   const status = checkout?.status;
   const isPaid = status === "CONFIRMED" || status === "CHECKED_IN" || status === "COMPLETED";
   const isWaiting = status === "PENDING" && timeLeft > 0;
   const isClosed = !!checkout && !isPaid && !isWaiting; // hết hạn hoặc đã hủy
 
+  // Mỗi lần mở (hoặc chuyển sang đơn khác): bắt đầu lại từ trạng thái đang tải
+  const openedFor = isOpen && bookingId ? bookingId : null;
+  const [shownFor, setShownFor] = useState<number | null>(null);
+  if (openedFor !== shownFor) {
+    setShownFor(openedFor);
+    if (openedFor) {
+      setLoading(true);
+      setCheckout(null);
+    }
+  }
+
   useEffect(() => {
-    if (!isOpen || !bookingId) return;
-    setLoading(true);
-    setCheckout(null);
-    setNotified(false);
+    if (!openedFor) return;
+    notifiedRef.current = false;
     loadCheckout();
-  }, [isOpen, bookingId, loadCheckout]);
+  }, [openedFor, loadCheckout]);
 
   // Đếm ngược theo hạn thanh toán do máy chủ trả về
   useEffect(() => {
@@ -100,11 +109,11 @@ export default function SepayCheckoutModal({
   }, [isOpen, isWaiting, loadCheckout]);
 
   useEffect(() => {
-    if (isPaid && !notified) {
-      setNotified(true);
+    if (isPaid && !notifiedRef.current) {
+      notifiedRef.current = true;
       onPaymentSuccess?.();
     }
-  }, [isPaid, notified, onPaymentSuccess]);
+  }, [isPaid, onPaymentSuccess]);
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard?.writeText(text);

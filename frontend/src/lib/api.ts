@@ -40,6 +40,11 @@ export function describeApiError(detail: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Câu báo lỗi cho người dùng: lời của lỗi nếu có, không thì câu mặc định. */
+export function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
 export async function fetchApi(endpoint: string, options: RequestInit = {}) {
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 

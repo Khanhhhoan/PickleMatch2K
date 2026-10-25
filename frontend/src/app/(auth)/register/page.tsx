@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/components/Toast";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { errorMessage } from "@/lib/api";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -35,8 +36,8 @@ export default function RegisterPage() {
       await register(email, password, fullName.trim(), phone.trim() || undefined);
       toastSuccess("Đăng ký thành công! Đăng nhập để thiết lập hồ sơ ghép trận.");
       router.push("/login?next=/onboarding");
-    } catch (err: any) {
-      setError(err.message || "Đăng ký thất bại");
+    } catch (err) {
+      setError(errorMessage(err, "Đăng ký thất bại"));
     } finally {
       setLoading(false);
     }

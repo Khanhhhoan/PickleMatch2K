@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { fetchApi } from "@/lib/api";
@@ -75,9 +76,13 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
           </button>
           <Link href="/staff/dashboard" className="flex items-center gap-2">
             <div className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg bg-white p-1 shadow-xs">
-              <img
+              <Image
                 src="/images/logo_transparent.png"
                 alt="PickleMatch2K"
+                width={256}
+                height={256}
+                unoptimized
+                loading="eager"
                 className="w-full h-full object-contain"
               />
             </div>
@@ -103,9 +108,13 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
               <div className="flex items-center justify-between pb-4 border-b border-[#213555] mb-4">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 shrink-0 flex items-center justify-center rounded-xl bg-white p-1 shadow-xs">
-                    <img
+                    <Image
                       src="/images/logo_transparent.png"
                       alt="PickleMatch2K"
+                      width={256}
+                      height={256}
+                      unoptimized
+                      loading="eager"
                       className="w-full h-full object-contain"
                     />
                   </div>
@@ -193,9 +202,13 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
           {/* Brand Logo & Name */}
           <Link href="/staff/dashboard" className="flex items-center gap-3 px-2 mb-6 group select-none">
             <div className="w-10 h-10 shrink-0 flex items-center justify-center rounded-xl bg-white p-1.5 shadow-sm border border-white/20 group-hover:scale-105 transition">
-              <img
+              <Image
                 src="/images/logo_transparent.png"
                 alt="PickleMatch2K Logo"
+                width={256}
+                height={256}
+                unoptimized
+                loading="eager"
                 className="w-full h-full object-contain"
               />
             </div>

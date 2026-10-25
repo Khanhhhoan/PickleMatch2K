@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { deleteVenueImage, fetchApi, formatVND, getMediaUrl, uploadVenueImage } from "@/lib/api";
+import { deleteVenueImage, fetchApi, formatVND, getMediaUrl, uploadVenueImage, errorMessage } from "@/lib/api";
 import { formatDisplayDate } from "@/lib/booking";
 import { Modal } from "@/components/ManagementUi";
 import { searchAddressGeocode } from "@/lib/location";
@@ -127,10 +127,13 @@ function OwnerVenueManagementContent() {
   const [showStaffForm, setShowStaffForm] = useState(false);
   const [newVenue, setNewVenue] = useState({ name: "", address: "" });
 
-  useEffect(() => {
-    const tab = searchParams.get("tab");
-    if (tab && TABS.some((t) => t.key === tab)) setActiveTab(tab as Tab);
-  }, [searchParams]);
+  // Đường dẫn có ?tab=... (lúc mở trang hoặc khi bấm mục ở menu bên trái): chuyển sang tab đó
+  const tabParam = searchParams.get("tab");
+  const [appliedTab, setAppliedTab] = useState<string | null>(null);
+  if (tabParam !== appliedTab) {
+    setAppliedTab(tabParam);
+    if (tabParam && TABS.some((t) => t.key === tabParam)) setActiveTab(tabParam as Tab);
+  }
 
   // Đổi tab qua URL để mục đang chọn ở menu bên trái luôn khớp với tab đang xem
   const openTab = (tab: Tab) => {
@@ -140,30 +143,31 @@ function OwnerVenueManagementContent() {
 
   const venue = useMemo(() => venues.find((v) => v.id === selectedVenueId) || venues[0] || null, [venues, selectedVenueId]);
 
-  const loadData = useCallback(async () => {
-    try {
-      const [venueData, staffData, amenityData] = await Promise.all([
+  const loadData = useCallback(
+    () =>
+      Promise.all([
         fetchApi("/venues/me"),
         fetchApi("/users/owner/staff").catch(() => []),
         fetchApi("/venues/amenities").catch(() => []),
-      ]);
-      setVenues(Array.isArray(venueData) ? venueData : []);
-      setStaffList(Array.isArray(staffData) ? staffData : []);
-      setAmenities(Array.isArray(amenityData) ? amenityData : []);
-    } catch (err: any) {
-      toastError(err.message || "Không tải được dữ liệu cụm sân.");
-    } finally {
-      setLoading(false);
-    }
-  }, [toastError]);
+      ])
+        .then(([venueData, staffData, amenityData]) => {
+          setVenues(Array.isArray(venueData) ? venueData : []);
+          setStaffList(Array.isArray(staffData) ? staffData : []);
+          setAmenities(Array.isArray(amenityData) ? amenityData : []);
+        })
+        .catch((err) => toastError(errorMessage(err, "Không tải được dữ liệu cụm sân.")))
+        .finally(() => setLoading(false)),
+    [toastError],
+  );
 
   useEffect(() => {
     if (user) loadData();
   }, [user, loadData]);
 
-  // Đổ dữ liệu thật của cụm sân vào biểu mẫu; ô chưa có dữ liệu để trống
-  useEffect(() => {
-    if (!venue) return;
+  // Đổ dữ liệu thật của cụm sân vào biểu mẫu mỗi khi cụm sân đổi hoặc vừa tải lại; ô chưa có dữ liệu để trống
+  const [formVenue, setFormVenue] = useState<Venue | null>(null);
+  if (venue && venue !== formVenue) {
+    setFormVenue(venue);
     setInfo({
       name: venue.name || "",
       address: venue.address || "",
@@ -193,7 +197,7 @@ function OwnerVenueManagementContent() {
       }),
     );
     setReleaseMinutes(String(venue.unpaid_desk_release_minutes ?? 30));
-  }, [venue]);
+  }
 
   /** Chạy một thao tác ghi, báo kết quả và tải lại dữ liệu. */
   const run = async (key: string, action: () => Promise<unknown>, successMessage: string) => {
@@ -203,8 +207,8 @@ function OwnerVenueManagementContent() {
       toastSuccess(successMessage);
       await loadData();
       return true;
-    } catch (err: any) {
-      toastError(err.message || "Thao tác không thực hiện được.");
+    } catch (err) {
+      toastError(errorMessage(err, "Thao tác không thực hiện được."));
       return false;
     } finally {
       setBusy(null);
@@ -394,8 +398,8 @@ function OwnerVenueManagementContent() {
       const result = await fetchApi(`/users/owner/staff/${staff.id}`, { method: "DELETE" });
       toastSuccess(result?.message || "Đã xóa nhân viên.");
       await loadData();
-    } catch (err: any) {
-      toastError(err.message || "Không xóa được nhân viên.");
+    } catch (err) {
+      toastError(errorMessage(err, "Không xóa được nhân viên."));
     } finally {
       setBusy(null);
     }

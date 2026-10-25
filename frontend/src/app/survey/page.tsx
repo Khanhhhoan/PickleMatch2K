@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { fetchApi } from "@/lib/api";
+import { fetchApi, errorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/components/Toast";
 import Navbar from "@/components/Navbar";
@@ -45,19 +45,19 @@ export default function MatchingSurveyPage() {
     if (!isLoading && !user) router.push("/login?next=/survey");
   }, [user, isLoading, router]);
 
-  const loadPairs = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await fetchApi(`/ml/survey/pairs?count=${PAIRS_PER_ROUND}`);
-      setPairs(data.pairs || []);
-      setNeedsSkill((data.missing_profile_fields || []).includes("skill_level"));
-      setAnswers({});
-    } catch (err: any) {
-      toastError(err.message || "Không tải được khảo sát.");
-    } finally {
-      setLoading(false);
-    }
-  }, [toastError]);
+  // Lượt đầu tải khi mở trang (loading ban đầu đã là true); các lượt sau bật loading ở nơi gọi
+  const loadPairs = useCallback(
+    () =>
+      fetchApi(`/ml/survey/pairs?count=${PAIRS_PER_ROUND}`)
+        .then((data) => {
+          setPairs(data.pairs || []);
+          setNeedsSkill((data.missing_profile_fields || []).includes("skill_level"));
+          setAnswers({});
+        })
+        .catch((err) => toastError(errorMessage(err, "Không tải được khảo sát.")))
+        .finally(() => setLoading(false)),
+    [toastError],
+  );
 
   useEffect(() => {
     if (user) loadPairs();
@@ -76,9 +76,10 @@ export default function MatchingSurveyPage() {
       const result = await fetchApi("/ml/survey/answers", { method: "POST", body: JSON.stringify({ answers: payload }) });
       setTotalSaved((prev) => prev + (result.saved || 0));
       toastSuccess(`Đã ghi nhận ${result.saved} câu trả lời. Cảm ơn bạn!`);
+      setLoading(true);
       await loadPairs();
-    } catch (err: any) {
-      toastError(err.message || "Chưa gửi được câu trả lời.");
+    } catch (err) {
+      toastError(errorMessage(err, "Chưa gửi được câu trả lời."));
     } finally {
       setSending(false);
     }

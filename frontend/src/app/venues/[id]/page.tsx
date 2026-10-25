@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, use, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, use, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { fetchApi, formatVND, getMediaUrl, formatLocalDate } from "@/lib/api";
+import { fetchApi, formatVND, getMediaUrl, formatLocalDate, errorMessage } from "@/lib/api";
 import { MAX_ADVANCE_DAYS } from "@/lib/booking";
 import { useAuth } from "@/lib/auth-context";
 import { useWebSocket } from "@/lib/use-websocket";
@@ -12,6 +12,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import SepayCheckoutModal from "@/components/SepayCheckoutModal";
 import { getGoogleMapsUrl, calculateDistanceKm, getSavedLocation } from "@/lib/location";
+import { Venue } from "@/lib/venue";
 
 interface TimeSlot {
   start_time: string;
@@ -34,6 +35,8 @@ interface Review {
 
 const WEEKDAY_NAMES = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
 const PRICE_RULE_LABEL: Record<string, string> = { BASE: "Giờ thường", PEAK: "Giờ cao điểm", WEEKEND: "Cuối tuần" };
+// Sự kiện trực tiếp làm bảng giờ của cụm sân thay đổi
+const LIVE_EVENTS = ["SLOT_BOOKED", "SLOT_RELEASED", "SLOT_HELD", "BOOKING_RESCHEDULED", "PAYMENT_CONFIRMED", "BOOKING_STATUS_CHANGED", "PRICE_UPDATED"];
 
 interface CourtAvailability {
   court_id: number;
@@ -48,7 +51,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   const { user } = useAuth();
   const router = useRouter();
   const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
-  const [venue, setVenue] = useState<any>(null);
+  const [venue, setVenue] = useState<Venue | null>(null);
   const [availability, setAvailability] = useState<CourtAvailability[]>([]);
   const [selectedDate, setSelectedDate] = useState(() => {
     return formatLocalDate();
@@ -72,19 +75,23 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
   // Sau khi đăng nhập, quay lại đúng cụm sân đang xem
   const loginUrl = `/login?next=${encodeURIComponent(`/venues/${id}`)}`;
 
-  const loadAvailability = async (targetDate: string) => {
-    requestedDate.current = targetDate;
-    try {
-      const data = await fetchApi(`/search/venues/${id}/availability?target_date=${targetDate}`);
-      if (requestedDate.current !== targetDate) return; // phản hồi đến muộn của ngày đã rời đi
-      loadedDate.current = targetDate;
-      setAvailability(data.courts || []);
-    } catch {
-      if (requestedDate.current !== targetDate) return;
-      loadedDate.current = null;
-      setAvailability([]);
-    }
-  };
+  const loadAvailability = useCallback(
+    (targetDate: string) => {
+      requestedDate.current = targetDate;
+      return fetchApi(`/search/venues/${id}/availability?target_date=${targetDate}`)
+        .then((data) => {
+          if (requestedDate.current !== targetDate) return; // phản hồi đến muộn của ngày đã rời đi
+          loadedDate.current = targetDate;
+          setAvailability(data.courts || []);
+        })
+        .catch(() => {
+          if (requestedDate.current !== targetDate) return;
+          loadedDate.current = null;
+          setAvailability([]);
+        });
+    },
+    [id],
+  );
 
   useEffect(() => {
     fetchApi(`/venues/${id}`)
@@ -131,7 +138,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       const names = lost.map((s) => `${s.start_time.slice(0, 5)} (${s.court_name})`).join(", ");
       toastInfo(`Khung giờ ${names} không còn trống nên đã được bỏ khỏi lựa chọn của bạn.`);
     }
-  }, [availability, selectedSlots, selectedDate]);
+  }, [availability, selectedSlots, selectedDate, toastInfo]);
 
   const submitReview = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -144,8 +151,8 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       setReviews((prev) => [saved, ...prev.filter((r) => r.id !== saved.id)]);
       setReviewForm({ rating: 5, comment: "" });
       toastSuccess("Cảm ơn bạn đã đánh giá cụm sân!");
-    } catch (err: any) {
-      toastError(err.message || "Chưa gửi được đánh giá.");
+    } catch (err) {
+      toastError(errorMessage(err, "Chưa gửi được đánh giá."));
     } finally {
       setSendingReview(false);
     }
@@ -155,32 +162,28 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
     if (selectedDate && id) {
       loadAvailability(selectedDate);
     }
-  }, [id, selectedDate]);
+  }, [id, selectedDate, loadAvailability]);
 
   // Handle Real-Time WebSocket Events
   useEffect(() => {
-    if (!lastMessage) return;
-
-    if (
-      lastMessage.type === "SLOT_BOOKED" ||
-      lastMessage.type === "SLOT_RELEASED" ||
-      lastMessage.type === "SLOT_HELD" ||
-      lastMessage.type === "BOOKING_RESCHEDULED" ||
-      lastMessage.type === "PAYMENT_CONFIRMED" ||
-      lastMessage.type === "BOOKING_STATUS_CHANGED" ||
-      lastMessage.type === "PRICE_UPDATED"
-    ) {
-      // If the event corresponds to the current date or venue
-      if (lastMessage.date === selectedDate || !lastMessage.date) {
-        loadAvailability(selectedDate);
-      }
-
-      if (lastMessage.message) {
-        setLiveNotice(lastMessage.message);
-        setTimeout(() => setLiveNotice(null), 5000);
-      }
+    if (!lastMessage || !LIVE_EVENTS.includes(lastMessage.type)) return;
+    // If the event corresponds to the current date or venue
+    if (lastMessage.date === selectedDate || !lastMessage.date) {
+      loadAvailability(selectedDate);
     }
-  }, [lastMessage, selectedDate]);
+  }, [lastMessage, selectedDate, loadAvailability]);
+
+  // Sự kiện trực tiếp có kèm lời nhắn: hiện một dòng báo, tự ẩn sau 5 giây
+  const [noticeFor, setNoticeFor] = useState(lastMessage);
+  if (lastMessage !== noticeFor) {
+    setNoticeFor(lastMessage);
+    if (lastMessage?.message && LIVE_EVENTS.includes(lastMessage.type)) setLiveNotice(lastMessage.message);
+  }
+  useEffect(() => {
+    if (!liveNotice) return;
+    const timer = setTimeout(() => setLiveNotice(null), 5000);
+    return () => clearTimeout(timer);
+  }, [liveNotice]);
 
   const toggleSlot = async (court_id: number, court_name: string, start_time: string, end_time: string, price: number) => {
     if (!user) {
@@ -226,8 +229,8 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
           });
 
           setSelectedSlots((prev) => (prev.some(isSameSlot) ? prev : [...prev, { court_id, court_name, start_time, end_time, price }]));
-        } catch (err: any) {
-          toastError(err.message || "Khung giờ này đang có người khác giữ chỗ hoặc vừa được đặt!");
+        } catch (err) {
+          toastError(errorMessage(err, "Khung giờ này đang có người khác giữ chỗ hoặc vừa được đặt!"));
           loadAvailability(selectedDate);
         }
       }
@@ -261,8 +264,8 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
       setSelectedSlots([]);
       setCheckoutBookingId(res.id);
       await loadAvailability(selectedDate);
-    } catch (err: any) {
-      toastError("Đặt sân thất bại: " + err.message);
+    } catch (err) {
+      toastError("Đặt sân thất bại: " + errorMessage(err, ""));
       // Bảng giờ đã thay đổi: tải lại để khung không còn trống tự rời khỏi giỏ
       loadAvailability(selectedDate);
     } finally {
@@ -371,7 +374,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
     : null;
   const averageRating = reviews.length > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : null;
   const hoursByDay: Record<number, { open_time: string; close_time: string }> = Object.fromEntries(
-    (venue.operating_hours || []).map((h: any) => [h.day_of_week, h]),
+    (venue.operating_hours || []).map((h) => [h.day_of_week, h]),
   );
 
   return (
@@ -408,11 +411,12 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
             <div className="flex items-start gap-4">
               {/* Venue Cover Avatar / Photo Preview */}
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-zinc-800 border-2 border-white/20 shadow-xl shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element -- ảnh do chủ sân tải lên (máy chủ API hoặc Cloudinary), kích thước tùy ảnh, có ảnh thay thế khi lỗi */}
                 <img
                   src={venue.image_url ? getMediaUrl(venue.image_url) : "/images/hero_bg.jpg"}
                   alt={venue.name}
                   className="w-full h-full object-cover"
-                  onError={(e: any) => {
+                  onError={(e) => {
                     e.currentTarget.src = "/images/hero_bg.jpg";
                   }}
                 />
@@ -723,7 +727,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
 
               {(venue.amenities || []).length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
-                  {venue.amenities.map((amenity: any) => (
+                  {venue.amenities.map((amenity) => (
                     <span
                       key={amenity.id}
                       className="px-2.5 py-1 rounded-full bg-zinc-100 border border-zinc-200 text-[11px] font-medium text-zinc-700"
@@ -756,7 +760,7 @@ export default function VenueDetailPage({ params }: { params: Promise<{ id: stri
                     <p className="text-zinc-500">Cụm sân chưa công bố bảng giá.</p>
                   ) : (
                     <ul className="space-y-0.5 text-zinc-600">
-                      {venue.price_rules.map((rule: any) => (
+                      {venue.price_rules.map((rule) => (
                         <li key={rule.id} className="flex justify-between">
                           <span>
                             {PRICE_RULE_LABEL[rule.rule_type] || rule.rule_type}
