@@ -53,11 +53,19 @@ async def lifespan(app: FastAPI):
     task.cancel()
 
 
+def api_docs_urls(production: bool) -> dict:
+    """Bản production không công bố tài liệu API (Swagger, ReDoc, lược đồ OpenAPI); chạy trên máy thì vẫn mở."""
+    if production:
+        return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    return {}
+
+
 app = FastAPI(
     title="Pickleball Booking API",
     description="API for Pickleball Booking System with ML Integration",
     version="1.0.0",
     lifespan=lifespan,
+    **api_docs_urls(settings.is_production),
 )
 
 app.add_middleware(

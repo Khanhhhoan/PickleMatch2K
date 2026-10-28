@@ -96,11 +96,11 @@ def test_each_closing_covers_only_what_came_after_the_previous_one(client, db, w
     assert second["closed_by_name"] != first["closed_by_name"]
 
     # Cộng các lần kết ca của ngày ra đúng số của cả ngày trên bảng ca trực
-    stats = client.get(f"{BOOKINGS}/staff/stats", headers=auth(world.staff_a)).json()
+    day = client.get(f"{BOOKINGS}/revenue/daily", headers=auth(world.staff_a)).json()
     closings = summary(client, world.staff_a)["closings"]
     assert [c["id"] for c in closings] == [second["id"], first["id"]]                                  # mới nhất trước
-    assert sum(c["cash_collected"] for c in closings) == stats["today_cash_collected"] == 150000
-    assert sum(c["transfer_collected"] for c in closings) == stats["today_transfer_collected"] == 150000
+    assert sum(c["cash_collected"] for c in closings) == day["cash"] == 150000
+    assert sum(c["transfer_collected"] for c in closings) == day["transfer"] == 150000
 
     # Không còn gì để kết: lần kết ca thứ ba ghi số 0, không tính lại khoản cũ
     third = close(client, world.staff_a, opening_float=200000, counted_cash=200000).json()

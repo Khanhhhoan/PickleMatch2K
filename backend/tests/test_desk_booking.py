@@ -299,24 +299,21 @@ def test_stats_split_by_venue_add_up_to_the_totals(client, db, world, clock):
         assert [(v["venue_id"], v["venue_name"]) for v in own["by_venue"]] == [(world.venue_a.id, "Sân A")]
 
 
-def test_staff_shift_stats_cover_only_today_at_their_venue(client, world, clock):
+def test_staff_shift_board_shows_their_venue_and_today(client, world, clock):
+    shift = client.get(f"{BOOKINGS}/staff/stats", headers=auth(world.staff_a)).json()
+    assert shift == {"venue_id": world.venue_a.id, "venue_name": "Sân A", "venue_address": world.venue_a.address,
+                     "staff_name": shift["staff_name"], "today_date": clock.today.isoformat(), "today_courts_count": 2}
+
+
+def test_money_taken_by_transfer_at_the_desk_counts_as_transfer(client, world, clock):
     today = clock.today
     desk(client, world.staff_a, desk_payload(world.court, today, "09:00:00", "10:00:00", payment_method="CASH"),
          path="staff/walkin")                                                           # 100k tiền mặt, đã vào sân
     online = create_booking(client, world.p1, world.court, today, hours=(18,))
     sepay(client, online["booking_code"], online["deposit_amount"])                     # 75k chuyển khoản, chờ đến
-    confirmed_booking(client, world.p2, world.venue_b.courts[0], today, hours=(18,))    # cụm sân khác
-
-    stats = client.get(f"{BOOKINGS}/staff/stats", headers=auth(world.staff_a)).json()
-    assert stats["venue_name"] == "Sân A" and stats["today_date"] == today.isoformat()
-    assert stats["today_cash_collected"] == 100000
-    assert stats["today_deposit_online"] == stats["today_transfer_collected"] == 75000
-    assert stats["today_revenue"] == 175000
-    assert (stats["today_total_bookings"], stats["today_completed_bookings"], stats["today_pending_bookings"]) == (2, 1, 1)
-    assert stats["today_courts_count"] == 2
 
     # Phần còn lại khách chuyển khoản tại quầy cũng là tiền chuyển khoản: tiền mặt + chuyển khoản luôn bằng tổng thu
     client.post(f"{BOOKINGS}/{online['id']}/checkin", json={"payment_method": "BANK_TRANSFER"}, headers=auth(world.staff_a))
-    stats = client.get(f"{BOOKINGS}/staff/stats", headers=auth(world.staff_a)).json()
-    assert (stats["today_deposit_online"], stats["today_transfer_collected"]) == (75000, 150000)
-    assert stats["today_cash_collected"] + stats["today_transfer_collected"] == stats["today_revenue"] == 250000
+    day = client.get(f"{BOOKINGS}/revenue/daily", headers=auth(world.staff_a)).json()
+    assert (day["cash"], day["transfer"], day["collected"]) == (100000, 150000, 250000)
+    assert (day["plays_total"], day["plays_arrived"]) == (2, 2)

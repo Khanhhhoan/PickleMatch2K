@@ -398,7 +398,7 @@ def get_owner_stats(db: Session = Depends(deps.get_db), current_user: User = Dep
 
 @router.get("/staff/stats")
 def get_staff_shift_stats(db: Session = Depends(deps.get_db), current_user: User = Depends(venue_staff)):
-    """Số liệu trong ngày (giờ Việt Nam) của cụm sân mà nhân viên trực."""
+    """Thông tin ca trực: cụm sân nhân viên trực và ngày hôm nay (giờ Việt Nam). Doanh thu trong ngày lấy ở /revenue/daily."""
     venue_ids = managed_venue_ids(db, current_user)
     venue_query = db.query(Venue)
     if venue_ids is not None:
@@ -409,30 +409,13 @@ def get_staff_shift_stats(db: Session = Depends(deps.get_db), current_user: User
     if not venue:
         raise HTTPException(status_code=404, detail="Không tìm thấy cụm sân")
 
-    today = today_vn()
-    since, until = vn_day_bounds_utc(today)
-    scope = [venue.id]
-
-    def collected(**kwargs) -> int:
-        return ledger.sum_transactions(db, venue_ids=scope, since=since, until=until, **kwargs)
-
     profile = current_user.staff_profile
-    checked_in = _plays_on(db, scope, today, *ARRIVED_STATUSES)
-    waiting = _plays_on(db, scope, today, BookingStatus.CONFIRMED.value)
     return {
         "venue_id": venue.id,
         "venue_name": venue.name,
         "venue_address": venue.address,
         "staff_name": profile.full_name if profile and profile.full_name else current_user.email.split("@")[0],
-        "today_date": today.strftime("%Y-%m-%d"),
-        "today_revenue": collected(kinds=ledger.INCOMING_KINDS),
-        "today_deposit_online": collected(kinds=(PaymentKind.DEPOSIT.value,), method=PaymentMethod.BANK_TRANSFER.value),
-        "today_cash_collected": collected(kinds=ledger.INCOMING_KINDS, method=PaymentMethod.CASH.value),
-        # Mọi khoản nhận bằng chuyển khoản (cọc qua VietQR và khoản khách chuyển tại quầy): tiền mặt + chuyển khoản = tổng thu
-        "today_transfer_collected": collected(kinds=ledger.INCOMING_KINDS, method=PaymentMethod.BANK_TRANSFER.value),
-        "today_total_bookings": checked_in + waiting,
-        "today_completed_bookings": checked_in,
-        "today_pending_bookings": waiting,
+        "today_date": today_vn().strftime("%Y-%m-%d"),
         "today_courts_count": len(venue.courts),
     }
 

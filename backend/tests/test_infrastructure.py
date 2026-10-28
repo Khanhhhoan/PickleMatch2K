@@ -12,7 +12,7 @@ from starlette.websockets import WebSocketDisconnect
 from app.core.websocket_manager import to_public_event
 from app.db.base import Base
 from app.db.database import engine
-from app.main import app
+from app.main import api_docs_urls, app
 from app.models.booking import Booking
 from app.models.match import Match
 from app.models.payment import PaymentTransaction
@@ -22,6 +22,16 @@ from app.services import maintenance
 from helpers import auth, confirmed_booking, create_booking, slot
 
 WS = "/api/v1/ws"
+
+
+# ---------------------------------------------------------------------------
+# Tài liệu API
+# ---------------------------------------------------------------------------
+def test_api_docs_are_closed_in_production_and_open_elsewhere(client):
+    assert api_docs_urls(True) == {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    assert api_docs_urls(False) == {}
+    for path in ("/docs", "/redoc", "/openapi.json"):     # môi trường kiểm thử không phải production
+        assert client.get(path).status_code == 200
 
 
 # ---------------------------------------------------------------------------

@@ -51,11 +51,16 @@ services:
         sync: false
       - key: SEPAY_ACCOUNT_HOLDER
         sync: false
+      # true: mọi cụm sân nhận cọc vào một tài khoản chung ở trên (tài khoản đã liên kết với SePay)
       - key: SEPAY_UNIFIED_TEST_MODE
         value: "true"
-      # true: hiện nút giả lập thanh toán - chỉ dùng khi demo
+      # Khóa SePay gửi kèm webhook (Authorization: Apikey <khóa>). Blueprint đã tạo rồi thì Render bỏ qua biến
+      # sync: false mới: thêm biến này tay ở Environment của picklematch2k-api
+      - key: SEPAY_WEBHOOK_API_KEY
+        sync: false
+      # Bản chạy thật: không có nút giả lập thanh toán, đơn chỉ được xác nhận khi SePay báo tiền về
       - key: SEPAY_SIMULATOR_ENABLED
-        value: "true"
+        value: "false"
 
   - type: web
     name: picklematch2k-web

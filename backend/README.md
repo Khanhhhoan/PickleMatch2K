@@ -42,7 +42,7 @@ Backend đọc biến môi trường, rồi tới file `.env` ở thư mục g�
 | `STORAGE_BACKEND` | | `local` (thư mục `uploads/`) hoặc `cloudinary` (cần `CLOUDINARY_*`) |
 | `SEPAY_WEBHOOK_API_KEY` | | Khóa xác thực webhook SePay |
 | `SEPAY_BANK_*`, `SEPAY_ACCOUNT_HOLDER` | | Tài khoản nhận tiền dùng chung khi `SEPAY_UNIFIED_TEST_MODE=true` |
-| `SEPAY_SIMULATOR_ENABLED` | | `true`: bật API giả lập thanh toán cho demo và kiểm thử |
+| `SEPAY_SIMULATOR_ENABLED` | | `true`: bật API giả lập thanh toán khi chạy trên máy (demo, kiểm thử); bản production để `false` |
 
 ## Schema và migration
 
@@ -62,7 +62,8 @@ python -m pytest tests/test_infrastructure.py          # kiểm tra schema khớ
 
 ## Nhóm API
 
-95 thao tác dưới tiền tố `/api/v1`; mô tả chi tiết từng tham số ở `http://localhost:8000/docs`.
+96 thao tác dưới tiền tố `/api/v1`; mô tả chi tiết từng tham số ở `http://localhost:8000/docs` (bản chạy với
+`ENVIRONMENT=production` không mở trang tài liệu này).
 
 | Nhóm | Số thao tác | Nội dung |
 | :--- | :---: | :--- |
@@ -70,7 +71,7 @@ python -m pytest tests/test_infrastructure.py          # kiểm tra schema khớ
 | `users` | 14 | Hồ sơ cá nhân, đổi mật khẩu, chủ sân quản lý nhân viên, quản trị viên quản lý tài khoản |
 | `venues` | 25 | Cụm sân, sân con, bảng giá, giờ mở cửa, ảnh, đánh giá, duyệt cụm sân, đơn sắp tới (chặn bảo trì khi còn khách) |
 | `search` | 2 | Tìm cụm sân, lịch trống theo ngày |
-| `bookings` | 22 | Giữ chỗ tạm, tạo đơn, hủy, đơn tại quầy, check-in, thu tiền, dời lịch, hoàn tiền (mã giao dịch + chứng từ), thống kê |
+| `bookings` | 23 | Giữ chỗ tạm, tạo đơn, hủy, đơn tại quầy, check-in, thu tiền, dời lịch, hoàn tiền (mã giao dịch + chứng từ), thống kê, doanh thu theo ngày |
 | `payments` | 7 | Thông tin chuyển khoản, webhook SePay, giả lập, sổ giao dịch, kết ca tại quầy (ca tính theo lần kết ca, không theo ngày lịch) |
 | `notifications` | 3 | Thông báo trong ứng dụng của người đang đăng nhập: danh sách kèm số chưa đọc, đánh dấu đã đọc |
 | `matches` | 13 | Phòng đấu: tạo trên đơn đã cọc, xin tham gia, chủ phòng duyệt / từ chối, rời, quản trị; mỗi phòng kèm độ phù hợp và cờ "mô hình đề xuất" cho người xem |

@@ -39,7 +39,7 @@ cấu hình rừng ở `backend/app/ml/train_model.py`, kết quả đánh giá 
 | Thời gian thực | WebSocket của FastAPI |
 | Học máy | scikit-learn (Random Forest), pandas, numpy |
 | Xác thực | JWT, mật khẩu băm bằng bcrypt |
-| Thanh toán | SePay VietQR (webhook) và bộ giả lập dùng khi demo |
+| Thanh toán | SePay VietQR (webhook); bộ giả lập chỉ bật khi chạy trên máy |
 | Web | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4 |
 
 ## 3. Cấu trúc thư mục
@@ -140,12 +140,19 @@ lần push lên nhánh `main` Render tự deploy lại.
 - Ổ đĩa trên Render bị xóa mỗi lần khởi động lại: ảnh dùng Cloudinary (đặt sẵn trong `render.yaml`), chứng từ hoàn
   tiền nằm trong CSDL.
 - Mỗi lần khởi động, API tự nâng schema của CSDL lên bản mới nhất (`manage.py migrate --no-backup`).
-- Muốn nhận webhook SePay thật, thêm biến `SEPAY_WEBHOOK_API_KEY` cho API: thiếu khóa này, webhook bị từ chối vì API
-  chạy ở chế độ production.
+- Bản trên Render nhận thanh toán thật: không có nút giả lập (`SEPAY_SIMULATOR_ENABLED=false`), đơn chỉ được xác
+  nhận khi SePay báo tiền về. Cần hai việc làm tay:
+  1. Render → `picklematch2k-api` → Environment: thêm `SEPAY_WEBHOOK_API_KEY` (một chuỗi ngẫu nhiên dài). Blueprint
+     đã tạo rồi thì Render không tự hỏi biến bí mật mới khai trong `render.yaml`.
+  2. SePay → Tích hợp WebHooks: thêm webhook "Có tiền vào" cho tài khoản nhận tiền, URL
+     `https://picklematch2k-api.onrender.com/api/v1/payments/sepay-webhook`, chứng thực API Key với đúng chuỗi trên.
+
+  Thiếu khóa thì webhook bị từ chối (503) vì API chạy ở chế độ production.
 
 ## 6. Tài khoản demo
 
 Sau `python manage.py seed`, mọi tài khoản dùng mật khẩu **`123456`** (chỉ dành cho phát triển và bảo vệ đồ án).
+Bản chạy thật trên Render không dùng mật khẩu này cho tài khoản quản trị viên, chủ sân và nhân viên.
 
 | Vai trò | Email | Ghi chú |
 | :--- | :--- | :--- |
@@ -158,7 +165,7 @@ Sau `python manage.py seed`, mọi tài khoản dùng mật khẩu **`123456`** 
 
 Danh sách đầy đủ 33 tài khoản nằm trong `backend/scripts/seed.py` (các bảng `VENUES` và `PLAYERS`).
 
-## 7. Thanh toán khi demo
+## 7. Thanh toán
 
 - Đặt `SEPAY_SIMULATOR_ENABLED=true` trong `.env` rồi khởi động lại API: hộp thoại thanh toán hiện nút
   **giả lập chuyển khoản**, đơn được xác nhận qua đúng luồng xử lý của webhook thật.
@@ -267,7 +274,7 @@ Sau khi nâng cấp:
   (nạp bằng `python manage.py seed --feedback`), không phải khảo sát người chơi thật. Thu thập câu trả lời thật qua
   trang khảo sát (`/survey`) là hướng phát triển: các câu trả lời được lưu riêng, và khi đủ 300 nhãn thật thì lệnh
   `python manage.py train-model` tự chuyển sang huấn luyện bằng nhãn thật.
-- Tài liệu Swagger (`/docs`) đang mở công khai; nên tắt hoặc chặn khi triển khai thật.
+- Tài liệu Swagger (`/docs`, `/redoc`, `/openapi.json`) chỉ mở khi chạy trên máy; bản `ENVIRONMENT=production` đóng lại.
 
 ## 11. Tài liệu khác
 
