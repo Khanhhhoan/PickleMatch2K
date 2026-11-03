@@ -11,6 +11,7 @@
     "test:e2e:show": "node ../scripts/e2e_smoke.js --show"
   },
   "dependencies": {
+    "leaflet": "1.9.4",
     "next": "16.3.1",
     "qrcode.react": "4.2.0",
     "react": "19.2.8",
@@ -18,6 +19,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/leaflet": "^1.9.22",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

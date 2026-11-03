@@ -1,15 +1,22 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import { fetchApi } from "@/lib/api";
 import {
-  PRESET_LOCATIONS,
-  PresetLocation,
   UserLocation,
   getCurrentGpsPosition,
   reverseGeocode,
   searchAddressGeocode,
   saveLocation,
 } from "@/lib/location";
+import type { MapVenue } from "@/components/LocationMap";
+
+// Leaflet cần window: chỉ nạp bản đồ trên trình duyệt
+const LocationMap = dynamic(() => import("@/components/LocationMap"), {
+  ssr: false,
+  loading: () => <div className="h-60 w-full rounded-xl border border-zinc-200 bg-zinc-50 animate-pulse" />,
+});
 
 interface LocationPickerModalProps {
   isOpen: boolean;
@@ -18,23 +25,12 @@ interface LocationPickerModalProps {
   onSelectLocation: (location: UserLocation) => void;
 }
 
-type AreaTab = "all" | "central" | "east" | "south" | "north";
-
-const AREA_TABS: { id: AreaTab; label: string }[] = [
-  { id: "all", label: "Tất cả 10 sân" },
-  { id: "central", label: "Trung tâm" },
-  { id: "east", label: "Thủ Đức" },
-  { id: "south", label: "Quận 7" },
-  { id: "north", label: "Tân Bình/Khác" },
-];
-
 export default function LocationPickerModal({
   isOpen,
   onClose,
   currentLocation,
   onSelectLocation,
 }: LocationPickerModalProps) {
-  const [activeAreaTab, setActiveAreaTab] = useState<AreaTab>("all");
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
 
@@ -45,6 +41,28 @@ export default function LocationPickerModal({
 
   // Selected candidate in modal
   const [selectedCandidate, setSelectedCandidate] = useState<UserLocation | null>(currentLocation);
+
+  // Mỗi lần mở hộp thoại: bắt đầu từ vị trí đang dùng (vị trí có thể chỉ có sau khi tải xong hồ sơ)
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
+    if (isOpen) setSelectedCandidate(currentLocation);
+  }
+
+  // Các cụm sân của hệ thống, để vẽ lên bản đồ (tải một lần khi hộp thoại mở lần đầu)
+  const [venues, setVenues] = useState<MapVenue[] | null>(null);
+  useEffect(() => {
+    if (!isOpen || venues !== null) return;
+    fetchApi("/venues")
+      .then((list: { id: number; name: string; latitude?: number | null; longitude?: number | null }[]) =>
+        setVenues(
+          (Array.isArray(list) ? list : [])
+            .filter((v) => v.latitude != null && v.longitude != null)
+            .map((v) => ({ id: v.id, name: v.name, lat: Number(v.latitude), lng: Number(v.longitude) }))
+        )
+      )
+      .catch(() => setVenues([]));
+  }, [isOpen, venues]);
 
   if (!isOpen) return null;
 
@@ -65,7 +83,7 @@ export default function LocationPickerModal({
     } catch (err) {
       console.error(err);
       setGpsError(
-        "Không thể lấy GPS từ trình duyệt hoặc thiết bị chưa cấp quyền. Bạn có thể chọn cụm sân bên dưới."
+        "Không thể lấy GPS từ trình duyệt hoặc thiết bị chưa cấp quyền. Bạn có thể bấm chọn một điểm trên bản đồ bên dưới."
       );
     } finally {
       setGpsLoading(false);
@@ -81,7 +99,7 @@ export default function LocationPickerModal({
       const results = await searchAddressGeocode(searchQuery.trim());
       setSearchResults(results);
       if (results.length === 0) {
-        setGpsError("Không tìm thấy địa chỉ phù hợp. Vui lòng thử từ khóa khác hoặc chọn cụm sân có sẵn.");
+        setGpsError("Không tìm thấy địa chỉ phù hợp. Vui lòng thử từ khóa khác hoặc bấm chọn trên bản đồ.");
       }
     } catch {
       setGpsError("Lỗi kết nối khi tìm kiếm địa chỉ.");
@@ -90,14 +108,17 @@ export default function LocationPickerModal({
     }
   };
 
-  const handleSelectPreset = (preset: PresetLocation) => {
-    const loc: UserLocation = {
-      name: `${preset.name} (${preset.district})`,
-      lat: preset.lat,
-      lng: preset.lng,
-      isGps: false,
-    };
-    setSelectedCandidate(loc);
+  // Bấm lên bản đồ / kéo ghim: chọn ngay toạ độ đó, tên địa chỉ được điền sau khi tra xong
+  const handleMapPick = (lat: number, lng: number, venueName?: string) => {
+    const fallback = `Điểm trên bản đồ (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+    setGpsError(null);
+    setSearchResults([]);
+    setSelectedCandidate({ name: venueName ? `Tại ${venueName}` : fallback, lat, lng, isGps: false });
+    if (venueName) return;
+    reverseGeocode(lat, lng).then((name) => {
+      const label = name && !name.startsWith("Tọa độ GPS") ? name : fallback;
+      setSelectedCandidate((current) => (current && current.lat === lat && current.lng === lng ? { ...current, name: label } : current));
+    });
   };
 
   const handleConfirm = () => {
@@ -108,23 +129,6 @@ export default function LocationPickerModal({
     }
   };
 
-  const filteredPresets = PRESET_LOCATIONS.filter((p) => {
-    if (activeAreaTab === "all") return true;
-    if (activeAreaTab === "central") {
-      return ["Quận 1", "Quận 3", "Quận 10"].includes(p.district);
-    }
-    if (activeAreaTab === "east") {
-      return ["TP. Thủ Đức"].includes(p.district);
-    }
-    if (activeAreaTab === "south") {
-      return ["Quận 7"].includes(p.district);
-    }
-    if (activeAreaTab === "north") {
-      return ["Tân Bình", "Phú Nhuận", "Bình Thạnh", "Tân Phú"].includes(p.district);
-    }
-    return true;
-  });
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/40 backdrop-blur-xs animate-fade-in">
       <div className="bg-white rounded-2xl max-w-xl w-full max-h-[85vh] shadow-xl border border-zinc-200/80 overflow-hidden flex flex-col">
@@ -134,7 +138,7 @@ export default function LocationPickerModal({
             <div>
               <h3 className="font-bold text-zinc-900 text-sm">Chọn Vị Trí Của Bạn</h3>
               <p className="text-[11px] text-zinc-500 font-normal">
-                Tính khoảng cách chuẩn xác tới 10 cụm sân Pickleball TP.HCM
+                Dùng để tính khoảng cách từ bạn tới các cụm sân
               </p>
             </div>
           </div>
@@ -186,7 +190,7 @@ export default function LocationPickerModal({
           {/* Search by Address */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-zinc-700 block">
-              Tìm hoặc nhập địa chỉ Google Maps bất kỳ tại TP.HCM:
+              Tìm theo địa chỉ tại TP.HCM:
             </label>
             <form onSubmit={handleSearchSubmit} className="flex gap-2">
               <input
@@ -225,68 +229,15 @@ export default function LocationPickerModal({
             )}
           </div>
 
-          {/* Quick Select by 10 Venues / Districts */}
-          <div className="space-y-2">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-              <label className="text-xs font-medium text-zinc-700 block">
-                Hoặc chọn nhanh 10 cụm sân tại TP.HCM:
-              </label>
-              <div className="flex items-center gap-1 bg-zinc-100 p-0.5 rounded-lg overflow-x-auto no-scrollbar">
-                {AREA_TABS.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setActiveAreaTab(tab.id)}
-                    className={`px-2 py-0.5 text-[10px] font-medium rounded-md whitespace-nowrap transition cursor-pointer ${
-                      activeAreaTab === tab.id
-                        ? "bg-white text-zinc-900 shadow-xs font-semibold"
-                        : "text-zinc-500 hover:text-zinc-800"
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-52 overflow-y-auto p-0.5">
-              {filteredPresets.map((preset, idx) => {
-                const isSelected =
-                  selectedCandidate &&
-                  Math.abs(selectedCandidate.lat - preset.lat) < 0.001 &&
-                  Math.abs(selectedCandidate.lng - preset.lng) < 0.001;
-
-                return (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => handleSelectPreset(preset)}
-                    className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer flex items-center justify-between ${
-                      isSelected
-                        ? "bg-zinc-900 text-white border-zinc-900"
-                        : "bg-white border-zinc-200 text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50 text-xs"
-                    }`}
-                  >
-                    <div className="truncate pr-2">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className={`text-[9px] font-semibold px-1.5 py-0.2 rounded ${isSelected ? "bg-zinc-800 text-zinc-200" : "bg-zinc-100 text-zinc-600"}`}>
-                          {preset.district}
-                        </span>
-                      </div>
-                      <span className="text-xs font-medium block truncate">{preset.name}</span>
-                      <span className={`text-[10px] block truncate ${isSelected ? "text-zinc-400" : "text-zinc-400"}`}>
-                        {preset.address}
-                      </span>
-                    </div>
-                    {isSelected && (
-                      <span className="text-[10px] font-semibold text-white shrink-0 ml-1 px-1 py-0.2 bg-zinc-800 rounded">
-                        Đang chọn
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+          {/* Chọn điểm trên bản đồ */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-zinc-700 block">
+              Hoặc bấm chọn một điểm trên bản đồ:
+            </label>
+            <LocationMap value={selectedCandidate} venues={venues ?? []} onPick={handleMapPick} />
+            <p className="text-[11px] text-zinc-500">
+              Bấm vào bản đồ hoặc kéo ghim đen để đổi vị trí. Chấm xanh là các cụm sân, bấm vào chấm để chọn ngay tại sân đó.
+            </p>
           </div>
 
           {/* Currently Selected Location Summary */}
