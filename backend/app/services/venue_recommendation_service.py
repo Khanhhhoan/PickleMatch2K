@@ -3,7 +3,7 @@ Gợi ý cụm sân theo phương pháp lọc -> chấm điểm đa tiêu chí -
 
     Score = Σ w_i * s_i / Σ w_i     (chỉ trên các tiêu chí có dữ liệu)
 
-    D  Khoảng cách từ người dùng tới sân                                    (tối đa 40 trên thang 100)
+    D  Khoảng cách từ người dùng tới sân, so với các sân ứng viên (gần nhất 1, xa nhất 0)  (tối đa 40 trên thang 100)
     P  Mức giá so với ngân sách (hoặc so với các sân ứng viên khi yêu cầu không kèm ngân sách)   (35)
     T  Tỷ lệ khung giờ còn trống trong ngày/khoảng giờ muốn chơi                                  (25)
 
@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.recommendation_config import BUDGET_OVERRUN_LIMIT, MAX_EXPECTED_DISTANCE_KM, WEIGHTS
+from app.core.recommendation_config import BUDGET_OVERRUN_LIMIT, WEIGHTS
 from app.models.user import PlayerProfile
 from app.models.venue import Venue, VenueStatus
 from app.schemas.recommendation import VenueRecommendationResponse
@@ -28,11 +28,17 @@ def _clamp(value: float) -> float:
     return max(0.0, min(1.0, value))
 
 
-def normalize_distance(dist_km: Optional[float]) -> Optional[float]:
-    """Càng gần càng tốt. None khi chưa biết vị trí (tiêu chí bị loại khỏi phép tính)."""
+def normalize_distance(dist_km: Optional[float], *, min_km: Optional[float] = None,
+                       max_km: Optional[float] = None) -> Optional[float]:
+    """
+    Min-max trên các sân ứng viên: sân gần nhất 1 điểm, xa nhất 0 điểm (mọi sân cách đều nhau thì đều 1).
+    None khi chưa biết vị trí (tiêu chí bị loại khỏi phép tính).
+    """
     if dist_km is None:
         return None
-    return _clamp(1.0 - dist_km / MAX_EXPECTED_DISTANCE_KM)
+    if min_km is None or max_km is None or max_km <= min_km:
+        return 1.0
+    return _clamp((max_km - dist_km) / (max_km - min_km))
 
 
 def normalize_price(price: float, *, budget: Optional[float] = None,
@@ -127,11 +133,13 @@ def get_venue_recommendations(
     # Bước 2 - chuẩn hóa về [0, 1] và tính điểm tổng hợp
     prices = [c["price"] for c in candidates if c["price"] is not None]
     min_price, max_price = (min(prices), max(prices)) if prices else (None, None)
+    distances = [c["dist_km"] for c in candidates if c["dist_km"] is not None]
+    min_km, max_km = (min(distances), max(distances)) if distances else (None, None)
 
     recommendations = []
     for c in candidates:
         scores = {
-            "distance": normalize_distance(c["dist_km"]),
+            "distance": normalize_distance(c["dist_km"], min_km=min_km, max_km=max_km),
             "price": normalize_price(c["price"], budget=budget, min_price=min_price, max_price=max_price)
             if c["price"] is not None else None,
             "time": normalize_time(c["free"], c["total"]),

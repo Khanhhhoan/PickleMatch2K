@@ -9,8 +9,9 @@ WEIGHTS = {
     "time": 0.25,
 }
 
-# Khoảng cách: 0 km -> 1 điểm, từ MAX_EXPECTED_DISTANCE_KM trở lên -> 0 điểm
-MAX_EXPECTED_DISTANCE_KM = 20.0
+# Khoảng cách: chuẩn hóa min-max trên các sân ứng viên, giống cách so giá khi không có ngân sách:
+# sân gần người dùng nhất 1 điểm, sân xa nhất 0 điểm. Đổi vị trí thì thứ hạng đổi theo rõ ràng, thay vì mọi sân
+# trong thành phố (cách nhau vài km) đều được điểm khoảng cách gần như nhau như cách tính cũ 1 - d/20 km.
 
 # Giá (VNĐ/giờ) khi người dùng có ngân sách: giá <= ngân sách -> 1 điểm,
 # giảm tuyến tính về 0 khi giá vượt ngân sách BUDGET_OVERRUN_LIMIT (50%).

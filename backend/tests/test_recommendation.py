@@ -42,9 +42,13 @@ def test_price_score_against_a_budget():
 
 
 def test_distance_and_time_scores():
-    assert rec.normalize_distance(0) == 1.0 and rec.normalize_distance(10) == 0.5
-    assert rec.normalize_distance(20) == 0.0 and rec.normalize_distance(80) == 0.0
-    assert rec.normalize_distance(None) is None
+    # Khoảng cách so giữa các sân ứng viên (min-max): gần nhất 1 điểm, xa nhất 0 điểm, ở giữa tuyến tính
+    assert rec.normalize_distance(2, min_km=2, max_km=10) == 1.0
+    assert rec.normalize_distance(10, min_km=2, max_km=10) == 0.0
+    assert rec.normalize_distance(6, min_km=2, max_km=10) == pytest.approx(0.5)
+    assert rec.normalize_distance(7, min_km=7, max_km=7) == 1.0      # mọi sân cách đều nhau
+    assert rec.normalize_distance(3) == 1.0                           # chỉ một sân biết khoảng cách
+    assert rec.normalize_distance(None, min_km=2, max_km=10) is None
     assert rec.normalize_time(9, 12) == 0.75 and rec.normalize_time(0, 12) == 0.0 and rec.normalize_time(0, 0) == 0.0
 
 
@@ -74,7 +78,7 @@ def test_anonymous_request_without_location_uses_only_available_criteria(client,
 def test_distance_radius_and_budget(client, world):
     near_a, order = recommend(client, latitude=10.78, longitude=106.70)
     assert near_a["Sân A"]["distance_km"] == 0 and near_a["Sân A"]["distance_score"] == 1.0
-    assert 0 < near_a["Sân B"]["distance_score"] < 1 and near_a["Sân B"]["distance_km"] > 5
+    assert near_a["Sân B"]["distance_score"] == 0.0 and near_a["Sân B"]["distance_km"] > 5   # sân xa nhất trong các ứng viên
     assert order[0] == "Sân A" and near_a["Sân A"]["criteria_used"] == ["distance", "price", "time"]
 
     _, within = recommend(client, latitude=10.78, longitude=106.70, radius_km=3)
@@ -96,6 +100,16 @@ def test_profile_supplies_location_while_budget_comes_from_the_request(client, d
     asked, order = recommend(client, player, budget_max=500000)
     assert asked["Sân A"]["price_score"] == asked["Sân B"]["price_score"] == 1.0
     assert order[0] == "Sân B"                                                              # cùng giá đạt, sân gần hơn đứng đầu
+
+
+def test_changing_the_location_changes_the_top_suggestion(client, world):
+    # Sân B đắt gấp đôi sân A. Đứng tại sân A thì A đứng đầu; đứng tại sân B thì B đứng đầu dù đắt hơn,
+    # vì khoảng cách (40) được so giữa các sân chứ không chia cho một mốc 20 km cố định.
+    at_a, order_a = recommend(client, latitude=10.78, longitude=106.70)
+    at_b, order_b = recommend(client, latitude=10.85, longitude=106.75)
+    assert order_a[0] == "Sân A" and order_b[0] == "Sân B"
+    assert at_b["Sân B"]["distance_score"] == 1.0 and at_b["Sân B"]["price_score"] == 0.0
+    assert at_b["Sân B"]["score"] == pytest.approx(0.40 + 0.25) and at_b["Sân A"]["score"] == pytest.approx(0.35 + 0.25)
 
 
 def test_time_score_reflects_remaining_free_slots(client, world, clock):
