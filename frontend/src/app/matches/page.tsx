@@ -8,6 +8,7 @@ import { formatDisplayDate } from "@/lib/booking";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/components/Toast";
 import { useWebSocket } from "@/lib/use-websocket";
+import Avatar from "@/components/Avatar";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { getSavedLocation } from "@/lib/location";
@@ -20,6 +21,7 @@ interface Participant {
   user_name?: string | null;
   skill_level?: number | null;
   play_style?: string | null;
+  avatar_url?: string | null;
   phone?: string | null; // đầy đủ giữa các thành viên đã được duyệt; người khác nhận số đã che (0901***233)
 }
 
@@ -41,6 +43,7 @@ interface Match {
   creator_name?: string | null;
   creator_skill_level?: number | null;
   creator_play_style?: string | null;
+  creator_avatar_url?: string | null;
   participants: Participant[];
   accepted_count: number; // thành viên đã được duyệt, gồm chủ phòng
   my_status?: Participant["status"] | null; // trạng thái của chính mình trong phòng
@@ -295,9 +298,12 @@ function MatchesContent() {
         {/* Dòng tóm tắt luôn hiện; ghi chú, danh sách thành viên và các nhãn phụ nằm trong phần chi tiết */}
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
           <div className="text-xs sm:text-sm text-zinc-600 flex-1 min-w-[15rem] space-y-0.5">
-            <p>
-              Chủ phòng <span className="font-semibold text-zinc-900">{m.creator_name || `Người chơi #${m.creator_id}`}</span>
-              {isHost ? " (bạn)" : ""}
+            <p className="flex items-center gap-1.5">
+              <Avatar name={m.creator_name} url={m.creator_avatar_url} className="w-6 h-6 text-[10px] bg-zinc-200 text-zinc-700" />
+              <span>
+                Chủ phòng <span className="font-semibold text-zinc-900">{m.creator_name || `Người chơi #${m.creator_id}`}</span>
+                {isHost ? " (bạn)" : ""}
+              </span>
             </p>
             <p>
               {m.required_skill != null ? `Trình độ khoảng ${m.required_skill.toFixed(1)}` : "Mọi trình độ"} • {m.accepted_count}/
@@ -350,9 +356,12 @@ function MatchesContent() {
             <ul className="space-y-1">
               {members.map((p) => (
                 <li key={p.id} className="flex items-center justify-between gap-3 text-xs bg-zinc-50 border border-zinc-100 rounded-lg px-3 py-1.5">
-                  <span className="font-semibold text-zinc-900 truncate">
-                    {p.user_name || `Người chơi #${p.user_id}`}
-                    {p.user_id === m.creator_id && <span className="ml-1.5 text-[10px] font-bold text-amber-700">Chủ phòng</span>}
+                  <span className="flex items-center gap-2 min-w-0">
+                    <Avatar name={p.user_name} url={p.avatar_url} className="w-6 h-6 text-[10px] bg-zinc-200 text-zinc-700" />
+                    <span className="font-semibold text-zinc-900 truncate">
+                      {p.user_name || `Người chơi #${p.user_id}`}
+                      {p.user_id === m.creator_id && <span className="ml-1.5 text-[10px] font-bold text-amber-700">Chủ phòng</span>}
+                    </span>
                   </span>
                   <span className="text-zinc-500 shrink-0">
                     {p.skill_level != null ? `${p.skill_level.toFixed(1)} • ` : ""}
@@ -376,10 +385,13 @@ function MatchesContent() {
                     key={p.id}
                     className="flex flex-wrap items-center justify-between gap-2 text-xs bg-amber-50/60 border border-amber-100 rounded-lg px-3 py-2"
                   >
-                    <span className="min-w-0">
-                      <span className="font-semibold text-zinc-900">{p.user_name || `Người chơi #${p.user_id}`}</span>
-                      <span className="text-zinc-500">
-                        {p.skill_level != null ? ` • ${p.skill_level.toFixed(1)}` : ""} • {playStyleLabel(p.play_style, true)}
+                    <span className="min-w-0 flex items-center gap-2">
+                      <Avatar name={p.user_name} url={p.avatar_url} className="w-6 h-6 text-[10px] bg-amber-100 text-amber-800" />
+                      <span className="min-w-0">
+                        <span className="font-semibold text-zinc-900">{p.user_name || `Người chơi #${p.user_id}`}</span>
+                        <span className="text-zinc-500">
+                          {p.skill_level != null ? ` • ${p.skill_level.toFixed(1)}` : ""} • {playStyleLabel(p.play_style, true)}
+                        </span>
                       </span>
                     </span>
                     <span className="flex gap-1.5 shrink-0">

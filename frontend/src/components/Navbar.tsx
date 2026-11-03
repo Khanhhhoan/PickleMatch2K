@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/components/Toast";
 
+import Avatar from "@/components/Avatar";
 import Logo from "@/components/Logo";
 import NotificationBell from "@/components/NotificationBell";
 
@@ -131,9 +132,7 @@ export default function Navbar() {
                   onClick={() => setMenuOpen(!menuOpen)}
                   className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-zinc-100 border border-zinc-200 transition-all cursor-pointer"
                 >
-                  <div className="w-7 h-7 rounded-full bg-zinc-950 flex items-center justify-center text-white font-bold text-xs">
-                    {displayName[0].toUpperCase()}
-                  </div>
+                  <Avatar name={displayName} url={user.player_profile?.avatar_url} className="w-7 h-7 bg-zinc-950 text-white text-xs" />
                   <span className="text-sm font-semibold text-zinc-900 max-w-[120px] truncate">
                     {displayName}
                   </span>
@@ -145,7 +144,9 @@ export default function Navbar() {
                 {menuOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-                    <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-zinc-200 py-2 z-50 animate-in fade-in">
+                    {/* top-full: neo ngay dưới nút tài khoản. Thiếu nó, khối absolute trong hàng flex căn giữa (items-center)
+                        bị đặt giữa theo chiều dọc, che nút và tràn lên trên đầu trang */}
+                    <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl shadow-xl border border-zinc-200 py-2 z-50 animate-in fade-in">
                       <div className="px-4 py-2.5 border-b border-zinc-100">
                         <p className="text-[11px] text-zinc-400 font-medium">Tài khoản hiện tại</p>
                         <p className="text-sm font-bold text-zinc-950 truncate">{user.email}</p>
@@ -227,9 +228,7 @@ export default function Navbar() {
             {user && <NotificationBell />}
             {user ? (
               <Link href="/profile" className="flex items-center p-1.5 rounded-full hover:bg-zinc-100">
-                <div className="w-8 h-8 rounded-full bg-zinc-950 flex items-center justify-center text-white font-bold text-xs">
-                  {displayName[0].toUpperCase()}
-                </div>
+                <Avatar name={displayName} url={user.player_profile?.avatar_url} className="w-8 h-8 bg-zinc-950 text-white text-xs" />
               </Link>
             ) : (
               <Link

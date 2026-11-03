@@ -1,6 +1,7 @@
 from datetime import time
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session, selectinload
 
 from app.api import deps
@@ -19,12 +20,14 @@ from app.schemas.user import (
     StaffUpdate,
     UserResponse,
 )
+from app.services import storage_service
 from app.services.user_service import create_user, delete_or_deactivate_user, get_user_by_email
 
 router = APIRouter()
 
 admin_only = deps.RoleChecker([UserRole.ADMIN.value])
 owner_or_admin = deps.RoleChecker([UserRole.OWNER.value, UserRole.ADMIN.value])
+player_only = deps.RoleChecker([UserRole.PLAYER.value])
 
 PLAYER_FIELDS = {
     "full_name", "phone", "skill_level", "play_style", "matches_played", "matches_won",
@@ -98,6 +101,47 @@ def update_my_profile(
             raise HTTPException(status_code=400, detail="Số trận thắng không thể lớn hơn số trận đã chơi.")
 
     db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
+@router.post("/me/avatar", response_model=UserResponse)
+async def upload_my_avatar(
+    file: UploadFile = File(...),
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(player_only),
+):
+    """
+    Ảnh đại diện của người chơi: ảnh được kiểm tra theo nội dung, cắt vuông, thu nhỏ và bỏ siêu dữ liệu (xem
+    storage_service.make_avatar). Đường dẫn ảnh chỉ do máy chủ đặt, không sửa được qua form hồ sơ. Ảnh cũ bị xóa.
+    """
+    limit = storage_service.max_image_bytes()
+    contents = await file.read(limit + 1)
+    if len(contents) > limit:
+        raise HTTPException(status_code=400, detail="Dung lượng ảnh vượt quá giới hạn cho phép.")
+    new_url = await run_in_threadpool(storage_service.save_avatar, current_user.id, contents)
+
+    profile = _ensure_profile(db, current_user)
+    old_url = profile.avatar_url
+    profile.avatar_url = new_url
+    db.commit()
+    if old_url and old_url != new_url:
+        await run_in_threadpool(storage_service.delete_avatar_file, old_url)
+    db.refresh(current_user)
+    return current_user
+
+
+@router.delete("/me/avatar", response_model=UserResponse)
+def delete_my_avatar(
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(player_only),
+):
+    """Bỏ ảnh đại diện: giao diện quay về chữ cái đầu của tên."""
+    profile = _ensure_profile(db, current_user)
+    old_url = profile.avatar_url
+    profile.avatar_url = None
+    db.commit()
+    storage_service.delete_avatar_file(old_url)
     db.refresh(current_user)
     return current_user
 

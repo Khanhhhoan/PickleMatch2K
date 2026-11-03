@@ -80,6 +80,11 @@ class Match(Base):
         return profile.play_style if profile else None
 
     @property
+    def creator_avatar_url(self) -> Optional[str]:
+        profile = self.creator.player_profile if self.creator else None
+        return profile.avatar_url if profile else None
+
+    @property
     def venue_name(self) -> str:
         return self.venue.name if self.venue and self.venue.name else ""
 
@@ -116,6 +121,11 @@ class MatchParticipant(Base):
     def play_style(self) -> Optional[str]:
         profile = self.user.player_profile if self.user else None
         return profile.play_style if profile else None
+
+    @property
+    def avatar_url(self) -> Optional[str]:
+        profile = self.user.player_profile if self.user else None
+        return profile.avatar_url if profile else None
 
     @property
     def phone(self) -> str:

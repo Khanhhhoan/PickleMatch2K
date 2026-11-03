@@ -7,6 +7,7 @@ export interface PlayerProfile {
   user_id: number;
   full_name?: string | null;
   phone?: string | null;
+  avatar_url?: string | null;
   skill_level?: number | null;
   play_style?: string | null;
   matches_played?: number | null;

@@ -16,6 +16,7 @@ class MatchParticipantResponse(BaseModel):
     user_name: Optional[str] = None
     skill_level: Optional[float] = None
     play_style: Optional[str] = None
+    avatar_url: Optional[str] = None
     # Số đầy đủ chỉ trả về giữa các thành viên đã được duyệt; người khác nhận số đã che (0901***233)
     phone: Optional[str] = None
 
@@ -100,6 +101,7 @@ class MatchResponse(BaseModel):
     creator_name: Optional[str] = None
     creator_skill_level: Optional[float] = None
     creator_play_style: Optional[str] = None
+    creator_avatar_url: Optional[str] = None
     participants: List[MatchParticipantResponse] = []
     # Số thành viên đã được duyệt (gồm chủ phòng): con số "đã có / cần" của phòng
     accepted_count: int = 0

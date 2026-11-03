@@ -4,8 +4,9 @@ import React, { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { fetchApi, formatVND, parseUtcDate, errorMessage } from "@/lib/api";
-import { PlayerProfile, useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/components/Toast";
+import Avatar from "@/components/Avatar";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import LocationPickerModal from "@/components/LocationPickerModal";
@@ -66,6 +67,9 @@ const INPUT = "w-full px-3 py-1.5 border border-zinc-200 rounded-lg text-xs text
 const FILTER_SELECT =
   "px-2.5 py-1.5 rounded-lg border border-zinc-200 bg-white text-xs font-semibold text-zinc-800 cursor-pointer focus:outline-none focus:border-zinc-900";
 
+// Bằng giới hạn của máy chủ (MAX_IMAGE_SIZE_MB): báo ngay thay vì tải cả tệp lên rồi mới bị từ chối
+const MAX_AVATAR_BYTES = 10 * 1024 * 1024;
+
 type TransactionFilter = "all" | "paid" | "refund";
 type TransactionOrder = "newest" | "oldest";
 
@@ -81,6 +85,8 @@ function ProfileContent() {
   const [saving, setSaving] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+
+  const [avatarBusy, setAvatarBusy] = useState(false);
 
   const [showPasswordSection, setShowPasswordSection] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current_password: "", new_password: "", confirm_password: "" });
@@ -99,10 +105,11 @@ function ProfileContent() {
   }, [user, isLoading, router]);
 
   // Nạp biểu mẫu từ hồ sơ thật mỗi khi hồ sơ đổi (lúc mở trang, sau khi lưu); trường chưa khai để trống,
-  // không điền giá trị mặc định thay người dùng
-  const [formProfile, setFormProfile] = useState<PlayerProfile | null>(null);
-  if (profile && profile !== formProfile) {
-    setFormProfile(profile);
+  // không điền giá trị mặc định thay người dùng. Chỉ đổi ảnh đại diện thì không nạp lại, để không mất phần đang sửa dở.
+  const formSource = profile ? JSON.stringify({ ...profile, avatar_url: null }) : null;
+  const [formSourceSeen, setFormSourceSeen] = useState<string | null>(null);
+  if (profile && formSource !== formSourceSeen) {
+    setFormSourceSeen(formSource);
     setForm({
       full_name: profile.full_name || "",
       phone: profile.phone || "",
@@ -214,6 +221,42 @@ function ProfileContent() {
     }
   };
 
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // chọn lại đúng tệp đó lần sau vẫn được
+    if (!file) return;
+    if (file.size > MAX_AVATAR_BYTES) {
+      toastError("Ảnh lớn hơn 10MB, hãy chọn ảnh nhỏ hơn.");
+      return;
+    }
+    const body = new FormData();
+    body.append("file", file);
+    setAvatarBusy(true);
+    try {
+      await fetchApi("/users/me/avatar", { method: "POST", body });
+      await refreshUser();
+      toastSuccess("Đã cập nhật ảnh đại diện.");
+    } catch (err) {
+      toastError(errorMessage(err, "Không tải được ảnh đại diện. Vui lòng thử lại."));
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    if (!window.confirm("Xóa ảnh đại diện?")) return;
+    setAvatarBusy(true);
+    try {
+      await fetchApi("/users/me/avatar", { method: "DELETE" });
+      await refreshUser();
+      toastSuccess("Đã xóa ảnh đại diện.");
+    } catch (err) {
+      toastError(errorMessage(err, "Không xóa được ảnh đại diện."));
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (passwordForm.new_password.length < 6) {
@@ -293,15 +336,35 @@ function ProfileContent() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <div className="md:col-span-1 space-y-3.5">
               <div className="rounded-2xl p-4 sm:p-5 bg-zinc-900 text-white border border-zinc-800 shadow-sm">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-11 h-11 rounded-full bg-zinc-800 text-white font-bold text-lg flex items-center justify-center border border-zinc-700">
-                    {displayName[0]?.toUpperCase()}
-                  </div>
+                <div className="flex items-center gap-3">
+                  <Avatar name={displayName} url={profile?.avatar_url} className="w-14 h-14 text-xl bg-zinc-800 text-white border border-zinc-700" />
                   <div className="min-w-0">
                     <h3 className="font-bold text-sm text-white line-clamp-1">{displayName}</h3>
                     <p className="text-[11px] text-zinc-400 truncate">{user.email}</p>
                   </div>
                 </div>
+                {user.role === "PLAYER" && (
+                  <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                    <label
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/10 hover:bg-white/20 text-white transition cursor-pointer ${
+                        avatarBusy ? "opacity-50 pointer-events-none" : ""
+                      }`}
+                    >
+                      {avatarBusy ? "Đang xử lý ảnh..." : profile?.avatar_url ? "Đổi ảnh đại diện" : "Thêm ảnh đại diện"}
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={avatarBusy} onChange={handleAvatarChange} />
+                    </label>
+                    {profile?.avatar_url && (
+                      <button
+                        type="button"
+                        onClick={handleAvatarRemove}
+                        disabled={avatarBusy}
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-zinc-300 hover:text-white hover:bg-white/10 transition cursor-pointer disabled:opacity-50"
+                      >
+                        Xóa ảnh
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-1.5 mt-3.5 text-center">
                   <Stat label="Trình độ" value={profile?.skill_level != null ? Number(profile.skill_level).toFixed(1) : "—"} />

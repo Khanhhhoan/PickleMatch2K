@@ -22,6 +22,14 @@ os.makedirs(VENUE_UPLOAD_DIR, exist_ok=True)
 
 LOCAL_URL_PREFIX = "/uploads/venues/"
 
+# Ảnh đại diện của người chơi: luôn được vẽ lại thành ảnh vuông nhỏ (xem make_avatar) rồi lưu như ảnh cụm sân
+AVATAR_UPLOAD_DIR = os.path.join(UPLOAD_DIR, "avatars")
+os.makedirs(AVATAR_UPLOAD_DIR, exist_ok=True)
+AVATAR_URL_PREFIX = "/uploads/avatars/"
+AVATAR_SIZE = 320
+# Ảnh nén rất nhỏ vẫn có thể bung ra hàng trăm triệu điểm ảnh khi giải mã: chặn trước khi xử lý
+AVATAR_MAX_PIXELS = 40_000_000
+
 # Chỉ nhận ảnh bitmap. SVG bị loại vì có thể chứa mã script và được phục vụ cùng origin với API.
 _PIL_FORMAT_TO_EXT = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp", "GIF": ".gif"}
 
@@ -82,7 +90,7 @@ def save_venue_image(venue_id: int, contents: bytes) -> str:
     ext = detect_image_extension(contents)
 
     if _cloudinary_enabled():
-        cloud_url = _upload_cloudinary(contents, venue_id, ext)
+        cloud_url = _upload_cloudinary(contents, f"picklematch2k/venues/v{venue_id}_{uuid.uuid4().hex[:10]}", ext)
         if cloud_url:
             return cloud_url
         logger.warning("Upload Cloudinary thất bại, lưu ảnh cục bộ thay thế.")
@@ -100,23 +108,79 @@ def delete_venue_image_file(image_url: str) -> bool:
     """
     if not image_url:
         return False
-
     if image_url.startswith(LOCAL_URL_PREFIX):
-        filename = os.path.basename(image_url)
-        safe_path = os.path.abspath(os.path.join(VENUE_UPLOAD_DIR, filename))
-        if os.path.commonpath([VENUE_UPLOAD_DIR, safe_path]) != VENUE_UPLOAD_DIR:
-            logger.warning("Chặn yêu cầu xóa file ngoài thư mục ảnh: %s", image_url)
-            return False
-        if os.path.exists(safe_path):
-            try:
-                os.remove(safe_path)
-                return True
-            except OSError as exc:
-                logger.error("Không xóa được file ảnh %s: %s", safe_path, exc)
-        return False
-
+        return _delete_local_file(image_url, VENUE_UPLOAD_DIR)
     if "res.cloudinary.com" in image_url and _cloudinary_enabled():
         return _delete_cloudinary(image_url)
+    return False
+
+
+def _delete_local_file(url: str, directory: str) -> bool:
+    """Xóa tệp tên lấy từ url, chỉ khi tệp nằm đúng trong thư mục được phép."""
+    filename = os.path.basename(url)
+    safe_path = os.path.abspath(os.path.join(directory, filename))
+    if os.path.commonpath([directory, safe_path]) != directory:
+        logger.warning("Chặn yêu cầu xóa file ngoài thư mục ảnh: %s", url)
+        return False
+    if os.path.exists(safe_path):
+        try:
+            os.remove(safe_path)
+            return True
+        except OSError as exc:
+            logger.error("Không xóa được file ảnh %s: %s", safe_path, exc)
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Ảnh đại diện của người chơi
+# ---------------------------------------------------------------------------
+def make_avatar(contents: bytes) -> bytes:
+    """
+    Kiểm tra đúng là ảnh (theo nội dung), xoay theo hướng chụp ghi trong EXIF, cắt vuông phần giữa và thu về
+    AVATAR_SIZE x AVATAR_SIZE dạng WEBP. Ảnh được vẽ lại từ điểm ảnh nên mọi siêu dữ liệu (EXIF có thể chứa toạ độ GPS
+    nơi chụp, tên máy...) đều bị bỏ, và tệp chỉ còn vài chục KB dù ảnh gốc chụp bằng điện thoại.
+    """
+    detect_image_extension(contents)
+    from PIL import Image, ImageOps
+
+    with Image.open(io.BytesIO(contents)) as img:
+        if img.width * img.height > AVATAR_MAX_PIXELS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ảnh có kích thước quá lớn, hãy chọn ảnh nhỏ hơn.")
+        upright = ImageOps.exif_transpose(img)
+        transparent = upright.mode in ("RGBA", "LA", "PA") or "transparency" in upright.info
+        square = ImageOps.fit(upright.convert("RGBA" if transparent else "RGB"), (AVATAR_SIZE, AVATAR_SIZE),
+                              method=Image.Resampling.LANCZOS)
+    output = io.BytesIO()
+    square.save(output, format="WEBP", quality=85)
+    return output.getvalue()
+
+
+def save_avatar(user_id: int, contents: bytes) -> str:
+    """
+    Xử lý (make_avatar) rồi lưu ảnh đại diện theo STORAGE_BACKEND như ảnh cụm sân; trả về đường dẫn để hiển thị.
+    Hàm này chặn (xử lý ảnh, ghi đĩa / gọi HTTP) nên endpoint async phải gọi qua run_in_threadpool.
+    """
+    avatar = make_avatar(contents)
+    token = uuid.uuid4().hex[:12]
+    if _cloudinary_enabled():
+        cloud_url = _upload_cloudinary(avatar, f"picklematch2k/avatars/u{user_id}_{token}", ".webp")
+        if cloud_url:
+            return cloud_url
+        logger.warning("Upload Cloudinary thất bại, lưu ảnh đại diện cục bộ thay thế.")
+    filename = f"user_{user_id}_{token}.webp"
+    with open(os.path.join(AVATAR_UPLOAD_DIR, filename), "wb") as f:
+        f.write(avatar)
+    return f"{AVATAR_URL_PREFIX}{filename}"
+
+
+def delete_avatar_file(avatar_url: Optional[str]) -> bool:
+    """Xóa tệp ảnh đại diện cũ; chỉ xóa tệp do hệ thống lưu (thư mục ảnh đại diện hoặc thư mục avatars trên Cloudinary)."""
+    if not avatar_url:
+        return False
+    if avatar_url.startswith(AVATAR_URL_PREFIX):
+        return _delete_local_file(avatar_url, AVATAR_UPLOAD_DIR)
+    if "res.cloudinary.com" in avatar_url and "/picklematch2k/avatars/" in avatar_url and _cloudinary_enabled():
+        return _delete_cloudinary(avatar_url)
     return False
 
 
@@ -125,18 +189,15 @@ def _cloudinary_signature(params: dict) -> str:
     return hashlib.sha1(to_sign.encode("utf-8")).hexdigest()
 
 
-def _upload_cloudinary(contents: bytes, venue_id: int, ext: str) -> Optional[str]:
+def _upload_cloudinary(contents: bytes, public_id: str, ext: str) -> Optional[str]:
     try:
         import httpx
 
-        params = {
-            "public_id": f"picklematch2k/venues/v{venue_id}_{uuid.uuid4().hex[:10]}",
-            "timestamp": int(time.time()),
-        }
+        params = {"public_id": public_id, "timestamp": int(time.time())}
         data = {**params, "api_key": settings.CLOUDINARY_API_KEY, "signature": _cloudinary_signature(params)}
         url = f"https://api.cloudinary.com/v1_1/{settings.CLOUDINARY_CLOUD_NAME}/image/upload"
         with httpx.Client(timeout=15.0) as client:
-            resp = client.post(url, data=data, files={"file": (f"venue{ext}", contents)})
+            resp = client.post(url, data=data, files={"file": (f"image{ext}", contents)})
         if resp.status_code in (200, 201):
             return resp.json().get("secure_url")
         logger.warning("Cloudinary trả về mã %s", resp.status_code)
@@ -146,7 +207,7 @@ def _upload_cloudinary(contents: bytes, venue_id: int, ext: str) -> Optional[str
 
 
 def _delete_cloudinary(image_url: str) -> bool:
-    match = re.search(r"/upload/(?:v\d+/)?(picklematch2k/venues/[^.]+)", image_url)
+    match = re.search(r"/upload/(?:v\d+/)?(picklematch2k/(?:venues|avatars)/[^.]+)", image_url)
     if not match:
         return False
     try:
