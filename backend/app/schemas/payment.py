@@ -81,18 +81,45 @@ class PaymentTransactionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class DailyRevenueResponse(BaseModel):
-    """Doanh thu một ngày (giờ Việt Nam) của các cụm sân đang quản lý, lấy từ sổ giao dịch."""
-    date: date
+class RevenueTotals(BaseModel):
+    """Doanh thu của các cụm sân đang quản lý trong một ngày/tháng/năm (giờ Việt Nam), lấy từ sổ giao dịch."""
     venue_names: List[str]
     collected: int        # tiền cọc + thu tại sân, mọi hình thức
     cash: int             # phần thu bằng tiền mặt
     transfer: int         # phần thu bằng chuyển khoản
     refunded: int         # tiền đã hoàn cho khách
     net: int              # thực thu = collected - refunded
-    plays_total: int      # lượt chơi trong ngày: đơn đã xác nhận, đang chơi hoặc đã xong
+    plays_total: int      # lượt chơi trong kỳ: đơn đã xác nhận, đang chơi hoặc đã xong
     plays_arrived: int    # trong đó khách đã nhận sân
+
+
+class DailyRevenueResponse(RevenueTotals):
+    date: date
     transactions: List[PaymentTransactionResponse]
+
+
+class RevenueAmounts(BaseModel):
+    collected: int
+    refunded: int
+    net: int
+
+
+class DayRevenue(RevenueAmounts):
+    date: date
+
+
+class MonthRevenue(RevenueAmounts):
+    month: str            # YYYY-MM
+
+
+class MonthlyRevenueResponse(RevenueTotals):
+    month: str            # YYYY-MM
+    days: List[DayRevenue]  # mọi ngày của tháng, kể cả ngày không phát sinh
+
+
+class YearlyRevenueResponse(RevenueTotals):
+    year: int
+    months: List[MonthRevenue]  # đủ 12 tháng
 
 
 class ShiftClosingCreate(BaseModel):

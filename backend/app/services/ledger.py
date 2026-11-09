@@ -137,6 +137,32 @@ def daily_net_revenue(db: Session, *, venue_ids: Optional[List[int]]) -> Dict[da
     return {row[0]: vnd(row[1]) for row in rows}
 
 
+def amounts_by_period(db: Session, *, venue_ids: Optional[List[int]], since, until, unit: str) -> Dict[date, tuple]:
+    """Khoản thu và khoản hoàn {kỳ: (thu, hoàn)} của các giao dịch thành công trong [since, until), gom theo giờ Việt Nam.
+
+    unit "day": mỗi ngày một dòng; unit "month": mỗi tháng một dòng, khóa là ngày 1 của tháng. Kỳ không phát sinh gì
+    thì không có dòng.
+    """
+    if unit not in ("day", "month"):
+        raise ValueError(f"unit không hợp lệ: {unit}")
+    booking_ids = venue_booking_ids_subquery(db, venue_ids)
+    period = func.date(func.date_trunc(unit, func.timezone(VN_TZ_NAME, PaymentTransaction.created_at)))
+    incoming = case((PaymentTransaction.kind.in_(INCOMING_KINDS), PaymentTransaction.amount_in), else_=0)
+    refunded = case((PaymentTransaction.kind == PaymentKind.REFUND.value, PaymentTransaction.amount_in), else_=0)
+    rows = (
+        db.query(period, func.sum(incoming), func.sum(refunded))
+        .filter(
+            PaymentTransaction.status == "SUCCESS",
+            PaymentTransaction.booking_id.in_(db.query(booking_ids.c.booking_id)),
+            PaymentTransaction.created_at >= since,
+            PaymentTransaction.created_at < until,
+        )
+        .group_by(period)
+        .all()
+    )
+    return {row[0]: (vnd(row[1]), vnd(row[2])) for row in rows}
+
+
 def booking_venue_subquery(db: Session):
     """Subquery (booking_id, venue_id): cụm sân của từng đơn.
 

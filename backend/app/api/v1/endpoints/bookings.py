@@ -1,5 +1,6 @@
-from datetime import date
-from typing import Dict, List, Optional
+import calendar
+from datetime import date, timedelta
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from sqlalchemy import func
@@ -26,7 +27,7 @@ from app.schemas.booking import (
     ReleaseSlotRequest,
     RescheduleRequest,
 )
-from app.schemas.payment import DailyRevenueResponse
+from app.schemas.payment import DailyRevenueResponse, MonthlyRevenueResponse, YearlyRevenueResponse
 from app.services import booking_service, ledger, storage_service
 from app.services.availability_service import is_valid_slot
 from app.services.booking_service import SlotRequest
@@ -310,16 +311,65 @@ def _count_bookings(db: Session, venue_ids: Optional[List[int]], *filters) -> in
 ARRIVED_STATUSES = (BookingStatus.CHECKED_IN.value, BookingStatus.COMPLETED.value)  # khách đã nhận sân
 
 
-def _plays_on(db: Session, venue_ids: List[int], day: date, *statuses: str) -> int:
-    """Số đơn có lượt chơi trong một ngày trên các cụm sân cho trước, ở các trạng thái cho trước."""
+def _plays_between(db: Session, venue_ids: List[int], first: date, last: date, *statuses: str) -> int:
+    """Số đơn có lượt chơi trong các ngày [first, last] trên các cụm sân cho trước, ở các trạng thái cho trước."""
     return (
         db.query(Booking.id)
         .join(BookingDetail, BookingDetail.booking_id == Booking.id)
         .join(Court, Court.id == BookingDetail.court_id)
-        .filter(Court.venue_id.in_(venue_ids or [0]), BookingDetail.date == day, Booking.status.in_(statuses))
+        .filter(
+            Court.venue_id.in_(venue_ids or [0]),
+            BookingDetail.date.between(first, last),
+            Booking.status.in_(statuses),
+        )
         .distinct()
         .count()
     )
+
+
+def _managed_venues(db: Session, current_user: User) -> List[Venue]:
+    """Các cụm sân người dùng đang quản lý (admin: mọi cụm sân), theo thứ tự id."""
+    venue_ids = managed_venue_ids(db, current_user)
+    venue_query = db.query(Venue)
+    if venue_ids is not None:
+        venue_query = venue_query.filter(Venue.id.in_(venue_ids or [0]))
+    return venue_query.order_by(Venue.id.asc()).all()
+
+
+def _revenue_totals(db: Session, venues: List[Venue], first: date, last: date) -> dict:
+    """Các khoản thu, hoàn và số lượt chơi của các cụm sân trong các ngày [first, last] (giờ Việt Nam), từ sổ giao dịch."""
+    scope = [v.id for v in venues]
+    since, until = vn_day_bounds_utc(first)[0], vn_day_bounds_utc(last)[1]
+
+    def total(kinds: tuple, method: Optional[str] = None) -> int:
+        return ledger.sum_transactions(db, venue_ids=scope, kinds=kinds, method=method, since=since, until=until)
+
+    collected = total(ledger.INCOMING_KINDS)
+    refunded = total((PaymentKind.REFUND.value,))
+    return {
+        "venue_names": [v.name for v in venues],
+        "collected": collected,
+        "cash": total(ledger.INCOMING_KINDS, PaymentMethod.CASH.value),
+        "transfer": total(ledger.INCOMING_KINDS, PaymentMethod.BANK_TRANSFER.value),
+        "refunded": refunded,
+        "net": collected - refunded,
+        "plays_total": _plays_between(db, scope, first, last, BookingStatus.CONFIRMED.value, *ARRIVED_STATUSES),
+        "plays_arrived": _plays_between(db, scope, first, last, *ARRIVED_STATUSES),
+    }
+
+
+def _amounts_by(db: Session, venues: List[Venue], first: date, last: date, unit: str) -> Dict[date, Tuple[int, int]]:
+    """Khoản thu và khoản hoàn từng ngày/tháng trong các ngày [first, last] (giờ Việt Nam)."""
+    since, until = vn_day_bounds_utc(first)[0], vn_day_bounds_utc(last)[1]
+    return ledger.amounts_by_period(db, venue_ids=[v.id for v in venues], since=since, until=until, unit=unit)
+
+
+def _amounts(pair: Optional[Tuple[int, int]]) -> dict:
+    collected, refunded = pair or (0, 0)
+    return {"collected": collected, "refunded": refunded, "net": collected - refunded}
+
+
+STAFF_TODAY_ONLY = "Nhân viên chỉ xem được doanh thu của hôm nay."
 
 
 def _daily_series(revenue: Dict[date, int], created: Dict[date, int]) -> List[dict]:
@@ -368,11 +418,7 @@ def _daily_activity_by_venue(db: Session, venue_ids: List[int]) -> List[List[dic
 @router.get("/owner/stats")
 def get_owner_stats(db: Session = Depends(deps.get_db), current_user: User = Depends(venue_staff)):
     """Thống kê của các cụm sân đang quản lý. Doanh thu lấy từ sổ giao dịch, không ước lượng."""
-    venue_ids = managed_venue_ids(db, current_user)
-    venue_query = db.query(Venue)
-    if venue_ids is not None:
-        venue_query = venue_query.filter(Venue.id.in_(venue_ids or [0]))
-    venues = venue_query.order_by(Venue.id.asc()).all()
+    venues = _managed_venues(db, current_user)
     scope = [v.id for v in venues]
 
     collected = ledger.sum_transactions(db, venue_ids=scope, kinds=ledger.INCOMING_KINDS)
@@ -432,32 +478,63 @@ def get_daily_revenue(
     if day > today:
         raise HTTPException(status_code=400, detail="Ngày này chưa tới nên chưa có doanh thu.")
     if current_user.role == UserRole.STAFF.value and day != today:
-        raise HTTPException(status_code=403, detail="Nhân viên chỉ xem được doanh thu của hôm nay.")
+        raise HTTPException(status_code=403, detail=STAFF_TODAY_ONLY)
 
-    venue_ids = managed_venue_ids(db, current_user)
-    venue_query = db.query(Venue)
-    if venue_ids is not None:
-        venue_query = venue_query.filter(Venue.id.in_(venue_ids or [0]))
-    venues = venue_query.order_by(Venue.id.asc()).all()
-    scope = [v.id for v in venues]
+    venues = _managed_venues(db, current_user)
     since, until = vn_day_bounds_utc(day)
-
-    def total(kinds: tuple, method: Optional[str] = None) -> int:
-        return ledger.sum_transactions(db, venue_ids=scope, kinds=kinds, method=method, since=since, until=until)
-
-    collected = total(ledger.INCOMING_KINDS)
-    refunded = total((PaymentKind.REFUND.value,))
     return {
         "date": day,
-        "venue_names": [v.name for v in venues],
-        "collected": collected,
-        "cash": total(ledger.INCOMING_KINDS, PaymentMethod.CASH.value),
-        "transfer": total(ledger.INCOMING_KINDS, PaymentMethod.BANK_TRANSFER.value),
-        "refunded": refunded,
-        "net": collected - refunded,
-        "plays_total": _plays_on(db, scope, day, BookingStatus.CONFIRMED.value, *ARRIVED_STATUSES),
-        "plays_arrived": _plays_on(db, scope, day, *ARRIVED_STATUSES),
-        "transactions": ledger.transactions_between(db, venue_ids=scope, since=since, until=until),
+        **_revenue_totals(db, venues, day, day),
+        "transactions": ledger.transactions_between(db, venue_ids=[v.id for v in venues], since=since, until=until),
+    }
+
+
+@router.get("/revenue/monthly", response_model=MonthlyRevenueResponse)
+def get_monthly_revenue(
+    month: Optional[str] = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="Tháng cần xem (YYYY-MM), mặc định tháng này"),
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(venue_staff),
+):
+    """Doanh thu một tháng (giờ Việt Nam) của các cụm sân đang quản lý, kèm số liệu từng ngày. Chỉ chủ sân và admin."""
+    if current_user.role == UserRole.STAFF.value:
+        raise HTTPException(status_code=403, detail=STAFF_TODAY_ONLY)
+    today = today_vn()
+    first = date(int(month[:4]), int(month[5:]), 1) if month else today.replace(day=1)
+    if first > today:
+        raise HTTPException(status_code=400, detail="Tháng này chưa tới nên chưa có doanh thu.")
+    last = first.replace(day=calendar.monthrange(first.year, first.month)[1])
+
+    venues = _managed_venues(db, current_user)
+    amounts = _amounts_by(db, venues, first, last, "day")
+    days = (first + timedelta(days=offset) for offset in range(last.day))
+    return {
+        "month": first.strftime("%Y-%m"),
+        **_revenue_totals(db, venues, first, last),
+        "days": [{"date": day, **_amounts(amounts.get(day))} for day in days],
+    }
+
+
+@router.get("/revenue/yearly", response_model=YearlyRevenueResponse)
+def get_yearly_revenue(
+    year: Optional[int] = Query(None, ge=2000, le=2100, description="Năm cần xem, mặc định năm nay"),
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(venue_staff),
+):
+    """Doanh thu một năm (giờ Việt Nam) của các cụm sân đang quản lý, kèm số liệu từng tháng. Chỉ chủ sân và admin."""
+    if current_user.role == UserRole.STAFF.value:
+        raise HTTPException(status_code=403, detail=STAFF_TODAY_ONLY)
+    today = today_vn()
+    year = year or today.year
+    if year > today.year:
+        raise HTTPException(status_code=400, detail="Năm này chưa tới nên chưa có doanh thu.")
+    first, last = date(year, 1, 1), date(year, 12, 31)
+
+    venues = _managed_venues(db, current_user)
+    amounts = _amounts_by(db, venues, first, last, "month")
+    return {
+        "year": year,
+        **_revenue_totals(db, venues, first, last),
+        "months": [{"month": f"{year}-{m:02d}", **_amounts(amounts.get(date(year, m, 1)))} for m in range(1, 13)],
     }
 
 

@@ -3,17 +3,11 @@
 import React, { useEffect, useState } from "react";
 import { errorMessage, fetchApi, formatVND, parseUtcDate } from "@/lib/api";
 import { WsMessage } from "@/lib/use-websocket";
+import RevenueSummary, { REVENUE_BOX as BOX, REVENUE_LIVE_EVENTS as LIVE_EVENTS, RevenueTotals } from "@/components/RevenueSummary";
 
 /** Doanh thu một ngày (giờ Việt Nam) do máy chủ tổng hợp từ sổ giao dịch (GET /bookings/revenue/daily). */
-interface DailyRevenueData {
+interface DailyRevenueData extends RevenueTotals {
   date: string;
-  collected: number;
-  cash: number;
-  transfer: number;
-  refunded: number;
-  net: number;
-  plays_total: number;
-  plays_arrived: number;
   transactions: {
     id: number;
     transaction_code?: string | null;
@@ -27,9 +21,6 @@ interface DailyRevenueData {
 
 const KIND_LABEL: Record<string, string> = { DEPOSIT: "Tiền cọc", BALANCE: "Thu tại sân", REFUND: "Hoàn tiền" };
 const METHOD_LABEL: Record<string, string> = { BANK_TRANSFER: "Chuyển khoản", CASH: "Tiền mặt" };
-// Sự kiện trực tiếp làm số liệu trong ngày thay đổi
-const LIVE_EVENTS = ["PAYMENT_CONFIRMED", "SLOT_BOOKED", "BOOKING_STATUS_CHANGED", "SLOT_RELEASED", "BOOKING_RESCHEDULED"];
-const BOX = "rounded-xl bg-[#f8fafd] border border-[#e8edf3] p-4";
 
 /** Số liệu của một ngày: các khoản thu theo hình thức, tiền hoàn, thực thu, số lượt chơi và từng giao dịch. */
 export default function DailyRevenue({ day, lastMessage }: { day: string; lastMessage?: WsMessage | null }) {
@@ -65,32 +56,10 @@ export default function DailyRevenue({ day, lastMessage }: { day: string; lastMe
   }
 
   const data = result.data;
-  const tiles = [
-    { label: "Thu trong ngày", value: formatVND(data.collected), hint: "Tiền cọc và tiền thu tại sân", dot: "bg-[#476cf3]" },
-    { label: "Tiền mặt", value: formatVND(data.cash), hint: "Cần khớp với tiền trong két", dot: "bg-emerald-500" },
-    { label: "Chuyển khoản", value: formatVND(data.transfer), hint: "Cọc qua VietQR và chuyển khoản tại quầy", dot: "bg-sky-500" },
-    { label: "Hoàn tiền", value: data.refunded > 0 ? `-${formatVND(data.refunded)}` : formatVND(0), hint: "Đã chuyển trả cho khách", dot: "bg-rose-500" },
-  ];
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {tiles.map((tile) => (
-          <div key={tile.label} className={BOX}>
-            <p className="flex items-center gap-2 text-[11px] font-bold text-[#718096]">
-              <span className={`w-2 h-2 rounded-full ${tile.dot}`} />
-              {tile.label}
-            </p>
-            <p className="text-lg sm:text-xl font-black text-[#17253d] mt-1.5 leading-none tabular-nums">{tile.value}</p>
-            <p className="text-[11px] text-[#8a97ab] mt-1.5">{tile.hint}</p>
-          </div>
-        ))}
-      </div>
-
-      <p className="text-xs text-[#51627c]">
-        Thực thu <strong className="text-[#17253d] font-black">{formatVND(data.net)}</strong> • {data.plays_total} lượt chơi,{" "}
-        {data.plays_arrived} lượt khách đã nhận sân
-      </p>
+      <RevenueSummary data={data} collectedLabel="Thu trong ngày" cashHint="Cần khớp với tiền trong két" />
 
       <div>
         <h3 className="text-xs font-black text-[#17253d] m-0 mb-2">Giao dịch trong ngày ({data.transactions.length})</h3>

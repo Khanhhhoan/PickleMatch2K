@@ -605,6 +605,18 @@ async function main() {
     await waitForText(page, "Doanh thu theo ngày");
     await waitForText(page, "Giao dịch trong ngày");
   });
+  await step(owner, "doanh thu theo tháng và theo năm", async (page) => {
+    await clickText(page, "button", "Theo tháng", { exact: true });
+    await waitForText(page, "Doanh thu theo tháng");
+    await waitForText(page, "Thu trong tháng");
+    await waitForText(page, "Thực thu từng ngày");
+    await clickText(page, "button", "Theo năm", { exact: true });
+    await waitForText(page, "Doanh thu theo năm");
+    await waitForText(page, "Thu trong năm");
+    await waitForText(page, "Thực thu từng tháng");
+    await clickText(page, "button", "Theo ngày", { exact: true });
+    await waitForText(page, "Giao dịch trong ngày");
+  });
   await step(owner, "lưu bảng giá và giờ hoạt động", async (page) => {
     await page.goto(`${WEB}/owner/venues?tab=courts_pricing`, { waitUntil: "networkidle2" });
     await waitForText(page, "Bảng giá mỗi giờ");

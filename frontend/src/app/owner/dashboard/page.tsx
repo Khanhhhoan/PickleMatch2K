@@ -6,6 +6,8 @@ import { fetchApi, formatLocalDate, formatVND } from "@/lib/api";
 import { Booking, bookingCode, bookingStatusLabel, bookingStatusTone, mergeSlots, paymentStatusLabel } from "@/lib/booking";
 import { useWebSocket } from "@/lib/use-websocket";
 import DailyRevenue from "@/components/DailyRevenue";
+import PeriodRevenue from "@/components/PeriodRevenue";
+import RevenueBars from "@/components/RevenueBars";
 import ShiftClosingDialog from "@/components/ShiftClosingDialog";
 
 interface Stats {
@@ -25,12 +27,28 @@ interface Stats {
 const CARD = "bg-white rounded-2xl border border-[#e8edf3] shadow-[0_12px_35px_rgba(29,51,87,0.035)]";
 const WEEKDAY_SHORT = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 const DAY_BUTTON =
-  "h-9 min-w-9 px-2.5 bg-white hover:bg-[#f1f4fb] border border-[#d5dfed] rounded-xl text-xs font-bold text-[#405c94] cursor-pointer disabled:opacity-40 disabled:cursor-default";
+  "h-9 min-w-9 px-2.5 bg-white hover:bg-[#f1f4fb] border border-[#d5dfed] rounded-xl text-xs font-bold text-[#405c94] whitespace-nowrap cursor-pointer disabled:opacity-40 disabled:cursor-default";
+const SELECT =
+  "h-9 pl-2.5 pr-1.5 bg-white border border-[#d5dfed] rounded-xl text-xs font-bold text-[#263b53] outline-none focus:border-[#476cf3] cursor-pointer";
+
+type RevenueView = "day" | "month" | "year";
+const REVENUE_VIEWS: { key: RevenueView; label: string; word: string }[] = [
+  { key: "day", label: "Theo ngày", word: "ngày" },
+  { key: "month", label: "Theo tháng", word: "tháng" },
+  { key: "year", label: "Theo năm", word: "năm" },
+];
 
 /** Ngày cách `day` (YYYY-MM-DD) một số ngày. */
 function shiftDay(day: string, offset: number): string {
   const [year, month, date] = day.split("-").map(Number);
   return formatLocalDate(new Date(year, month - 1, date + offset));
+}
+
+/** Tháng (YYYY-MM) cách `month` một số tháng. */
+function shiftMonth(month: string, offset: number): string {
+  const [year, value] = month.split("-").map(Number);
+  const moved = new Date(year, value - 1 + offset, 1);
+  return `${moved.getFullYear()}-${String(moved.getMonth() + 1).padStart(2, "0")}`;
 }
 
 export default function OwnerOverviewDashboard() {
@@ -39,7 +57,14 @@ export default function OwnerOverviewDashboard() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [closingShift, setClosingShift] = useState(false);
+  // Lấy từ một lần gọi riêng: gọi phương thức trên `today` giữa các hook khiến React Compiler coi `today` có thể bị
+  // sửa và không còn xem các hàm setState phía trên là cố định
+  const thisMonth = formatLocalDate().slice(0, 7);
+  const thisYear = Number(thisMonth.slice(0, 4));
+  const [view, setView] = useState<RevenueView>("day"); // xem doanh thu theo ngày, tháng hay năm
   const [day, setDay] = useState(today); // ngày đang xem doanh thu
+  const [month, setMonth] = useState(thisMonth); // tháng đang xem (YYYY-MM)
+  const [year, setYear] = useState(thisYear); // năm đang xem
   const { lastMessage } = useWebSocket("/api/v1/ws/live");
 
   const loadData = useCallback(() => {
@@ -75,10 +100,8 @@ export default function OwnerOverviewDashboard() {
     });
   }, [stats]);
 
-  const maxDay = Math.max(1, ...sevenDays.map((d) => Math.abs(d.amount)));
   const weekTotal = sevenDays.reduce((sum, d) => sum + d.amount, 0);
   const todayRevenue = sevenDays[6].amount;
-  const hasWeekData = sevenDays.some((d) => d.amount !== 0);
 
   const todayBookings = useMemo(
     () => bookings.filter((b) => !["CANCELLED", "EXPIRED"].includes(b.status) && b.details.some((d) => d.date === today)),
@@ -140,6 +163,30 @@ export default function OwnerOverviewDashboard() {
     day === today
       ? `Hôm nay, ${todayLabel}`
       : new Date(`${day}T00:00:00`).toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
+  const periodLabel =
+    view === "day" ? dayLabel : view === "month" ? `Tháng ${Number(month.slice(5))}/${month.slice(0, 4)}` : `Năm ${year}`;
+
+  // Năm đầu tiên có phát sinh (đơn hoặc khoản thu): bộ chọn tháng/năm không lùi quá năm này
+  // (trừ khi đang xem một kỳ cũ hơn, chẳng hạn chuyển từ một ngày cũ sang xem tháng của ngày đó)
+  const firstYear = Math.min(thisYear, Number(stats?.daily?.[0]?.date.slice(0, 4)) || thisYear, Number(month.slice(0, 4)), year);
+  const years = Array.from({ length: thisYear - firstYear + 1 }, (_, index) => thisYear - index);
+  const chooseMonth = (value: string) => setMonth(value > thisMonth ? thisMonth : value);
+
+  // Đổi kiểu xem: từ ngày sang tháng/năm, hay từ tháng sang năm, thì xem đúng tháng/năm chứa kỳ đang xem
+  const openView = (next: RevenueView) => {
+    if (next === "month" && view === "day") setMonth(day.slice(0, 7));
+    if (next === "year" && view !== "year") setYear(Number((view === "day" ? day : month).slice(0, 4)));
+    setView(next);
+  };
+  // Bấm một cột: ngày trong biểu đồ tháng mở chi tiết ngày đó, tháng trong biểu đồ năm mở tháng đó
+  const openDay = (key: string) => {
+    setDay(key);
+    setView("day");
+  };
+  const openMonth = (key: string) => {
+    setMonth(key);
+    setView("month");
+  };
 
   return (
     <div className="space-y-6 font-sans">
@@ -254,81 +301,177 @@ export default function OwnerOverviewDashboard() {
       </div>
 
       <section className={`${CARD} p-5 space-y-5`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-black text-[#17253d] m-0">Doanh thu theo ngày</h2>
-            <p className="text-xs text-[#51627c] mt-1 first-letter:uppercase">{dayLabel}</p>
+            <h2 className="text-sm font-black text-[#17253d] m-0">
+              Doanh thu theo {REVENUE_VIEWS.find((option) => option.key === view)?.word}
+            </h2>
+            <p className="text-xs text-[#51627c] mt-1 first-letter:uppercase">{periodLabel}</p>
           </div>
-          <div className="flex items-center gap-1.5">
-            <button type="button" className={DAY_BUTTON} onClick={() => setDay(shiftDay(day, -1))} aria-label="Ngày trước" title="Ngày trước">
-              ‹
-            </button>
-            <input
-              type="date"
-              value={day}
-              max={today}
-              onChange={(e) => e.target.value && setDay(e.target.value > today ? today : e.target.value)}
-              aria-label="Chọn ngày xem doanh thu"
-              className="h-9 px-2.5 bg-white border border-[#d5dfed] rounded-xl text-xs font-bold text-[#263b53] outline-none focus:border-[#476cf3]"
-            />
-            <button type="button" className={DAY_BUTTON} onClick={() => setDay(shiftDay(day, 1))} disabled={day >= today} aria-label="Ngày sau" title="Ngày sau">
-              ›
-            </button>
-            <button type="button" className={DAY_BUTTON} onClick={() => setDay(today)} disabled={day === today}>
-              Hôm nay
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-bold text-[#718096]">7 ngày gần nhất</p>
-              <p className="text-sm font-black text-[#17253d]">{formatVND(weekTotal)}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[11px] font-bold text-[#718096]">Tổng thực thu</p>
-              <p className="text-sm font-black text-[#17253d]">{formatVND(stats?.total_revenue)}</p>
-            </div>
-          </div>
-          <div className="relative mt-3">
-            <div className="flex items-end gap-3 h-32 border-b border-[#e8edf3]">
-              {sevenDays.map((d) => (
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <div className="inline-flex p-1 rounded-xl bg-[#f1f4fb] border border-[#e3e9f3]">
+              {REVENUE_VIEWS.map((option) => (
                 <button
-                  key={d.key}
+                  key={option.key}
                   type="button"
-                  onClick={() => setDay(d.key)}
-                  aria-pressed={d.key === day}
-                  title={`${d.key}: ${formatVND(d.amount)}`}
-                  className="group flex-1 flex flex-col items-center justify-end h-full gap-1.5 cursor-pointer"
+                  onClick={() => openView(option.key)}
+                  aria-pressed={view === option.key}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition ${
+                    view === option.key ? "bg-white text-[#17253d] shadow-sm" : "text-[#51627c] hover:text-[#17253d]"
+                  }`}
                 >
-                  <span className="text-[10px] font-bold text-[#51627c]">{d.amount !== 0 ? `${Math.round(d.amount / 1000).toLocaleString("vi-VN")}k` : ""}</span>
-                  <div
-                    className={`w-full max-w-14 rounded-t-lg transition ${
-                      d.amount < 0 ? "bg-rose-300" : d.key === day ? "bg-[#476cf3]" : "bg-[#c7d3f6] group-hover:bg-[#a9bbef]"
-                    }`}
-                    style={{ height: d.amount === 0 ? "3px" : `${Math.max(6, (Math.abs(d.amount) / maxDay) * 100)}%` }}
-                  />
+                  {option.label}
                 </button>
               ))}
             </div>
-            <div className="flex gap-3 mt-1.5">
-              {sevenDays.map((d) => (
-                <span key={d.key} className={`flex-1 text-center text-[10px] font-bold ${d.key === day ? "text-[#476cf3]" : "text-[#718096]"}`}>
-                  {d.label}
-                </span>
-              ))}
-            </div>
-            {!hasWeekData && (
-              <p className="absolute inset-x-0 top-10 text-center text-xs text-[#8a97ab] pointer-events-none">Chưa có khoản thu nào trong 7 ngày qua.</p>
+
+            {view === "day" && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button type="button" className={DAY_BUTTON} onClick={() => setDay(shiftDay(day, -1))} aria-label="Ngày trước" title="Ngày trước">
+                  ‹
+                </button>
+                <input
+                  type="date"
+                  value={day}
+                  max={today}
+                  onChange={(e) => e.target.value && setDay(e.target.value > today ? today : e.target.value)}
+                  aria-label="Chọn ngày xem doanh thu"
+                  className="h-9 px-2.5 bg-white border border-[#d5dfed] rounded-xl text-xs font-bold text-[#263b53] outline-none focus:border-[#476cf3]"
+                />
+                <button type="button" className={DAY_BUTTON} onClick={() => setDay(shiftDay(day, 1))} disabled={day >= today} aria-label="Ngày sau" title="Ngày sau">
+                  ›
+                </button>
+                <button type="button" className={DAY_BUTTON} onClick={() => setDay(today)} disabled={day === today}>
+                  Hôm nay
+                </button>
+              </div>
+            )}
+
+            {view === "month" && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  className={DAY_BUTTON}
+                  onClick={() => setMonth(shiftMonth(month, -1))}
+                  disabled={month <= `${firstYear}-01`}
+                  aria-label="Tháng trước"
+                  title="Tháng trước"
+                >
+                  ‹
+                </button>
+                <select
+                  className={SELECT}
+                  value={Number(month.slice(5))}
+                  onChange={(e) => chooseMonth(`${month.slice(0, 4)}-${e.target.value.padStart(2, "0")}`)}
+                  aria-label="Chọn tháng xem doanh thu"
+                >
+                  {Array.from({ length: 12 }, (_, index) => index + 1).map((value) => (
+                    <option key={value} value={value} disabled={`${month.slice(0, 4)}-${String(value).padStart(2, "0")}` > thisMonth}>
+                      Tháng {value}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className={SELECT}
+                  value={month.slice(0, 4)}
+                  onChange={(e) => chooseMonth(`${e.target.value}-${month.slice(5)}`)}
+                  aria-label="Chọn năm của tháng"
+                >
+                  {years.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className={DAY_BUTTON}
+                  onClick={() => setMonth(shiftMonth(month, 1))}
+                  disabled={month >= thisMonth}
+                  aria-label="Tháng sau"
+                  title="Tháng sau"
+                >
+                  ›
+                </button>
+                <button type="button" className={DAY_BUTTON} onClick={() => setMonth(thisMonth)} disabled={month === thisMonth}>
+                  Tháng này
+                </button>
+              </div>
+            )}
+
+            {view === "year" && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  className={DAY_BUTTON}
+                  onClick={() => setYear(year - 1)}
+                  disabled={year <= firstYear}
+                  aria-label="Năm trước"
+                  title="Năm trước"
+                >
+                  ‹
+                </button>
+                <select className={SELECT} value={year} onChange={(e) => setYear(Number(e.target.value))} aria-label="Chọn năm xem doanh thu">
+                  {years.map((value) => (
+                    <option key={value} value={value}>
+                      Năm {value}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className={DAY_BUTTON}
+                  onClick={() => setYear(year + 1)}
+                  disabled={year >= thisYear}
+                  aria-label="Năm sau"
+                  title="Năm sau"
+                >
+                  ›
+                </button>
+                <button type="button" className={DAY_BUTTON} onClick={() => setYear(thisYear)} disabled={year === thisYear}>
+                  Năm nay
+                </button>
+              </div>
             )}
           </div>
-          <p className="text-[11px] text-[#8a97ab] mt-2">Bấm vào một cột để xem chi tiết ngày đó.</p>
         </div>
 
-        <div className="pt-4 border-t border-[#f1f4f9]">
-          <DailyRevenue day={day} lastMessage={lastMessage} />
-        </div>
+        {view === "day" && (
+          <>
+            <div>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-bold text-[#718096]">7 ngày gần nhất</p>
+                  <p className="text-sm font-black text-[#17253d]">{formatVND(weekTotal)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[11px] font-bold text-[#718096]">Tổng thực thu</p>
+                  <p className="text-sm font-black text-[#17253d]">{formatVND(stats?.total_revenue)}</p>
+                </div>
+              </div>
+              <RevenueBars
+                bars={sevenDays.map((d) => ({
+                  key: d.key,
+                  label: d.label,
+                  title: `${d.key}: ${formatVND(d.amount)}`,
+                  amount: d.amount,
+                  selected: d.key === day,
+                }))}
+                onPick={setDay}
+                empty="Chưa có khoản thu nào trong 7 ngày qua."
+                valueLabel={(amount) => `${Math.round(amount / 1000).toLocaleString("vi-VN")}k`}
+              />
+              <p className="text-[11px] text-[#8a97ab] mt-2">Bấm vào một cột để xem chi tiết ngày đó.</p>
+            </div>
+
+            <div className="pt-4 border-t border-[#f1f4f9]">
+              <DailyRevenue day={day} lastMessage={lastMessage} />
+            </div>
+          </>
+        )}
+
+        {view === "month" && <PeriodRevenue unit="month" period={month} today={today} onPick={openDay} lastMessage={lastMessage} />}
+        {view === "year" && <PeriodRevenue unit="year" period={String(year)} today={today} onPick={openMonth} lastMessage={lastMessage} />}
       </section>
 
       {closingShift && <ShiftClosingDialog onClose={() => setClosingShift(false)} />}
