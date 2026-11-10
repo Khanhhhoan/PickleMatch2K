@@ -160,3 +160,17 @@ class ShiftSummaryResponse(BaseModel):
     refunded: int
     total_collected: int
     closings: List[ShiftClosingResponse]
+
+
+class ShiftHistoryResponse(BaseModel):
+    """Mọi lần kết ca của một cụm sân trong một tháng, xếp theo ngày kết ca (giờ Việt Nam), mới nhất trước."""
+    venue_id: int
+    venue_name: str
+    month: str                          # YYYY-MM
+    first_date: Optional[date] = None   # ngày của lần kết ca đầu tiên tại cụm sân (chưa kết ca lần nào: None)
+    closings: List[ShiftClosingResponse]
+
+
+class ShiftClosingDetailResponse(ShiftClosingResponse):
+    """Một lần kết ca kèm các giao dịch nó đã nhận, cũ nhất trước: lần ra được khoản gây chênh lệch."""
+    transactions: List[PaymentTransactionResponse]

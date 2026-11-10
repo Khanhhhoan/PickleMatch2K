@@ -56,6 +56,7 @@ VENUE_STAFF = [
     ("PUT", "/bookings/staff/1/reschedule"), ("GET", "/bookings/owner/list"), ("GET", "/bookings/owner/stats"),
     ("GET", "/bookings/staff/stats"), ("GET", "/bookings/revenue/daily"), ("GET", "/venues/me"),
     ("GET", "/payments/shift-closings"), ("POST", "/payments/shift-closings"),
+    ("GET", "/payments/shift-closings/history"), ("GET", "/payments/shift-closings/1"),
 ]
 
 

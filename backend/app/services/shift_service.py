@@ -11,7 +11,7 @@ Báo cáo doanh thu theo ngày vẫn tính theo ngày lịch (ledger.daily_net_r
 """
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Optional
 
 from fastapi import HTTPException, status
@@ -37,13 +37,17 @@ class Figures:
     refunded: int
 
 
+def first_closing_date(db: Session, venue_id: int) -> Optional[date]:
+    """Ngày (giờ Việt Nam) của lần kết ca đầu tiên tại cụm sân, None nếu cụm sân chưa kết ca lần nào."""
+    return db.query(func.min(ShiftClosing.business_date)).filter(ShiftClosing.venue_id == venue_id).scalar()
+
+
 def ledger_start(db: Session, venue_id: int) -> datetime:
     """
     Từ thời điểm này giao dịch của cụm sân mới thuộc sổ kết ca: 0 giờ (giờ Việt Nam) của ngày có lần kết ca đầu tiên,
     hoặc 0 giờ hôm nay nếu cụm sân chưa kết ca lần nào. Giao dịch trước đó là lịch sử, không thuộc ca nào.
     """
-    first = db.query(func.min(ShiftClosing.business_date)).filter(ShiftClosing.venue_id == venue_id).scalar()
-    return vn_day_bounds_utc(first or today_vn())[0]
+    return vn_day_bounds_utc(first_closing_date(db, venue_id) or today_vn())[0]
 
 
 def _open_transactions_query(db: Session, venue_id: int):
@@ -123,15 +127,24 @@ def close_shift(db: Session, venue: Venue, actor: User, *, opening_float: float,
     return closing
 
 
-def recent_closings(db: Session, venue_id: int, limit: int = RECENT_CLOSINGS) -> List[ShiftClosing]:
+def _closings_query(db: Session, venue_id: int):
+    """Các lần kết ca của cụm sân, mới nhất trước, nạp sẵn người kết ca và hồ sơ của họ (để lấy tên)."""
+    closed_by = joinedload(ShiftClosing.closed_by)
     return (
         db.query(ShiftClosing)
-        .options(joinedload(ShiftClosing.closed_by))
+        .options(closed_by.joinedload(User.staff_profile), closed_by.joinedload(User.owner_profile))
         .filter(ShiftClosing.venue_id == venue_id)
         .order_by(ShiftClosing.closed_at.desc(), ShiftClosing.id.desc())
-        .limit(limit)
-        .all()
     )
+
+
+def recent_closings(db: Session, venue_id: int, limit: int = RECENT_CLOSINGS) -> List[ShiftClosing]:
+    return _closings_query(db, venue_id).limit(limit).all()
+
+
+def closings_between(db: Session, venue_id: int, first: date, last: date) -> List[ShiftClosing]:
+    """Mọi lần kết ca của cụm sân có ngày kết ca (giờ Việt Nam) từ `first` tới `last`, mới nhất trước."""
+    return _closings_query(db, venue_id).filter(ShiftClosing.business_date.between(first, last)).all()
 
 
 def _display_name(user: Optional[User]) -> str:
@@ -179,3 +192,29 @@ def summary(db: Session, venue: Venue) -> dict:
         "total_collected": figures.cash + figures.transfer,
         "closings": [describe(c) for c in closings],
     }
+
+
+def history(db: Session, venue: Venue, first: date, last: date) -> dict:
+    """
+    Lịch sử kết ca của cụm sân từ ngày `first` tới `last` (một tháng), xếp theo ngày kết ca: ca 20:00 tới 00:15
+    hôm sau nằm ở ngày hôm sau. Kèm ngày của lần kết ca đầu tiên để giao diện không cho lùi về trước đó.
+    """
+    return {
+        "venue_id": venue.id,
+        "venue_name": venue.name,
+        "month": first.strftime("%Y-%m"),
+        "first_date": first_closing_date(db, venue.id),
+        "closings": [describe(c) for c in closings_between(db, venue.id, first, last)],
+    }
+
+
+def detail(db: Session, closing: ShiftClosing) -> dict:
+    """Một lần kết ca kèm đúng những giao dịch nó đã nhận (cũ nhất trước): lần ra được khoản gây chênh lệch."""
+    transactions = (
+        db.query(PaymentTransaction)
+        .options(joinedload(PaymentTransaction.booking))
+        .filter(PaymentTransaction.shift_closing_id == closing.id)
+        .order_by(PaymentTransaction.created_at.asc(), PaymentTransaction.id.asc())
+        .all()
+    )
+    return {**describe(closing), "transactions": transactions}

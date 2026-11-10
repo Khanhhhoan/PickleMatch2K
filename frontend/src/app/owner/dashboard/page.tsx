@@ -6,6 +6,7 @@ import { fetchApi, formatLocalDate, formatVND } from "@/lib/api";
 import { Booking, bookingCode, bookingStatusLabel, bookingStatusTone, mergeSlots, paymentStatusLabel } from "@/lib/booking";
 import { useWebSocket } from "@/lib/use-websocket";
 import DailyRevenue from "@/components/DailyRevenue";
+import MonthPicker, { PICKER_BUTTON as DAY_BUTTON, PICKER_SELECT as SELECT } from "@/components/MonthPicker";
 import PeriodRevenue from "@/components/PeriodRevenue";
 import RevenueBars from "@/components/RevenueBars";
 import ShiftClosingDialog from "@/components/ShiftClosingDialog";
@@ -26,10 +27,6 @@ interface Stats {
 
 const CARD = "bg-white rounded-2xl border border-[#e8edf3] shadow-[0_12px_35px_rgba(29,51,87,0.035)]";
 const WEEKDAY_SHORT = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
-const DAY_BUTTON =
-  "h-9 min-w-9 px-2.5 bg-white hover:bg-[#f1f4fb] border border-[#d5dfed] rounded-xl text-xs font-bold text-[#405c94] whitespace-nowrap cursor-pointer disabled:opacity-40 disabled:cursor-default";
-const SELECT =
-  "h-9 pl-2.5 pr-1.5 bg-white border border-[#d5dfed] rounded-xl text-xs font-bold text-[#263b53] outline-none focus:border-[#476cf3] cursor-pointer";
 
 type RevenueView = "day" | "month" | "year";
 const REVENUE_VIEWS: { key: RevenueView; label: string; word: string }[] = [
@@ -42,13 +39,6 @@ const REVENUE_VIEWS: { key: RevenueView; label: string; word: string }[] = [
 function shiftDay(day: string, offset: number): string {
   const [year, month, date] = day.split("-").map(Number);
   return formatLocalDate(new Date(year, month - 1, date + offset));
-}
-
-/** Tháng (YYYY-MM) cách `month` một số tháng. */
-function shiftMonth(month: string, offset: number): string {
-  const [year, value] = month.split("-").map(Number);
-  const moved = new Date(year, value - 1 + offset, 1);
-  return `${moved.getFullYear()}-${String(moved.getMonth() + 1).padStart(2, "0")}`;
 }
 
 export default function OwnerOverviewDashboard() {
@@ -170,7 +160,6 @@ export default function OwnerOverviewDashboard() {
   // (trừ khi đang xem một kỳ cũ hơn, chẳng hạn chuyển từ một ngày cũ sang xem tháng của ngày đó)
   const firstYear = Math.min(thisYear, Number(stats?.daily?.[0]?.date.slice(0, 4)) || thisYear, Number(month.slice(0, 4)), year);
   const years = Array.from({ length: thisYear - firstYear + 1 }, (_, index) => thisYear - index);
-  const chooseMonth = (value: string) => setMonth(value > thisMonth ? thisMonth : value);
 
   // Đổi kiểu xem: từ ngày sang tháng/năm, hay từ tháng sang năm, thì xem đúng tháng/năm chứa kỳ đang xem
   const openView = (next: RevenueView) => {
@@ -348,55 +337,14 @@ export default function OwnerOverviewDashboard() {
             )}
 
             {view === "month" && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  className={DAY_BUTTON}
-                  onClick={() => setMonth(shiftMonth(month, -1))}
-                  disabled={month <= `${firstYear}-01`}
-                  aria-label="Tháng trước"
-                  title="Tháng trước"
-                >
-                  ‹
-                </button>
-                <select
-                  className={SELECT}
-                  value={Number(month.slice(5))}
-                  onChange={(e) => chooseMonth(`${month.slice(0, 4)}-${e.target.value.padStart(2, "0")}`)}
-                  aria-label="Chọn tháng xem doanh thu"
-                >
-                  {Array.from({ length: 12 }, (_, index) => index + 1).map((value) => (
-                    <option key={value} value={value} disabled={`${month.slice(0, 4)}-${String(value).padStart(2, "0")}` > thisMonth}>
-                      Tháng {value}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className={SELECT}
-                  value={month.slice(0, 4)}
-                  onChange={(e) => chooseMonth(`${e.target.value}-${month.slice(5)}`)}
-                  aria-label="Chọn năm của tháng"
-                >
-                  {years.map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  className={DAY_BUTTON}
-                  onClick={() => setMonth(shiftMonth(month, 1))}
-                  disabled={month >= thisMonth}
-                  aria-label="Tháng sau"
-                  title="Tháng sau"
-                >
-                  ›
-                </button>
-                <button type="button" className={DAY_BUTTON} onClick={() => setMonth(thisMonth)} disabled={month === thisMonth}>
-                  Tháng này
-                </button>
-              </div>
+              <MonthPicker
+                month={month}
+                onChange={setMonth}
+                thisMonth={thisMonth}
+                firstYear={firstYear}
+                monthLabel="Chọn tháng xem doanh thu"
+                yearLabel="Chọn năm của tháng"
+              />
             )}
 
             {view === "year" && (
@@ -474,7 +422,7 @@ export default function OwnerOverviewDashboard() {
         {view === "year" && <PeriodRevenue unit="year" period={String(year)} today={today} onPick={openMonth} lastMessage={lastMessage} />}
       </section>
 
-      {closingShift && <ShiftClosingDialog onClose={() => setClosingShift(false)} />}
+      {closingShift && <ShiftClosingDialog history onClose={() => setClosingShift(false)} />}
     </div>
   );
 }

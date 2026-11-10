@@ -617,6 +617,17 @@ async function main() {
     await clickText(page, "button", "Theo ngày", { exact: true });
     await waitForText(page, "Giao dịch trong ngày");
   });
+  await step(owner, "lịch sử kết ca: thấy lần kết ca của nhân viên và các khoản trong ca đó", async (page) => {
+    await clickText(page, "button", "Kết ca", { exact: true });
+    await waitForText(page, "Các lần kết ca gần đây");
+    await clickText(page, "button", "Lịch sử", { exact: true });
+    await waitForText(page, "Lịch sử kết ca");
+    await waitForText(page, "Lần kết ca");
+    await waitForText(page, "Lê Quốc Hưng"); // nhân viên đã kết ca ở bước trước
+    await clickText(page, "button", "Lê Quốc Hưng");
+    await waitForText(page, "Tiền mặt phải có trong két");
+    await waitForText(page, "Các khoản trong ca (");
+  });
   await step(owner, "lưu bảng giá và giờ hoạt động", async (page) => {
     await page.goto(`${WEB}/owner/venues?tab=courts_pricing`, { waitUntil: "networkidle2" });
     await waitForText(page, "Bảng giá mỗi giờ");

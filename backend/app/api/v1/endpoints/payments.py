@@ -1,15 +1,17 @@
+import calendar
 import hmac
 import logging
+from datetime import date
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.api import deps
 from app.api.permissions import managed_venue_ids, require_booking_staff, require_venue_staff
 from app.core.config import settings
 from app.models.booking import Booking
-from app.models.payment import PaymentTransaction
+from app.models.payment import PaymentTransaction, ShiftClosing
 from app.models.user import User, UserRole
 from app.models.venue import Venue
 from app.schemas.payment import (
@@ -18,16 +20,20 @@ from app.schemas.payment import (
     PaymentTransactionResponse,
     SepayWebhookPayload,
     ShiftClosingCreate,
+    ShiftClosingDetailResponse,
     ShiftClosingResponse,
+    ShiftHistoryResponse,
     ShiftSummaryResponse,
 )
 from app.services import booking_service, ledger, payment_service, shift_service
+from app.utils.timeutils import today_vn
 
 router = APIRouter()
 logger = logging.getLogger("pickleball.sepay")
 
 MANAGER_ROLES = (UserRole.ADMIN.value, UserRole.OWNER.value, UserRole.STAFF.value)
 venue_staff = deps.RoleChecker(list(MANAGER_ROLES))
+STAFF_RECENT_ONLY = "Nhân viên chỉ xem được các lần kết ca gần đây."
 
 
 def _get_accessible_booking(db: Session, booking_id: int, user: User) -> Booking:
@@ -161,6 +167,48 @@ def get_shift_summary(
 ):
     """Các khoản của hôm nay chưa kết ca tại một cụm sân, kèm những lần kết ca gần đây."""
     return shift_service.summary(db, _shift_venue(db, current_user, venue_id))
+
+
+def _refuse_staff(user: User) -> None:
+    """Lịch sử kết ca dành cho chủ sân và admin; nhân viên xem các lần kết ca gần đây trong hộp Kết ca."""
+    if user.role == UserRole.STAFF.value:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=STAFF_RECENT_ONLY)
+
+
+@router.get("/shift-closings/history", response_model=ShiftHistoryResponse)
+def get_shift_history(
+    venue_id: Optional[int] = None,
+    month: Optional[str] = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="Tháng cần xem (YYYY-MM), mặc định tháng này"),
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(venue_staff),
+):
+    """
+    Mọi lần kết ca của một cụm sân trong một tháng, xếp theo ngày kết ca (giờ Việt Nam), mới nhất trước.
+    Chỉ chủ sân và admin.
+    """
+    _refuse_staff(current_user)
+    venue = _shift_venue(db, current_user, venue_id)
+    today = today_vn()
+    first = date(int(month[:4]), int(month[5:]), 1) if month else today.replace(day=1)
+    if first > today:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tháng này chưa tới nên chưa có lần kết ca nào.")
+    last = first.replace(day=calendar.monthrange(first.year, first.month)[1])
+    return shift_service.history(db, venue, first, last)
+
+
+@router.get("/shift-closings/{closing_id}", response_model=ShiftClosingDetailResponse)
+def get_shift_closing(
+    closing_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(venue_staff),
+):
+    """Một lần kết ca kèm các giao dịch thuộc ca đó, để lần ra khoản gây chênh lệch. Chỉ chủ sân và admin."""
+    _refuse_staff(current_user)
+    closing = db.get(ShiftClosing, closing_id)
+    if closing is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy lần kết ca")
+    require_venue_staff(db, current_user, closing.venue_id)
+    return shift_service.detail(db, closing)
 
 
 @router.post("/shift-closings", response_model=ShiftClosingResponse)
