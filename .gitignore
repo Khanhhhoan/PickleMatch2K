@@ -77,3 +77,5 @@ backend/private_uploads/
 .DS_Store
 Thumbs.db
 
+*.pem
+
