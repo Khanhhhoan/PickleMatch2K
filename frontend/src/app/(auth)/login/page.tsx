@@ -78,9 +78,14 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-zinc-900 mb-2">
-                  Mật khẩu
-                </label>
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <label className="block text-sm font-bold text-zinc-900">
+                    Mật khẩu
+                  </label>
+                  <Link href="/forgot-password" className="text-sm font-semibold text-zinc-500 hover:text-zinc-950 hover:underline">
+                    Quên mật khẩu?
+                  </Link>
+                </div>
                 <input
                   type="password"
                   required
