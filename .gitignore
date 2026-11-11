@@ -68,6 +68,8 @@ backend/uploads/**
 !backend/uploads/venues/.gitkeep
 # Chứng từ hoàn tiền: dữ liệu tài chính của khách, không bao giờ đưa vào kho mã
 backend/private_uploads/
+# Thư ghi ra thư mục khi EMAIL_BACKEND=file: có liên kết đặt lại mật khẩu
+backend/outbox/
 
 # IDE & OS Specific
 .idea/

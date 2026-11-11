@@ -51,6 +51,22 @@ class Settings(BaseSettings):
     # Chỉ bật khi demo/kiểm thử: cho phép giả lập thanh toán không cần chuyển khoản thật
     SEPAY_SIMULATOR_ENABLED: bool = False
 
+    # GỬI EMAIL (thư đặt lại mật khẩu)
+    # file: ghi thư ra EMAIL_OUTBOX_DIR, không gửi đi (máy phát triển, kiểm thử, demo);
+    # brevo: gửi qua API HTTPS của Brevo (Render gói miễn phí chặn cổng SMTP nên không gửi thẳng qua Gmail được)
+    EMAIL_BACKEND: str = "file"
+    EMAIL_OUTBOX_DIR: str = str(BACKEND_DIR / "outbox")
+    EMAIL_FROM: str = ""  # địa chỉ gửi đã xác minh trên Brevo
+    EMAIL_FROM_NAME: str = "PickleMatch2K"
+    BREVO_API_KEY: Optional[str] = None
+    # Địa chỉ cổng người dùng, dùng để tạo liên kết trong thư
+    WEB_APP_URL: str = "http://localhost:3000"
+    # Không gửi thư đặt lại mật khẩu tới các địa chỉ này (mẫu kiểu fnmatch, cách nhau dấu phẩy): tài khoản mẫu do hệ
+    # thống tạo và các tên miền dùng thử, để không gửi nhầm vào hộp thư của người lạ
+    PASSWORD_RESET_BLOCKED_EMAILS: str = (
+        "player[0-9][0-9]@gmail.com,*@example.com,*@example.org,*@example.net,*@test.com,*@pickleball.vn"
+    )
+
     model_config = SettingsConfigDict(
         case_sensitive=True,
         env_file=(str(ROOT_DIR / ".env"), str(BACKEND_DIR / ".env")),
@@ -59,7 +75,7 @@ class Settings(BaseSettings):
 
     @field_validator(
         "REDIS_URL", "CORS_ORIGIN_REGEX", "SEPAY_WEBHOOK_API_KEY",
-        "CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET",
+        "CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET", "BREVO_API_KEY",
         mode="before",
     )
     @classmethod
@@ -101,6 +117,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> List[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def password_reset_blocked_patterns(self) -> List[str]:
+        return [p.strip().lower() for p in self.PASSWORD_RESET_BLOCKED_EMAILS.split(",") if p.strip()]
 
     @property
     def cors_origin_regex(self) -> Optional[str]:

@@ -9,6 +9,7 @@ CSDL đang dùng thật KHÔNG bao giờ bị đụng tới: việc trỏ sang C
 Mỗi phiên test dựng lại schema bằng chính các migration Alembic; mỗi test bắt đầu với các bảng trống
 và đồng hồ nghiệp vụ đứng ở 08:00 (giờ Việt Nam) của ngày hôm nay.
 """
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -68,6 +69,11 @@ settings.SEPAY_BANK_ACCOUNT = TEST_BANK_ACCOUNT
 settings.SEPAY_BANK_CODE = "MB"
 settings.SEPAY_BANK_NAME = "MBBank"
 settings.SEPAY_ACCOUNT_HOLDER = "TAI KHOAN KIEM THU"
+# Thư chỉ ghi ra thư mục tạm của phiên (fixture _email_outbox), không bao giờ gửi thật
+settings.EMAIL_BACKEND = "file"
+settings.BREVO_API_KEY = None
+settings.EMAIL_FROM = ""
+settings.WEB_APP_URL = "http://localhost:3000"
 
 from app.utils import timeutils  # noqa: E402
 from app.utils.timeutils import VN_TZ, vn_datetime  # noqa: E402
@@ -116,6 +122,25 @@ def _clean_state(_database):
     slot_lock_manager.clear_memory()
     login_rate_limiter.clear_all()
     yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _email_outbox(tmp_path_factory):
+    settings.EMAIL_OUTBOX_DIR = str(tmp_path_factory.mktemp("outbox"))
+
+
+@pytest.fixture
+def outbox(_clean_state):
+    """Thư mục nhận thư (EMAIL_BACKEND=file), xóa sạch trước test. Gọi outbox() để đọc các thư đã ghi, theo thứ tự ghi."""
+    folder = Path(settings.EMAIL_OUTBOX_DIR)
+    folder.mkdir(parents=True, exist_ok=True)
+    for old in folder.glob("*.json"):
+        old.unlink()
+
+    def read() -> list:
+        return [json.loads(path.read_text(encoding="utf-8")) for path in sorted(folder.glob("*.json"))]
+
+    return read
 
 
 @pytest.fixture

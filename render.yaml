@@ -61,6 +61,20 @@ services:
       # Bản chạy thật: không có nút giả lập thanh toán, đơn chỉ được xác nhận khi SePay báo tiền về
       - key: SEPAY_SIMULATOR_ENABLED
         value: "false"
+      # Thư đặt lại mật khẩu gửi qua API HTTPS của Brevo (gói miễn phí của Render chặn cổng SMTP). EMAIL_FROM là địa chỉ
+      # gửi đã xác minh trên Brevo. Blueprint đã tạo rồi thì Render bỏ qua biến sync: false mới: thêm EMAIL_FROM và
+      # BREVO_API_KEY tay ở Environment của picklematch2k-api. Thiếu một trong hai thì chức năng quên mật khẩu báo
+      # tạm ngưng (503).
+      - key: EMAIL_BACKEND
+        value: brevo
+      - key: EMAIL_FROM_NAME
+        value: PickleMatch2K
+      - key: EMAIL_FROM
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: WEB_APP_URL
+        value: https://picklematch2k-web.onrender.com
 
   - type: web
     name: picklematch2k-web
