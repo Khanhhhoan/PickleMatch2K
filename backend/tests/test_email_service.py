@@ -87,3 +87,11 @@ def test_email_ready_rules(monkeypatch):
 
     monkeypatch.setattr(settings, "EMAIL_FROM", SENDER)
     assert email_ready() is True
+
+
+def test_file_backend_is_not_ready_in_production(monkeypatch):
+    """Bản chạy thật quên đặt EMAIL_BACKEND=brevo: thư không được ghi lặng lẽ ra ổ đĩa của máy chủ."""
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "EMAIL_BACKEND", "file")
+
+    assert email_ready() is False

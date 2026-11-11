@@ -18,7 +18,7 @@ from app.core import security
 from app.core.config import settings
 from app.core.rate_limit import login_rate_limiter
 from app.models.user import User, UserRole
-from app.services.email_service import EmailMessage
+from app.services.email_service import EmailMessage, email_ready
 from app.services.user_service import get_user_by_email, normalize_email
 from app.utils.timeutils import now_utc
 
@@ -29,6 +29,12 @@ INVALID_LINK = "Liên kết đặt lại mật khẩu không hợp lệ hoặc �
 UNAVAILABLE = "Chức năng quên mật khẩu đang tạm ngưng. Vui lòng liên hệ quản trị viên."
 DONE_MESSAGE = "Đã đặt lại mật khẩu. Hãy đăng nhập bằng mật khẩu mới."
 SUBJECT = "Đặt lại mật khẩu PickleMatch2K"
+
+
+def available() -> bool:
+    """Gửi được thư đặt lại mật khẩu chưa: đã cấu hình gửi thư, và ở bản chạy thật liên kết phải trỏ về địa chỉ https
+    (thiếu WEB_APP_URL thì liên kết sẽ trỏ về localhost)."""
+    return email_ready() and (not settings.is_production or settings.WEB_APP_URL.startswith("https://"))
 
 
 def is_blocked(email: str) -> bool:

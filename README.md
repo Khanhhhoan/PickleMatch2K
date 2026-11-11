@@ -156,7 +156,8 @@ lần push lên nhánh `main` Render tự deploy lại.
      `EMAIL_BACKEND=brevo`, `EMAIL_FROM_NAME` và `WEB_APP_URL` đã khai trong `render.yaml`; Blueprint đã tạo rồi thì
      thêm tay cả năm biến.
 
-  Thiếu khóa hoặc địa chỉ gửi thì trang Quên mật khẩu báo tạm ngưng (503). Chưa có tên miền riêng thì Brevo thay địa
+  Thiếu khóa hoặc địa chỉ gửi, `EMAIL_BACKEND` khác `brevo`, hay `WEB_APP_URL` không phải địa chỉ `https://` thì
+  trang Quên mật khẩu báo tạm ngưng (503) thay vì báo đã gửi. Chưa có tên miền riêng thì Brevo thay địa
   chỉ người gửi bằng địa chỉ của họ và thư dễ vào mục Spam. Khi chạy trên máy (`EMAIL_BACKEND=file`, mặc định), thư
   không được gửi mà được ghi thành file trong `backend/outbox/`.
 

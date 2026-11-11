@@ -39,10 +39,11 @@ def _backend() -> str:
 
 
 def email_ready() -> bool:
-    """Đã cấu hình đủ để gửi thư chưa. Giá trị EMAIL_BACKEND lạ được coi là chưa cấu hình."""
+    """Đã cấu hình đủ để gửi thư chưa. Giá trị EMAIL_BACKEND lạ được coi là chưa cấu hình; bản chạy thật không dùng
+    chế độ file (thư sẽ chỉ nằm trên ổ đĩa của máy chủ, người nhận không bao giờ thấy)."""
     if _backend() == "brevo":
         return bool(settings.BREVO_API_KEY and settings.EMAIL_FROM)
-    return _backend() == "file"
+    return _backend() == "file" and not settings.is_production
 
 
 def send_email(message: EmailMessage) -> bool:

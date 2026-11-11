@@ -197,6 +197,21 @@ def test_unconfigured_mail_gives_503(client, player, monkeypatch):
     assert response.json()["detail"] == "Chức năng quên mật khẩu đang tạm ngưng. Vui lòng liên hệ quản trị viên."
 
 
+def test_production_needs_an_https_web_address(client, player, monkeypatch):
+    """Bản chạy thật thiếu WEB_APP_URL thì liên kết trong thư sẽ trỏ về localhost: báo tạm ngưng thay vì gửi."""
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "EMAIL_BACKEND", "brevo")
+    monkeypatch.setattr(settings, "BREVO_API_KEY", "khoa-brevo-gia")
+    monkeypatch.setattr(settings, "EMAIL_FROM", "gui-thu@pickle2k.vn")
+    monkeypatch.setattr(email_service.httpx, "post", lambda url, **kwargs: type("R", (), {"status_code": 201, "text": ""})())
+
+    monkeypatch.setattr(settings, "WEB_APP_URL", "http://localhost:3000")
+    assert ask(client).status_code == 503
+
+    monkeypatch.setattr(settings, "WEB_APP_URL", "https://picklematch2k-web.onrender.com")
+    assert ask(client).status_code == 200
+
+
 def test_mail_provider_failure_still_gives_the_generic_answer(client, player, monkeypatch):
     monkeypatch.setattr(settings, "EMAIL_BACKEND", "brevo")
     monkeypatch.setattr(settings, "BREVO_API_KEY", "khoa-brevo-gia")

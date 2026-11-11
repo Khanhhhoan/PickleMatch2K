@@ -18,7 +18,7 @@ from app.schemas.user import (
     UserResponse,
 )
 from app.services import password_reset_service
-from app.services.email_service import email_ready, send_email
+from app.services.email_service import send_email
 from app.services.user_service import create_user, get_user_by_email, normalize_email
 
 router = APIRouter()
@@ -102,7 +102,7 @@ def forgot_password(
     Gửi liên kết đặt lại mật khẩu tới email của người chơi. Câu trả lời như nhau dù email có tài khoản hay không;
     thư được gửi sau khi đã trả lời nên thời gian phản hồi cũng không lộ điều đó.
     """
-    if not email_ready():
+    if not password_reset_service.available():
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=password_reset_service.UNAVAILABLE)
 
     email = normalize_email(payload.email)
