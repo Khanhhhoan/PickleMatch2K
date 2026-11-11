@@ -3,14 +3,16 @@ import hashlib
 import hmac
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional, Union
+from typing import Any, Optional, Tuple, Union
 
 import bcrypt
-from jose import jwt
+from jose import JWTError, jwt
 
 from app.core.config import settings
 
 ALGORITHM = "HS256"
+PASSWORD_RESET_TOKEN_TYPE = "pwd_reset"
+PASSWORD_RESET_MINUTES = 30
 
 # Định dạng cũ: sha256(password + salt cố định) -> 64 ký tự hex. Chỉ còn dùng để nhận diện và
 # nâng cấp sang bcrypt ở lần đăng nhập thành công kế tiếp (xem needs_rehash).
@@ -35,6 +37,36 @@ def create_access_token(
         # Mật khẩu đổi là token này hết hiệu lực (xem deps.get_user_from_token)
         claims["pwd"] = password_fingerprint(password_hash)
     return jwt.encode(claims, settings.SECRET_KEY, algorithm=ALGORITHM)
+
+
+def _password_reset_key() -> str:
+    """Khóa ký mã đặt lại mật khẩu, dẫn xuất từ SECRET_KEY: mã đặt lại và token đăng nhập không dùng thay nhau được."""
+    return hmac.new(settings.SECRET_KEY.encode("utf-8"), b"password-reset", hashlib.sha256).hexdigest()
+
+
+def create_password_reset_token(user_id: int, password_hash: str, now: datetime) -> str:
+    """Mã trong liên kết đặt lại mật khẩu: hạn PASSWORD_RESET_MINUTES phút tính từ `now`, gắn với mật khẩu hiện tại
+    (mật khẩu đổi là mã hết hiệu lực, nên mỗi mã chỉ dùng được một lần)."""
+    claims = {
+        "sub": str(user_id),
+        "pwd": password_fingerprint(password_hash),
+        "typ": PASSWORD_RESET_TOKEN_TYPE,
+        "exp": int((now + timedelta(minutes=PASSWORD_RESET_MINUTES)).timestamp()),
+    }
+    return jwt.encode(claims, _password_reset_key(), algorithm=ALGORITHM)
+
+
+def read_password_reset_token(token: str, now: datetime) -> Optional[Tuple[int, str]]:
+    """(id người dùng, dấu vân tay mật khẩu lúc cấp mã) nếu mã đúng chữ ký và còn hạn tại `now`; None nếu không."""
+    try:
+        # Hạn được so với đồng hồ nghiệp vụ (`now`), không theo giờ máy
+        claims = jwt.decode(token, _password_reset_key(), algorithms=[ALGORITHM], options={"verify_exp": False})
+        user_id, expires, fingerprint = int(claims["sub"]), int(claims["exp"]), str(claims["pwd"])
+    except (JWTError, KeyError, TypeError, ValueError):
+        return None
+    if claims.get("typ") != PASSWORD_RESET_TOKEN_TYPE or now.timestamp() >= expires:
+        return None
+    return user_id, fingerprint
 
 
 def _prehash(password: str) -> bytes:

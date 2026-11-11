@@ -113,6 +113,24 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(min_length=6, max_length=128)
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _strip(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=10, max_length=4000)
+    new_password: str = Field(min_length=6, max_length=128)
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
 class ProfileUpdateRequest(BaseModel):
     """Cập nhật hồ sơ của chính mình. Trường nào áp dụng phụ thuộc vai trò; trường không gửi thì giữ nguyên."""
     full_name: Optional[str] = Field(default=None, max_length=120)

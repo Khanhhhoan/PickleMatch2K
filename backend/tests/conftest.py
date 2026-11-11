@@ -108,7 +108,7 @@ def _database():
 
 @pytest.fixture(autouse=True)
 def _clean_state(_database):
-    from app.core.rate_limit import login_rate_limiter
+    from app.core.rate_limit import login_rate_limiter, reset_email_limiter, reset_ip_limiter
     from app.db.base import Base
     from app.db.database import engine
     from app.services.slot_lock_service import slot_lock_manager
@@ -121,6 +121,8 @@ def _clean_state(_database):
         conn.execute(text("ALTER SEQUENCE transaction_code_seq RESTART WITH 1"))
     slot_lock_manager.clear_memory()
     login_rate_limiter.clear_all()
+    reset_email_limiter.clear_all()
+    reset_ip_limiter.clear_all()
     yield
 
 

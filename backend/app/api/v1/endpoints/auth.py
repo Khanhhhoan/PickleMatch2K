@@ -1,16 +1,24 @@
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.api import deps
 from app.core import security
 from app.core.config import settings
-from app.core.rate_limit import login_rate_limiter
+from app.core.rate_limit import login_rate_limiter, reset_email_limiter, reset_ip_limiter
 from app.models.user import UserRole
 from app.schemas.token import Token
-from app.schemas.user import RegisterRequest, UserResponse
+from app.schemas.user import (
+    ForgotPasswordRequest,
+    MessageResponse,
+    RegisterRequest,
+    ResetPasswordRequest,
+    UserResponse,
+)
+from app.services import password_reset_service
+from app.services.email_service import email_ready, send_email
 from app.services.user_service import create_user, get_user_by_email, normalize_email
 
 router = APIRouter()
@@ -81,3 +89,41 @@ def login_access_token(
         ),
         "token_type": "bearer",
     }
+
+
+@router.post("/forgot-password", response_model=MessageResponse)
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    request: Request,
+    background: BackgroundTasks,
+    db: Session = Depends(deps.get_db),
+):
+    """
+    Gửi liên kết đặt lại mật khẩu tới email của người chơi. Câu trả lời như nhau dù email có tài khoản hay không;
+    thư được gửi sau khi đã trả lời nên thời gian phản hồi cũng không lộ điều đó.
+    """
+    if not email_ready():
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=password_reset_service.UNAVAILABLE)
+
+    email = normalize_email(payload.email)
+    client_ip = request.client.host if request.client else "unknown"
+    for limiter, identifier in ((reset_ip_limiter, client_ip), (reset_email_limiter, email)):
+        wait = limiter.hit(identifier)
+        if wait:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Bạn đã yêu cầu quá nhiều lần. Vui lòng thử lại sau {-(-wait // 60)} phút.",
+                headers={"Retry-After": str(wait)},
+            )
+
+    message = password_reset_service.prepare_reset_email(db, email)
+    if message is not None:
+        background.add_task(send_email, message)
+    return {"message": password_reset_service.GENERIC_MESSAGE}
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+def reset_password_with_link(payload: ResetPasswordRequest, db: Session = Depends(deps.get_db)):
+    """Đặt mật khẩu mới bằng liên kết trong thư. Mật khẩu đổi là mọi liên kết và phiên đăng nhập cũ hết hiệu lực."""
+    password_reset_service.reset_password(db, payload.token, payload.new_password)
+    return {"message": password_reset_service.DONE_MESSAGE}

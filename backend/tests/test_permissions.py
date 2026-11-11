@@ -17,6 +17,8 @@ PUBLIC_ROUTES = {
     ("GET", "/api/v1/health"),
     ("POST", "/api/v1/auth/register"),
     ("POST", "/api/v1/auth/login"),
+    ("POST", "/api/v1/auth/forgot-password"),
+    ("POST", "/api/v1/auth/reset-password"),
     ("GET", "/api/v1/venues"),
     ("GET", "/api/v1/venues/amenities"),
     ("GET", "/api/v1/venues/{venue_id}"),
