@@ -5,6 +5,8 @@
  *
  * Chuẩn bị (trên CSDL demo/thử nghiệm, KHÔNG chạy trên dữ liệu thật vì script tạo và hủy đơn):
  *   - backend ở :8000, đã nạp dữ liệu demo (python manage.py seed) và SEPAY_SIMULATOR_ENABLED=true
+ *   - backend ghi thư ra thư mục (EMAIL_BACKEND=file, mặc định): bước quên mật khẩu đọc thư trong backend/outbox
+ *     (thư mục khác thì đặt biến E2E_OUTBOX_DIR)
  *   - frontend ở :3000 (npm run build && npm start), admin-portal ở :3001
  *
  *   node scripts/e2e_smoke.js            # chạy ngầm
@@ -43,6 +45,9 @@ const PASSWORD = process.env.E2E_PASSWORD || "123456";
 // Mã giao dịch hoàn tiền phải khác nhau giữa các lần chạy: một mã ngân hàng chỉ dùng được cho một lần hoàn tiền
 const REFUND_REFERENCE = `FT26E2E${String(Date.now()).slice(-6)}`;
 const API = process.env.E2E_API_URL || "http://localhost:8000/api/v1";
+// Thư mục backend ghi thư khi EMAIL_BACKEND=file (thư đặt lại mật khẩu)
+const OUTBOX = process.env.E2E_OUTBOX_DIR || path.join(__dirname, "../backend/outbox");
+const RESET_PASSWORD = "e2e-quen-mk-1";
 const SHOTS = path.join(__dirname, "../test-results/screenshots");
 const TIMEOUT = 15000;
 // Ảnh PNG 1x1 dùng làm chứng từ chuyển hoàn trong bước của nhân viên
@@ -178,6 +183,27 @@ const clickFreeSlot = (page, index, times = 1) =>
     return chips[i].innerText.trim().slice(0, 13);
   }, index, times);
 
+/**
+ * Liên kết đặt lại mật khẩu trong thư mới nhất gửi tới `email` (đọc từ OUTBOX). Đường dẫn được giữ nguyên, phần máy
+ * chủ đổi thành WEB để chạy được cả khi WEB_APP_URL của backend trỏ cổng khác.
+ */
+async function resetLinkFor(email) {
+  const deadline = Date.now() + TIMEOUT;
+  while (Date.now() < deadline) {
+    const files = fs.existsSync(OUTBOX) ? fs.readdirSync(OUTBOX).filter((f) => f.endsWith(".json")).sort().reverse() : [];
+    for (const file of files) {
+      const mail = JSON.parse(fs.readFileSync(path.join(OUTBOX, file), "utf-8"));
+      const found = mail.to === email && mail.text.match(/https?:\/\/\S+\/reset-password\?token=[A-Za-z0-9_.-]+/);
+      if (found) {
+        const link = new URL(found[0]);
+        return `${WEB}${link.pathname}${link.search}`;
+      }
+    }
+    await sleep(300);
+  }
+  throw new Error(`Không thấy thư đặt lại mật khẩu gửi ${email} trong ${OUTBOX}`);
+}
+
 /** Chọn một ngày cách hôm nay `offset` ngày trên lịch của trang cụm sân. */
 async function pickDate(page, offset) {
   const target = new Date();
@@ -216,8 +242,10 @@ async function main() {
   // ------------------------------------------------------------------ Người chơi mới
   console.log("\nNgười chơi mới: đăng ký rồi thiết lập hồ sơ ghép trận");
   const newcomer = await newSession("newcomer");
+  // Không dùng đuôi @example.com: tên miền thử bị chặn nhận thư đặt lại mật khẩu (bước sau cần thư)
+  const newcomerEmail = `e2e.moi.${Date.now()}@pickle2k-e2e.vn`;
   await step(newcomer, "đăng ký xong được dẫn tới thiết lập hồ sơ; bỏ qua được từng bước, xong thì sang Ghép Trận", async (page) => {
-    const email = `e2e.moi.${Date.now()}@example.com`;
+    const email = newcomerEmail;
     await page.goto(`${WEB}/register`, { waitUntil: "networkidle2" });
     await page.type('input[type="text"]', "Người Chơi Mới");
     await page.type('input[type="email"]', email);
@@ -254,6 +282,28 @@ async function main() {
     if (profile.date_of_birth) throw new Error("Bước ngày sinh đã bỏ qua nhưng hồ sơ vẫn có ngày sinh");
   });
   await newcomer.context.close();
+
+  const forgetful = await newSession("forgetful");
+  await step(forgetful, "quên mật khẩu: nhận thư, đặt mật khẩu mới, đăng nhập lại bằng mật khẩu mới", async (page) => {
+    await page.goto(`${WEB}/login`, { waitUntil: "networkidle2" });
+    await clickText(page, "a", "Quên mật khẩu?", { exact: true });
+    await page.waitForFunction(() => location.pathname === "/forgot-password", { timeout: TIMEOUT });
+    await page.type("#forgot-email", newcomerEmail);
+    await clickText(page, "button", "Gửi Link Đặt Lại", { exact: true });
+    await waitForText(page, "Nếu email này thuộc một tài khoản người chơi");
+    await page.goto(await resetLinkFor(newcomerEmail), { waitUntil: "networkidle2" });
+    await waitForText(page, "Nhập mật khẩu mới cho tài khoản của bạn");
+    if (await page.evaluate(() => location.search.includes("token"))) throw new Error("Mã đặt lại vẫn nằm trên thanh địa chỉ");
+    await page.type("#new-password", RESET_PASSWORD);
+    await page.type("#confirm-password", RESET_PASSWORD);
+    await clickText(page, "button", "Đặt Mật Khẩu Mới", { exact: true });
+    await page.waitForFunction(() => location.pathname === "/login", { timeout: TIMEOUT });
+    await page.type('input[type="email"]', newcomerEmail);
+    await page.type('input[type="password"]', RESET_PASSWORD);
+    await page.click('button[type="submit"]');
+    await page.waitForFunction(() => !location.pathname.startsWith("/login"), { timeout: TIMEOUT });
+  });
+  await forgetful.context.close();
 
   // ------------------------------------------------------------------ Người chơi 1
   console.log("\nNgười chơi 1: đặt sân, thanh toán cọc, mở phòng đấu");

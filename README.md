@@ -149,6 +149,17 @@ lần push lên nhánh `main` Render tự deploy lại.
 
   Thiếu khóa thì webhook bị từ chối (503) vì API chạy ở chế độ production.
 
+- Thư đặt lại mật khẩu (Quên mật khẩu của người chơi) gửi qua Brevo: gói miễn phí của Render chặn các cổng SMTP nên
+  không gửi thẳng qua Gmail được. Cần hai việc làm tay:
+  1. Brevo (gói miễn phí 300 thư/ngày): thêm và xác minh địa chỉ gửi (Senders), tạo khóa API (SMTP & API → API keys).
+  2. Render → `picklematch2k-api` → Environment: thêm `EMAIL_FROM` (địa chỉ gửi vừa xác minh) và `BREVO_API_KEY`.
+     `EMAIL_BACKEND=brevo`, `EMAIL_FROM_NAME` và `WEB_APP_URL` đã khai trong `render.yaml`; Blueprint đã tạo rồi thì
+     thêm tay cả năm biến.
+
+  Thiếu khóa hoặc địa chỉ gửi thì trang Quên mật khẩu báo tạm ngưng (503). Chưa có tên miền riêng thì Brevo thay địa
+  chỉ người gửi bằng địa chỉ của họ và thư dễ vào mục Spam. Khi chạy trên máy (`EMAIL_BACKEND=file`, mặc định), thư
+  không được gửi mà được ghi thành file trong `backend/outbox/`.
+
 ## 6. Tài khoản demo
 
 Sau `python manage.py seed`, mọi tài khoản dùng mật khẩu **`123456`** (chỉ dành cho phát triển và bảo vệ đồ án).
@@ -267,7 +278,8 @@ Sau khi nâng cấp:
   nhiều tiến trình: mỗi lượt giữ một khóa tư vấn của PostgreSQL nên chỉ một tiến trình chạy, và mỗi dòng được khóa
   SKIP LOCKED nên không xử lý trùng. Kênh WebSocket thì vẫn theo từng tiến trình: chạy nhiều tiến trình cần đặt
   `REDIS_URL` để giữ chỗ tạm và giới hạn đăng nhập dùng chung (không có Redis thì chúng chỉ nằm trong bộ nhớ tiến trình).
-- Thông báo chỉ có trong ứng dụng (chuông); chưa gửi email vì hệ thống chưa cấu hình dịch vụ gửi thư.
+- Thông báo chỉ có trong ứng dụng (chuông). Email mới dùng cho thư đặt lại mật khẩu của người chơi; chủ sân, nhân
+  viên và quản trị chưa có chức năng quên mật khẩu, và hệ thống chưa xác minh email lúc đăng ký.
 - Quét QR bằng camera cần trình duyệt hỗ trợ `BarcodeDetector` và trang chạy trên HTTPS hoặc `localhost`;
   các trường hợp khác nhân viên nhập mã đơn bằng tay.
 - Mô hình ghép cặp được huấn luyện trên **10.000 phiếu ghép cặp mô phỏng** lưu trong bảng `pair_feedback`
