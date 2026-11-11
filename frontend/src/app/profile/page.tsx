@@ -74,7 +74,7 @@ type TransactionFilter = "all" | "paid" | "refund";
 type TransactionOrder = "newest" | "oldest";
 
 function ProfileContent() {
-  const { user, isLoading, refreshUser } = useAuth();
+  const { user, isLoading, refreshUser, replaceToken } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
@@ -273,6 +273,8 @@ function ProfileContent() {
         method: "POST",
         body: JSON.stringify({ current_password: passwordForm.current_password, new_password: passwordForm.new_password }),
       });
+      // Mật khẩu đổi làm token cũ hết hiệu lực (các thiết bị khác bị đăng xuất): thiết bị này dùng token mới
+      if (res?.access_token) replaceToken(res.access_token);
       toastSuccess(res?.message || "Đổi mật khẩu thành công.");
       setPasswordForm({ current_password: "", new_password: "", confirm_password: "" });
       setShowPasswordSection(false);

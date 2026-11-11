@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api import deps
 from app.api.permissions import managed_venue_ids, require_venue_owner
-from app.core.security import get_password_hash, verify_password
+from app.core.security import create_access_token, get_password_hash, verify_password
 from app.ml.features import PLAY_STYLES, PURPOSES
 from app.models.user import OwnerProfile, PlayerProfile, StaffProfile, User, UserRole
 from app.models.venue import Court, OperatingHour, PriceRule, Venue
@@ -159,7 +159,12 @@ def change_my_password(
 
     current_user.password_hash = get_password_hash(payload.new_password)
     db.commit()
-    return {"message": "Đổi mật khẩu thành công!"}
+    return {
+        "message": "Đổi mật khẩu thành công!",
+        # Mật khẩu đổi làm mọi token cũ hết hiệu lực, kể cả token của thiết bị này: cấp token mới để vẫn đăng nhập
+        "access_token": create_access_token(current_user.id, password_hash=current_user.password_hash),
+        "token_type": "bearer",
+    }
 
 
 # ==========================================

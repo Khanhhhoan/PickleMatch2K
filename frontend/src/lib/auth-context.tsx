@@ -52,6 +52,8 @@ interface AuthContextType {
   register: (email: string, password: string, fullName: string, phone?: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  /** Thay token đang dùng bằng token máy chủ vừa cấp (sau khi đổi mật khẩu, token cũ hết hiệu lực). */
+  replaceToken: (newToken: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -171,8 +173,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const replaceToken = (newToken: string) => {
+    localStorage.setItem("token", newToken);
+    setToken(newToken);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout, refreshUser, replaceToken }}>
       {children}
     </AuthContext.Provider>
   );

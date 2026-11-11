@@ -18,11 +18,23 @@ _LEGACY_SALT = "pickleball_secure_salt_2026"
 _LEGACY_HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
-def create_access_token(subject: Union[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+def password_fingerprint(password_hash: str) -> str:
+    """Dấu vân tay ngắn của mật khẩu đang lưu: mật khẩu đổi thì dấu vân tay đổi. Không suy ra được gì về mật khẩu."""
+    digest = hmac.new(settings.SECRET_KEY.encode("utf-8"), (password_hash or "").encode("utf-8"), hashlib.sha256)
+    return digest.hexdigest()[:16]
+
+
+def create_access_token(
+    subject: Union[str, Any], expires_delta: Optional[timedelta] = None, password_hash: Optional[str] = None
+) -> str:
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    return jwt.encode({"exp": expire, "sub": str(subject)}, settings.SECRET_KEY, algorithm=ALGORITHM)
+    claims = {"exp": expire, "sub": str(subject)}
+    if password_hash is not None:
+        # Mật khẩu đổi là token này hết hiệu lực (xem deps.get_user_from_token)
+        claims["pwd"] = password_fingerprint(password_hash)
+    return jwt.encode(claims, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 
 def _prehash(password: str) -> bytes:

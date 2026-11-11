@@ -1,3 +1,4 @@
+import hmac
 from typing import Generator, Optional
 
 from fastapi import Depends, HTTPException, status
@@ -6,7 +7,7 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.security import ALGORITHM
+from app.core.security import ALGORITHM, password_fingerprint
 from app.db.database import SessionLocal
 from app.models.user import User
 
@@ -33,6 +34,11 @@ def get_user_from_token(db: Session, token: Optional[str]) -> Optional[User]:
         return None
     user = db.query(User).filter(User.id == user_id).first()
     if user is None or not user.is_active:
+        return None
+    # Token mang dấu vân tay của mật khẩu lúc cấp: mật khẩu đã đổi (đổi hoặc đặt lại) thì token không còn dùng được.
+    # Token không có dấu vân tay (cấp trước khi có cơ chế này) vẫn dùng được tới khi hết hạn.
+    fingerprint = payload.get("pwd")
+    if fingerprint is not None and not hmac.compare_digest(str(fingerprint), password_fingerprint(user.password_hash)):
         return None
     return user
 

@@ -75,7 +75,9 @@ def login_access_token(
 
     return {
         "access_token": security.create_access_token(
-            user.id, expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+            user.id,
+            expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+            password_hash=user.password_hash,  # sau bước băm lại ở trên: đúng mật khẩu đang lưu
         ),
         "token_type": "bearer",
     }
